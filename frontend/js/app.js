@@ -104,7 +104,17 @@ function renderStats(meta) {
   const s = META.stats;
   el("stat-articles").textContent = s.articles_24h.toLocaleString();
   el("stat-countries").textContent = s.countries_24h;
-  el("stat-sources").textContent = `${s.sources_ok}/${s.sources_total}`;
+  const tile = el("stat-sources");
+  if (!(META.ingest && META.ingest.last_run)) {
+    // No ingest cycle has completed yet — "0 healthy" would be misleading.
+    tile.textContent = `…/${s.sources_total}`;
+    tile.title = "First poll of all sources is in progress — refresh in a minute";
+  } else {
+    tile.textContent = `${s.sources_ok}/${s.sources_total}`;
+    tile.title = s.sources_ok === 0
+      ? "No source could be fetched — check the Sources panel for per-source errors"
+      : "";
+  }
 }
 
 /* ---------- feed board ---------- */
@@ -381,7 +391,9 @@ function connectStream() {
   es.onmessage = (e) => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
-    if (msg.type === "articles") {
+    if (msg.type === "cycle") {
+      API.meta().then(renderStats).catch(() => {});
+    } else if (msg.type === "articles") {
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(async () => {
         renderStats(await API.meta());

@@ -204,6 +204,8 @@ async def run_ingest_cycle() -> dict:
             "sources_total": len(sources),
             "cycles": status.get("cycles", 0) + 1,
         })
+        broadcaster.publish({"type": "cycle", "sources_ok": ok_sources,
+                             "sources_total": len(sources), "new_articles": len(all_new)})
         if all_new:
             broadcaster.publish({"type": "articles", "count": len(all_new)})
         for hit in hits:
