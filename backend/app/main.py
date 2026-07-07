@@ -1,0 +1,415 @@
+"""Global News Dashboard — FastAPI application."""
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import urllib.parse
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from . import ingest
+from .boolean_query import validate_query
+from .catalog import seed_demo_articles, seed_sources
+from .database import Base, engine, get_db
+from .events import broadcaster
+from .geo import load_gazetteer
+from .matching import query_articles
+from .models import Alert, AlertEvent, Article, Feed, Source, utcnow
+from .schemas import AlertIn, FeedIn, QueryValidateIn, SourceIn, TopicTrackerIn
+from .scoring import STANDARD_CATEGORIES
+
+logging.basicConfig(level=logging.INFO)
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+DISABLE_INGEST = os.environ.get("NEWS_DISABLE_INGEST", "") == "1"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(engine)
+    db = next(get_db())
+    try:
+        seed_sources(db)
+    finally:
+        db.close()
+    task = None
+    if not DISABLE_INGEST:
+        task = asyncio.create_task(ingest.ingest_loop())
+    yield
+    if task:
+        task.cancel()
+
+
+app = FastAPI(title="Global News Dashboard", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
+
+
+def user_id_header(x_user_id: str = Header(default="default")) -> str:
+    return (x_user_id or "default")[:64]
+
+
+def _article_json(a: Article) -> dict:
+    return {
+        "id": a.id,
+        "title": a.title,
+        "summary": a.summary[:400],
+        "url": a.url,
+        "image_url": a.image_url,
+        "published_at": a.published_at.isoformat() + "Z" if a.published_at else None,
+        "language": a.language,
+        "country": a.country,
+        "categories": a.categories or [],
+        "places": a.places or [],
+        "importance": a.importance,
+        "source": {
+            "id": a.source.id, "name": a.source.name, "country": a.source.country,
+            "scope": a.source.scope,
+        } if a.source else None,
+    }
+
+
+# ---------- meta ----------
+
+@app.get("/api/meta")
+def meta(db: Session = Depends(get_db)):
+    gaz = load_gazetteer()
+    total_articles = db.scalar(select(func.count(Article.id))) or 0
+    day_ago = utcnow().replace(microsecond=0)
+    from datetime import timedelta
+    articles_24h = db.scalar(
+        select(func.count(Article.id)).where(Article.fetched_at >= day_ago - timedelta(hours=24))
+    ) or 0
+    countries_24h = db.scalar(
+        select(func.count(func.distinct(Article.country))).where(
+            Article.fetched_at >= day_ago - timedelta(hours=24), Article.country != ""
+        )
+    ) or 0
+    sources_ok = db.scalar(
+        select(func.count(Source.id)).where(Source.enabled.is_(True), Source.last_status == "ok")
+    ) or 0
+    sources_total = db.scalar(select(func.count(Source.id)).where(Source.enabled.is_(True))) or 0
+    return {
+        "categories": STANDARD_CATEGORIES,
+        "scopes": ["local", "national", "international"],
+        "countries": [
+            {"iso2": c["iso2"], "name": c["name"]}
+            for c in sorted(gaz["countries"], key=lambda c: c["name"])
+        ],
+        "languages": sorted({s.language for s in db.scalars(select(Source)).all()} | {"en"}),
+        "stats": {
+            "total_articles": total_articles,
+            "articles_24h": articles_24h,
+            "countries_24h": countries_24h,
+            "sources_ok": sources_ok,
+            "sources_total": sources_total,
+        },
+        "ingest": ingest.status,
+    }
+
+
+# ---------- sources ----------
+
+@app.get("/api/sources")
+def list_sources(db: Session = Depends(get_db)):
+    sources = db.scalars(select(Source).order_by(Source.name)).all()
+    return [{
+        "id": s.id, "name": s.name, "rss_url": s.rss_url, "homepage": s.homepage,
+        "country": s.country, "region": s.region, "language": s.language,
+        "scope": s.scope, "categories": s.categories or [], "tier": s.tier,
+        "enabled": s.enabled, "added_by": s.added_by,
+        "last_fetched_at": s.last_fetched_at.isoformat() + "Z" if s.last_fetched_at else None,
+        "last_status": s.last_status, "last_article_count": s.last_article_count,
+    } for s in sources]
+
+
+@app.post("/api/sources", status_code=201)
+def create_source(body: SourceIn, db: Session = Depends(get_db)):
+    if db.scalar(select(Source).where(Source.rss_url == body.rss_url)):
+        raise HTTPException(409, "A source with this RSS URL already exists")
+    source = Source(**body.model_dump(), added_by="user")
+    db.add(source)
+    db.commit()
+    return {"id": source.id}
+
+
+@app.post("/api/sources/topic-tracker", status_code=201)
+def create_topic_tracker(body: TopicTrackerIn, db: Session = Depends(get_db)):
+    """Track any topic worldwide via a Google News search RSS virtual source."""
+    q = body.query.strip()
+    if not q:
+        raise HTTPException(422, "Query must not be empty")
+    lang, country = body.language, body.country.upper()
+    rss = (
+        "https://news.google.com/rss/search?q=" + urllib.parse.quote(q)
+        + f"&hl={lang}-{country}&gl={country}&ceid={country}:{lang}"
+    )
+    if db.scalar(select(Source).where(Source.rss_url == rss)):
+        raise HTTPException(409, "This topic is already being tracked")
+    source = Source(
+        name=f"Topic: {q}", rss_url=rss, homepage="https://news.google.com",
+        country="", region="Global", language=lang, scope="international",
+        categories=[], tier=2, added_by="topic-tracker",
+    )
+    db.add(source)
+    db.commit()
+    return {"id": source.id, "rss_url": rss}
+
+
+@app.patch("/api/sources/{source_id}")
+def update_source(source_id: int, body: dict, db: Session = Depends(get_db)):
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    for key in ("name", "enabled", "country", "language", "scope", "categories", "tier"):
+        if key in body:
+            setattr(source, key, body[key])
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/sources/{source_id}", status_code=204)
+def delete_source(source_id: int, db: Session = Depends(get_db)):
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    db.delete(source)
+    db.commit()
+
+
+# ---------- articles / search ----------
+
+@app.post("/api/articles/search")
+def search_articles(
+    body: dict,
+    sort: str = Query(default="newest"),
+    limit: int = Query(default=50, le=200),
+    db: Session = Depends(get_db),
+):
+    """Ad-hoc search with a criteria object (used for feed preview and search bar)."""
+    articles = query_articles(db, body.get("criteria", body), sort=sort, limit=limit)
+    return [_article_json(a) for a in articles]
+
+
+@app.post("/api/query/validate")
+def query_validate(body: QueryValidateIn):
+    err = validate_query(body.query) if body.query.strip() else None
+    return {"valid": err is None, "error": err}
+
+
+# ---------- feeds ----------
+
+@app.get("/api/feeds")
+def list_feeds(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    feeds = db.scalars(
+        select(Feed).where(Feed.user_id == user_id).order_by(Feed.position, Feed.id)
+    ).all()
+    return [{
+        "id": f.id, "name": f.name, "criteria": f.criteria, "sort": f.sort,
+        "position": f.position, "width": f.width,
+    } for f in feeds]
+
+
+@app.post("/api/feeds", status_code=201)
+def create_feed(body: FeedIn, user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    _reject_invalid_query(body.criteria.query)
+    max_pos = db.scalar(
+        select(func.max(Feed.position)).where(Feed.user_id == user_id)
+    )
+    feed = Feed(
+        user_id=user_id, name=body.name, criteria=body.criteria.model_dump(),
+        sort=body.sort, position=(max_pos + 1) if max_pos is not None else 0,
+        width=body.width,
+    )
+    db.add(feed)
+    db.commit()
+    return {"id": feed.id}
+
+
+@app.put("/api/feeds/{feed_id}")
+def update_feed(feed_id: int, body: FeedIn, user_id: str = Depends(user_id_header),
+                db: Session = Depends(get_db)):
+    feed = _owned(db, Feed, feed_id, user_id)
+    _reject_invalid_query(body.criteria.query)
+    feed.name = body.name
+    feed.criteria = body.criteria.model_dump()
+    feed.sort = body.sort
+    feed.width = body.width
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/feeds/reorder")
+def reorder_feeds(body: dict, user_id: str = Depends(user_id_header),
+                  db: Session = Depends(get_db)):
+    order: list[int] = body.get("order", [])
+    feeds = {f.id: f for f in db.scalars(select(Feed).where(Feed.user_id == user_id))}
+    for pos, fid in enumerate(order):
+        if fid in feeds:
+            feeds[fid].position = pos
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/feeds/{feed_id}", status_code=204)
+def delete_feed(feed_id: int, user_id: str = Depends(user_id_header),
+                db: Session = Depends(get_db)):
+    feed = _owned(db, Feed, feed_id, user_id)
+    db.delete(feed)
+    db.commit()
+
+
+@app.get("/api/feeds/{feed_id}/articles")
+def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
+                  user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    feed = _owned(db, Feed, feed_id, user_id)
+    articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
+    return [_article_json(a) for a in articles]
+
+
+# ---------- alerts ----------
+
+@app.get("/api/alerts")
+def list_alerts(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    alerts = db.scalars(
+        select(Alert).where(Alert.user_id == user_id).order_by(Alert.id)
+    ).all()
+    out = []
+    for a in alerts:
+        unseen = db.scalar(
+            select(func.count(AlertEvent.id)).where(
+                AlertEvent.alert_id == a.id, AlertEvent.seen.is_(False)
+            )
+        ) or 0
+        out.append({
+            "id": a.id, "name": a.name, "criteria": a.criteria, "active": a.active,
+            "last_triggered_at": a.last_triggered_at.isoformat() + "Z" if a.last_triggered_at else None,
+            "unseen": unseen,
+        })
+    return out
+
+
+@app.post("/api/alerts", status_code=201)
+def create_alert(body: AlertIn, user_id: str = Depends(user_id_header),
+                 db: Session = Depends(get_db)):
+    _reject_invalid_query(body.criteria.query)
+    alert = Alert(user_id=user_id, name=body.name,
+                  criteria=body.criteria.model_dump(), active=body.active)
+    db.add(alert)
+    db.commit()
+    return {"id": alert.id}
+
+
+@app.put("/api/alerts/{alert_id}")
+def update_alert(alert_id: int, body: AlertIn, user_id: str = Depends(user_id_header),
+                 db: Session = Depends(get_db)):
+    alert = _owned(db, Alert, alert_id, user_id)
+    _reject_invalid_query(body.criteria.query)
+    alert.name = body.name
+    alert.criteria = body.criteria.model_dump()
+    alert.active = body.active
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/alerts/{alert_id}", status_code=204)
+def delete_alert(alert_id: int, user_id: str = Depends(user_id_header),
+                 db: Session = Depends(get_db)):
+    alert = _owned(db, Alert, alert_id, user_id)
+    db.delete(alert)
+    db.commit()
+
+
+@app.get("/api/alerts/{alert_id}/events")
+def alert_events(alert_id: int, limit: int = Query(default=50, le=200),
+                 user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    _owned(db, Alert, alert_id, user_id)
+    events = db.scalars(
+        select(AlertEvent).where(AlertEvent.alert_id == alert_id)
+        .order_by(AlertEvent.created_at.desc()).limit(limit)
+    ).all()
+    out = []
+    for e in events:
+        article = db.get(Article, e.article_id)
+        if article:
+            out.append({"event_id": e.id, "seen": e.seen,
+                        "created_at": e.created_at.isoformat() + "Z",
+                        "article": _article_json(article)})
+    return out
+
+
+@app.post("/api/alerts/{alert_id}/mark-seen")
+def mark_alert_seen(alert_id: int, user_id: str = Depends(user_id_header),
+                    db: Session = Depends(get_db)):
+    _owned(db, Alert, alert_id, user_id)
+    for e in db.scalars(select(AlertEvent).where(
+            AlertEvent.alert_id == alert_id, AlertEvent.seen.is_(False))):
+        e.seen = True
+    db.commit()
+    return {"ok": True}
+
+
+# ---------- ingest control & live stream ----------
+
+@app.post("/api/ingest/run")
+async def ingest_run():
+    return await ingest.run_ingest_cycle()
+
+
+@app.get("/api/ingest/status")
+def ingest_status():
+    return ingest.status
+
+
+@app.post("/api/demo/seed")
+def demo_seed(db: Session = Depends(get_db)):
+    return {"added": seed_demo_articles(db)}
+
+
+@app.get("/api/stream")
+async def stream():
+    """Server-Sent Events: new-article batches and alert hits, pushed live."""
+    queue = broadcaster.subscribe()
+
+    async def gen():
+        try:
+            yield "event: hello\ndata: {}\n\n"
+            while True:
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=25)
+                    yield f"data: {data}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            broadcaster.unsubscribe(queue)
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache"})
+
+
+# ---------- helpers & static frontend ----------
+
+def _owned(db: Session, model, obj_id: int, user_id: str):
+    obj = db.get(model, obj_id)
+    if not obj or obj.user_id != user_id:
+        raise HTTPException(404, f"{model.__name__} not found")
+    return obj
+
+
+def _reject_invalid_query(query: str):
+    if query and query.strip():
+        err = validate_query(query)
+        if err:
+            raise HTTPException(422, f"Invalid boolean query: {err}")
+
+
+app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
