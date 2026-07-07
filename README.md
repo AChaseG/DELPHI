@@ -94,6 +94,39 @@ On first run the source catalog is seeded and a full poll starts automatically
 feeds** for an instant dashboard, or `POST /api/demo/seed` for offline sample
 data.
 
+## Going live
+
+**Share it straight from a codespace (temporary).** With the server running,
+open the **Ports** panel, right-click port 8000 → **Port visibility** →
+**Public**. Anyone with the `https://<codespace>-8000.app.github.dev` URL can
+now open your dashboard. Two caveats: a codespace **auto-stops after ~30
+minutes of inactivity** (Settings ▸ Codespaces lets you raise the idle timeout
+to 4 hours) and ingestion/alerts pause while it sleeps — so this is for demos,
+not hosting. Also note the app has **no authentication**: anyone with a public
+URL can read every feed and add sources, so keep visibility private unless
+you're actively sharing.
+
+**Host it 24/7 (Docker).** A `Dockerfile` is included; the database lives on a
+volume at `/data` so history survives restarts:
+
+```bash
+docker build -t news-dashboard .
+docker run -d -p 8000:8000 -v newsdata:/data --restart unless-stopped news-dashboard
+```
+
+That works on any VPS (~$5/month). For a managed platform, `fly.toml` is
+included for Fly.io:
+
+```bash
+fly launch --copy-config --no-deploy   # pick your app name
+fly volumes create newsdata --size 1
+fly deploy
+```
+
+(Railway and Render also auto-detect the Dockerfile — set a volume/disk at
+`/data`. Avoid free tiers that sleep on idle; a sleeping instance stops
+polling and alerting, same as a codespace.)
+
 ### Configuration (environment variables)
 
 | Variable | Default | Purpose |

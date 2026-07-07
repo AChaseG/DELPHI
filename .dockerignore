@@ -1,0 +1,11 @@
+.git
+.venv
+venv
+__pycache__
+**/__pycache__
+backend/data/*.db
+backend/data/*.db-journal
+node_modules
+.devcontainer
+.claude
+README.md
