@@ -1,4 +1,4 @@
-"""Global News Dashboard — FastAPI application."""
+"""Delphi — global news monitoring dashboard (FastAPI application)."""
 from __future__ import annotations
 
 import asyncio
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="Global News Dashboard", lifespan=lifespan)
+app = FastAPI(title="Delphi", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )

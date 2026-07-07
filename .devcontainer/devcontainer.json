@@ -1,12 +1,12 @@
 {
-  "name": "Global News Dashboard",
+  "name": "Delphi",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
   "postCreateCommand": "python3 -m pip install -r requirements.txt",
   "postStartCommand": "bash .devcontainer/start.sh",
   "forwardPorts": [8000],
   "portsAttributes": {
     "8000": {
-      "label": "Global News Dashboard",
+      "label": "Delphi",
       "onAutoForward": "openBrowser"
     }
   }

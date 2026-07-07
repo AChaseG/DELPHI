@@ -1,9 +1,9 @@
 ---
 name: verify
-description: Build/launch/drive recipe for verifying the Global News Dashboard end-to-end.
+description: Build/launch/drive recipe for verifying Delphi (global news dashboard) end-to-end.
 ---
 
-# Verifying the Global News Dashboard
+# Verifying Delphi
 
 ## Launch
 

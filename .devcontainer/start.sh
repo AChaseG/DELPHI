@@ -19,17 +19,17 @@ PY=python3
 pkill -f "uvicorn backend.app.main:app" 2>/dev/null
 sleep 1
 nohup "$PY" -m uvicorn backend.app.main:app --host 0.0.0.0 --port "$PORT" \
-  > /tmp/news-dashboard.log 2>&1 &
+  > /tmp/delphi.log 2>&1 &
 disown 2>/dev/null || true
 
 for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:$PORT/api/meta" > /dev/null 2>&1; then
-    echo "✔ Global News Dashboard is up on port $PORT"
+    echo "✔ Delphi is up on port $PORT"
     exit 0
   fi
   sleep 1
 done
 
-echo "✘ Server did not come up. Last log lines (/tmp/news-dashboard.log):" >&2
-tail -20 /tmp/news-dashboard.log >&2
+echo "✘ Server did not come up. Last log lines (/tmp/delphi.log):" >&2
+tail -20 /tmp/delphi.log >&2
 exit 1

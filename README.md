@@ -1,6 +1,6 @@
-# 🌐 Global News Dashboard
+# 🔮 Delphi
 
-A self-hosted tool that continuously ingests news from sources across the globe —
+**Delphi** is a self-hosted global news monitoring dashboard: it continuously ingests news from sources across the globe —
 local, national, and international — and presents them on a customizable,
 per-user dashboard with Dataminr-style live alerting and **draw-on-map geofenced
 feeds**.
@@ -75,7 +75,7 @@ your browser opens the dashboard.
 > ```
 >
 > It (re)installs anything missing, restarts the server, waits until
-> `/api/meta` responds, and prints the tail of `/tmp/news-dashboard.log` if
+> `/api/meta` responds, and prints the tail of `/tmp/delphi.log` if
 > startup fails — then reload the forwarded-port tab. Note: browser-only sandboxes such as
 bolt.new / StackBlitz cannot run this project — it is a Python server
 application (FastAPI + SQLite + a background ingestion loop), not a Node
@@ -110,8 +110,8 @@ you're actively sharing.
 volume at `/data` so history survives restarts:
 
 ```bash
-docker build -t news-dashboard .
-docker run -d -p 8000:8000 -v newsdata:/data --restart unless-stopped news-dashboard
+docker build -t delphi .
+docker run -d -p 8000:8000 -v newsdata:/data --restart unless-stopped delphi
 ```
 
 That works on any VPS (~$5/month). For a managed platform, `fly.toml` is

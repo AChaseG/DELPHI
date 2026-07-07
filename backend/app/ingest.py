@@ -30,7 +30,7 @@ log = logging.getLogger("ingest")
 FETCH_INTERVAL = int(os.environ.get("NEWS_FETCH_INTERVAL", "300"))
 FETCH_TIMEOUT = float(os.environ.get("NEWS_FETCH_TIMEOUT", "20"))
 CONCURRENCY = int(os.environ.get("NEWS_FETCH_CONCURRENCY", "10"))
-USER_AGENT = "GlobalNewsDashboard/1.0 (+RSS reader; respects robots and publisher feeds)"
+USER_AGENT = "Delphi/1.0 (+RSS reader; respects robots and publisher feeds)"
 
 status: dict = {"running": False, "last_run": None, "last_new_articles": 0, "cycles": 0}
 

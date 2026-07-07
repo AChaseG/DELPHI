@@ -2,7 +2,7 @@
 #   fly launch --copy-config --no-deploy   (pick an app name when prompted)
 #   fly volumes create newsdata --size 1
 #   fly deploy
-app = "global-news-dashboard"
+app = "delphi-news"
 primary_region = "iad"
 
 [http_service]

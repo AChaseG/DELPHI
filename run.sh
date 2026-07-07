@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the Global News Dashboard (backend API + static frontend on one port).
+# Start Delphi (backend API + static frontend on one port).
 set -euo pipefail
 cd "$(dirname "$0")"
 
