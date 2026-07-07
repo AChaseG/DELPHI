@@ -91,6 +91,8 @@ const Builder = {
     el("b-importance").dispatchEvent(new Event("input"));
     el("b-hours").value = c.hours || "";
     el("alert-only-fields").hidden = mode !== "alert";
+    el("feed-only-fields").hidden = mode !== "feed";
+    el("b-group").checked = item ? !!item.group_events : false;
     el("b-active").checked = item ? !!item.active : true;
     const sort = (item && item.sort) || "newest";
     for (const r of document.querySelectorAll('input[name="b-sort"]')) r.checked = r.value === sort;
@@ -144,6 +146,7 @@ const Builder = {
         else await API.createAlert(body);
       } else {
         body.width = this.editing ? this.editing.width || 1 : 1;
+        body.group_events = el("b-group").checked;
         if (this.editing) await API.updateFeed(this.editing.id, body);
         else await API.createFeed(body);
       }

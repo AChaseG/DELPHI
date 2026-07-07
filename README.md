@@ -36,6 +36,18 @@ feeds**.
   feed. Every ingest cycle, new articles are evaluated against all active
   alerts; hits are stored, counted on the bell, and **pushed live to the
   dashboard over Server-Sent Events** as toast notifications.
+- **Event clustering.** Cross-source coverage of the same story is clustered
+  into *events* (incremental headline-similarity clustering over a 72h rolling
+  window). Any feed can be switched to grouped mode: one card per event with a
+  🧵 report count, source count, and an expandable timeline of every outlet's
+  coverage. `POST /api/events/rebuild` reclusters history from scratch.
+- **Automatic translation.** Pick a reading language in the top bar (defaults
+  to your browser's language) and any article in another language is machine-
+  translated on the fly — titles and summaries, marked "🌐 translated from XX".
+  Translations are cached in SQLite so each article+language pair is translated
+  once. Providers: the free Google endpoint (default, fine for personal use) or
+  a self-hosted LibreTranslate server (`NEWS_TRANSLATE_PROVIDER=libretranslate`,
+  `NEWS_LIBRETRANSLATE_URL=…`), or `off`.
 - **Draw on a map.** In the feed/alert builder, draw a polygon, rectangle, or
   circle on a world map (Leaflet + Leaflet.draw). Only news geolocated inside
   that area (via its tagged places, falling back to the country centroid) will
@@ -70,13 +82,17 @@ data.
 | `NEWS_FETCH_CONCURRENCY` | `10` | parallel source fetches |
 | `NEWS_DB_PATH` | `backend/data/news.db` | SQLite location |
 | `NEWS_DISABLE_INGEST` | unset | `1` disables the background poller |
+| `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
+| `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
 
 ## Architecture
 
 ```
 backend/app
 ├── main.py           FastAPI app: REST API, SSE stream, static frontend
-├── ingest.py         async poller: fetch → normalize → geotag → score → alert
+├── ingest.py         async poller: fetch → normalize → geotag → score → cluster → alert
+├── clustering.py     incremental article→event clustering
+├── translate.py      lazy cached translation (Google gtx / LibreTranslate)
 ├── matching.py       shared criteria matcher (feeds, alerts, ad-hoc search)
 ├── boolean_query.py  recursive-descent parser for user boolean strings
 ├── geo.py            gazetteer geotagging, point-in-polygon/circle geofences
@@ -102,7 +118,10 @@ POST /api/articles/search          ad-hoc criteria search (feed preview, search 
 POST /api/query/validate           boolean-string validation
 GET|POST|PUT|DELETE /api/feeds     per-user feeds (X-User-Id header)
 POST /api/feeds/reorder            dashboard layout
-GET  /api/feeds/{id}/articles      feed contents
+GET  /api/feeds/{id}/articles      feed contents (?lang=xx translates)
+GET  /api/feeds/{id}/events        feed contents clustered into events
+GET  /api/events/{id}              one event + full article timeline
+POST /api/events/rebuild           recluster all stored articles
 GET|POST|PUT|DELETE /api/alerts    per-user alerts
 GET  /api/alerts/{id}/events       alert hit history
 POST /api/alerts/{id}/mark-seen
@@ -131,7 +150,8 @@ POST /api/demo/seed                offline sample articles
 ## Roadmap ideas
 
 - Push channels for alerts (email / Slack / webhook / mobile push)
-- Entity extraction & clustering into "events" with timelines
-- Translation of non-English headlines; more non-English catalog sources
+- Entity extraction and multilingual event clustering (current clustering is
+  token-based, so same-story coverage in different languages forms separate events)
+- More non-English catalog sources
 - PostgreSQL + PostGIS for precise geofencing at scale
 - Full-text article fetch for sources whose feeds only carry snippets

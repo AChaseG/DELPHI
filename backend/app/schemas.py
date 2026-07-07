@@ -26,6 +26,7 @@ class FeedIn(BaseModel):
     sort: str = "newest"
     position: int = 0
     width: int = 1
+    group_events: bool = False
 
 
 class FeedOut(FeedIn):

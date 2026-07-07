@@ -75,6 +75,19 @@ DEMO_HEADLINES = [
      "The city council voted to approve the downtown transit expansion following a marathon public session, with construction expected to begin next year.", "US"),
 ]
 
+# (title, summary, country, language) — cross-source variants of the same story
+# (they cluster into one event) and non-English items (they exercise translation).
+DEMO_EXTRA = [
+    ("Powerful magnitude 6.8 earthquake strikes off Japan coast, tsunami advisory in effect",
+     "A magnitude 6.8 earthquake struck off the coast of Japan on Monday, prompting a tsunami advisory as officials in Tokyo assessed the damage.", "JP", "en"),
+    ("Japan earthquake: 6.8 magnitude quake off coast triggers tsunami advisory",
+     "Authorities issued a tsunami advisory after a 6.8 magnitude earthquake struck off Japan's coast. No major damage was immediately reported.", "JP", "en"),
+    ("Grève des transports à Paris : le trafic du métro fortement perturbé lundi",
+     "Les syndicats ont appelé à une grève des transports à Paris. Le trafic du métro sera fortement perturbé, ont annoncé les autorités.", "FR", "fr"),
+    ("El Gobierno de España aprueba un nuevo paquete de ayudas a la vivienda",
+     "El Consejo de Ministros aprobó un paquete de ayudas destinado a facilitar el acceso a la vivienda de los jóvenes en España.", "ES", "es"),
+]
+
 
 def seed_demo_articles(db: Session) -> int:
     """Populate sample articles (for offline demo / first-run experience)."""
@@ -85,7 +98,8 @@ def seed_demo_articles(db: Session) -> int:
     rng = random.Random(42 + count)
     now = utcnow()
     added = 0
-    for i, (title, summary, country_hint) in enumerate(DEMO_HEADLINES):
+    entries = [(t, s, c, "en") for (t, s, c) in DEMO_HEADLINES] + DEMO_EXTRA
+    for i, (title, summary, country_hint, lang) in enumerate(entries):
         source = rng.choice(sources)
         text = f"{title}\n{summary}"
         places = extract_places(text)
@@ -97,7 +111,7 @@ def seed_demo_articles(db: Session) -> int:
             title=title,
             summary=summary,
             published_at=now - timedelta(minutes=rng.randint(2, 2400)),
-            language="en",
+            language=lang,
             country=country or "",
             categories=classify_categories(text, source.categories),
             places=places,

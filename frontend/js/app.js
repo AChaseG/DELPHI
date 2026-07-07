@@ -27,6 +27,21 @@ async function boot() {
 }
 
 function wireTopbar() {
+  // Reading-language picker: articles in other languages are translated
+  // automatically into this language (defaults to the browser language).
+  const sel = el("lang-select");
+  const langs = META.ui_languages || { en: "English" };
+  sel.appendChild(new Option("Original languages", ""));
+  for (const [code, name] of Object.entries(langs)) sel.appendChild(new Option(name, code));
+  const current = getLang();
+  sel.value = Object.prototype.hasOwnProperty.call(langs, current) ? current : "";
+  if (sel.value !== current) setLang(sel.value);
+  if (!META.translation.enabled) sel.title = "Translation is disabled on this server (NEWS_TRANSLATE_PROVIDER=off)";
+  sel.onchange = async () => {
+    setLang(sel.value);
+    await Promise.all([refreshFeeds(), refreshAlerts()]);
+  };
+
   el("btn-new-feed").onclick = () => Builder.open("feed");
   el("btn-empty-new-feed").onclick = () => Builder.open("feed");
   el("btn-new-alert").onclick = () => Builder.open("alert");
@@ -117,6 +132,11 @@ function feedColumn(feed) {
   const badges = document.createElement("div");
   badges.className = "feed-badges";
   badges.append(...criteriaBadges(feed.criteria, feed.sort));
+  if (feed.group_events) {
+    const t = document.createElement("span");
+    t.className = "tag"; t.textContent = "🧵 events";
+    badges.appendChild(t);
+  }
   const tools = document.createElement("div");
   tools.className = "feed-tools";
   tools.append(
@@ -159,17 +179,35 @@ async function loadFeedArticles(feed) {
   const body = document.querySelector(`#feed-${feed.id} .feed-body`);
   if (!body) return;
   try {
-    const arts = await API.feedArticles(feed.id);
+    const items = feed.group_events ? await API.feedEvents(feed.id) : await API.feedArticles(feed.id);
     body.innerHTML = "";
-    if (!arts.length) {
+    if (!items.length) {
       body.innerHTML = '<div class="feed-empty">No matching articles yet. ' +
         "Try widening the criteria, or hit ⟳ to poll sources.</div>";
       return;
     }
-    for (const a of arts) body.appendChild(articleRow(a));
+    if (feed.group_events) for (const g of items) body.appendChild(eventGroup(g));
+    else for (const a of items) body.appendChild(articleRow(a));
   } catch (e) {
     body.innerHTML = `<div class="feed-empty">Failed to load: ${e.message}</div>`;
   }
+}
+
+function eventGroup(g) {
+  const wrap = document.createElement("div");
+  wrap.className = "event-group";
+  wrap.appendChild(articleRow(g.articles[0]));
+  if (g.articles.length > 1) {
+    const det = document.createElement("details");
+    det.className = "event-timeline";
+    const sum = document.createElement("summary");
+    const srcs = g.source_count > 1 ? `${g.source_count} sources` : "1 source";
+    sum.textContent = `🧵 ${g.total_count} reports · ${srcs} — show timeline`;
+    det.appendChild(sum);
+    for (const a of g.articles.slice(1)) det.appendChild(articleRow(a));
+    wrap.appendChild(det);
+  }
+  return wrap;
 }
 
 function articleRow(a) {
@@ -191,6 +229,7 @@ function articleRow(a) {
   if (a.source) bits.push(a.source.name);
   if (a.country) bits.push(flagEmoji(a.country) + " " + a.country);
   bits.push(timeAgo(a.published_at));
+  if (a.translated_from) bits.push("🌐 translated from " + a.translated_from.toUpperCase());
   if ((a.categories || []).length) bits.push(a.categories.slice(0, 3).join(" · "));
   const span = document.createElement("span");
   span.textContent = bits.join("  ·  ");
@@ -216,7 +255,8 @@ async function moveFeed(id, dir) {
 
 async function toggleWidth(feed) {
   feed.width = feed.width > 1 ? 1 : 2;
-  await API.updateFeed(feed.id, { name: feed.name, criteria: feed.criteria, sort: feed.sort, width: feed.width });
+  await API.updateFeed(feed.id, { name: feed.name, criteria: feed.criteria, sort: feed.sort,
+                                  width: feed.width, group_events: feed.group_events });
   await refreshFeeds();
 }
 
@@ -240,7 +280,7 @@ function renderSearchColumn(q, arts) {
 
 async function starterPack() {
   const starters = [
-    { name: "Top stories worldwide", criteria: { min_importance: 55 }, sort: "importance" },
+    { name: "Top events worldwide", criteria: { min_importance: 55 }, sort: "importance", group_events: true },
     { name: "Conflict & disasters", criteria: { categories: ["conflict", "disaster"] }, sort: "newest" },
     { name: "Business & economy", criteria: { categories: ["business", "economy"] }, sort: "newest" },
     { name: "Science & technology", criteria: { categories: ["science", "technology"] }, sort: "newest" },

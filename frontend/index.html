@@ -19,6 +19,7 @@
     </div>
     <div class="topbar-actions">
       <input id="global-search" type="search" placeholder="Search all news… (supports AND OR NOT)" autocomplete="off">
+      <select id="lang-select" title="Reading language — articles in other languages are translated automatically"></select>
       <button id="btn-new-feed" class="btn btn-primary">+ Feed</button>
       <button id="btn-new-alert" class="btn">+ Alert</button>
       <button id="btn-sources" class="btn" title="Manage sources">Sources</button>
@@ -160,6 +161,11 @@
             <label><input type="radio" name="b-sort" value="newest" checked> newest first</label>
             <label><input type="radio" name="b-sort" value="importance"> importance</label>
           </div>
+        </div>
+
+        <div class="field" id="feed-only-fields">
+          <label class="check-row"><input type="checkbox" id="b-group">
+            Group similar articles into events (clusters cross-source coverage of the same story, with a timeline)</label>
         </div>
       </div>
       <div class="modal-foot">

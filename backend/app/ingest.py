@@ -17,6 +17,7 @@ import feedparser
 import httpx
 from sqlalchemy import select
 
+from .clustering import assign_events
 from .database import SessionLocal
 from .events import broadcaster
 from .matching import CriteriaMatcher
@@ -189,13 +190,15 @@ async def run_ingest_cycle() -> dict:
                 new = process_entries(db, source, entries, recent)
                 source.last_article_count = len(new)
                 all_new.extend(new)
-        db.commit()  # assign article ids before alert evaluation
+        db.commit()  # assign article ids before clustering / alert evaluation
 
+        new_events = assign_events(db, all_new)
         hits = evaluate_alerts(db, all_new)
         db.commit()
 
         status.update({
             "last_run": utcnow().isoformat(),
+            "last_new_events": new_events,
             "last_new_articles": len(all_new),
             "sources_ok": ok_sources,
             "sources_total": len(sources),
@@ -207,7 +210,8 @@ async def run_ingest_cycle() -> dict:
             broadcaster.publish({"type": "alert", **hit})
         log.info("ingest cycle: %d/%d sources ok, %d new articles, %d alert hits",
                  ok_sources, len(sources), len(all_new), len(hits))
-        return {"new_articles": len(all_new), "alert_hits": len(hits),
+        return {"new_articles": len(all_new), "new_events": new_events,
+                "alert_hits": len(hits),
                 "sources_ok": ok_sources, "sources_total": len(sources)}
     finally:
         db.close()

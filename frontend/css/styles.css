@@ -75,6 +75,11 @@ button { font: inherit; }
   background: var(--surface-2); color: var(--ink);
   border: 1px solid var(--border); border-radius: 8px;
 }
+#lang-select {
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 8px; max-width: 150px;
+}
 
 .btn {
   background: var(--surface-2); color: var(--ink);
@@ -161,6 +166,20 @@ button { font: inherit; }
 .imp-high     { color: var(--serious); }
 .imp-notable  { color: var(--warning); }
 .imp-routine  { color: var(--ink-muted); }
+
+/* ---------- event clusters ---------- */
+.event-group { border-bottom: 1px solid var(--hairline); }
+.event-group .article { border-bottom: none; }
+.event-timeline { margin: 0 12px 8px; }
+.event-timeline > summary {
+  cursor: pointer; font-size: 11.5px; color: var(--accent);
+  padding: 2px 0; list-style-position: inside;
+}
+.event-timeline .article {
+  border-left: 2px solid var(--hairline);
+  margin-left: 6px; padding: 7px 10px;
+}
+.event-timeline .article .title { font-weight: 500; font-size: 12.5px; }
 
 /* ---------- empty state ---------- */
 .empty-state { text-align: center; padding: 80px 20px; color: var(--ink-2); }

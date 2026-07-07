@@ -15,14 +15,15 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import ingest
+from . import ingest, translate
 from .boolean_query import validate_query
 from .catalog import seed_demo_articles, seed_sources
+from .clustering import assign_events, rebuild_events
 from .database import Base, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer
 from .matching import query_articles
-from .models import Alert, AlertEvent, Article, Feed, Source, utcnow
+from .models import Alert, AlertEvent, Article, Event, Feed, Source, utcnow
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SourceIn, TopicTrackerIn
 from .scoring import STANDARD_CATEGORIES
 
@@ -32,9 +33,24 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 DISABLE_INGEST = os.environ.get("NEWS_DISABLE_INGEST", "") == "1"
 
 
+def _ensure_schema():
+    """Additive migrations for databases created by earlier versions."""
+    wanted = {
+        "articles": {"event_id": "INTEGER"},
+        "feeds": {"group_events": "BOOLEAN DEFAULT 0"},
+    }
+    with engine.begin() as conn:
+        for table, columns in wanted.items():
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    _ensure_schema()
     db = next(get_db())
     try:
         seed_sources(db)
@@ -58,11 +74,16 @@ def user_id_header(x_user_id: str = Header(default="default")) -> str:
     return (x_user_id or "default")[:64]
 
 
-def _article_json(a: Article) -> dict:
+def _article_json(a: Article, tr: dict | None = None) -> dict:
+    """Serialize an article; `tr` is a {article_id: {title, summary}} map of
+    translations into the requester's language."""
+    t = (tr or {}).get(a.id)
     return {
         "id": a.id,
-        "title": a.title,
-        "summary": a.summary[:400],
+        "event_id": a.event_id,
+        "title": t["title"] if t else a.title,
+        "summary": (t["summary"] if t else a.summary)[:400],
+        "translated_from": a.language if t else None,
         "url": a.url,
         "image_url": a.image_url,
         "published_at": a.published_at.isoformat() + "Z" if a.published_at else None,
@@ -106,6 +127,8 @@ def meta(db: Session = Depends(get_db)):
             for c in sorted(gaz["countries"], key=lambda c: c["name"])
         ],
         "languages": sorted({s.language for s in db.scalars(select(Source)).all()} | {"en"}),
+        "ui_languages": translate.UI_LANGUAGES,
+        "translation": {"provider": translate.PROVIDER, "enabled": translate.enabled()},
         "stats": {
             "total_articles": total_articles,
             "articles_24h": articles_24h,
@@ -189,15 +212,17 @@ def delete_source(source_id: int, db: Session = Depends(get_db)):
 # ---------- articles / search ----------
 
 @app.post("/api/articles/search")
-def search_articles(
+async def search_articles(
     body: dict,
     sort: str = Query(default="newest"),
     limit: int = Query(default=50, le=200),
+    lang: str = Query(default=""),
     db: Session = Depends(get_db),
 ):
     """Ad-hoc search with a criteria object (used for feed preview and search bar)."""
     articles = query_articles(db, body.get("criteria", body), sort=sort, limit=limit)
-    return [_article_json(a) for a in articles]
+    tr = await translate.translate_articles(db, articles, lang)
+    return [_article_json(a, tr) for a in articles]
 
 
 @app.post("/api/query/validate")
@@ -215,7 +240,7 @@ def list_feeds(user_id: str = Depends(user_id_header), db: Session = Depends(get
     ).all()
     return [{
         "id": f.id, "name": f.name, "criteria": f.criteria, "sort": f.sort,
-        "position": f.position, "width": f.width,
+        "position": f.position, "width": f.width, "group_events": f.group_events,
     } for f in feeds]
 
 
@@ -228,7 +253,7 @@ def create_feed(body: FeedIn, user_id: str = Depends(user_id_header), db: Sessio
     feed = Feed(
         user_id=user_id, name=body.name, criteria=body.criteria.model_dump(),
         sort=body.sort, position=(max_pos + 1) if max_pos is not None else 0,
-        width=body.width,
+        width=body.width, group_events=body.group_events,
     )
     db.add(feed)
     db.commit()
@@ -244,6 +269,7 @@ def update_feed(feed_id: int, body: FeedIn, user_id: str = Depends(user_id_heade
     feed.criteria = body.criteria.model_dump()
     feed.sort = body.sort
     feed.width = body.width
+    feed.group_events = body.group_events
     db.commit()
     return {"ok": True}
 
@@ -269,11 +295,50 @@ def delete_feed(feed_id: int, user_id: str = Depends(user_id_header),
 
 
 @app.get("/api/feeds/{feed_id}/articles")
-def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
-                  user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
+                        lang: str = Query(default=""),
+                        user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     feed = _owned(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
-    return [_article_json(a) for a in articles]
+    tr = await translate.translate_articles(db, articles, lang)
+    return [_article_json(a, tr) for a in articles]
+
+
+@app.get("/api/feeds/{feed_id}/events")
+async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
+                      lang: str = Query(default=""),
+                      user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    """Feed contents clustered into events. Groups keep the feed's sort order
+    (order of each event's first matching article); articles without an event
+    form singleton groups."""
+    feed = _owned(db, Feed, feed_id, user_id)
+    articles = query_articles(db, feed.criteria, sort=feed.sort, limit=200)
+    groups: dict = {}
+    order: list = []
+    for a in articles:
+        key = a.event_id if a.event_id is not None else f"solo-{a.id}"
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(a)
+    order = order[:limit]
+    shown = [a for key in order for a in groups[key][:6]]
+    tr = await translate.translate_articles(db, shown, lang)
+
+    out = []
+    for key in order:
+        members = groups[key]
+        event = members[0].event if members[0].event_id else None
+        out.append({
+            "event_id": members[0].event_id,
+            "matched_count": len(members),
+            "total_count": event.article_count if event else len(members),
+            "source_count": len({a.source_id for a in members}),
+            "importance": event.importance if event else max(a.importance for a in members),
+            "first_seen": event.first_seen.isoformat() + "Z" if event else None,
+            "articles": [_article_json(a, tr) for a in members[:6]],
+        })
+    return out
 
 
 # ---------- alerts ----------
@@ -330,20 +395,24 @@ def delete_alert(alert_id: int, user_id: str = Depends(user_id_header),
 
 
 @app.get("/api/alerts/{alert_id}/events")
-def alert_events(alert_id: int, limit: int = Query(default=50, le=200),
-                 user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+async def alert_events(alert_id: int, limit: int = Query(default=50, le=200),
+                       lang: str = Query(default=""),
+                       user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     _owned(db, Alert, alert_id, user_id)
     events = db.scalars(
         select(AlertEvent).where(AlertEvent.alert_id == alert_id)
         .order_by(AlertEvent.created_at.desc()).limit(limit)
     ).all()
+    articles = {a.id: a for a in
+                (db.get(Article, e.article_id) for e in events) if a}
+    tr = await translate.translate_articles(db, list(articles.values()), lang)
     out = []
     for e in events:
-        article = db.get(Article, e.article_id)
+        article = articles.get(e.article_id)
         if article:
             out.append({"event_id": e.id, "seen": e.seen,
                         "created_at": e.created_at.isoformat() + "Z",
-                        "article": _article_json(article)})
+                        "article": _article_json(article, tr)})
     return out
 
 
@@ -372,7 +441,42 @@ def ingest_status():
 
 @app.post("/api/demo/seed")
 def demo_seed(db: Session = Depends(get_db)):
-    return {"added": seed_demo_articles(db)}
+    added = seed_demo_articles(db)
+    unclustered = db.scalars(select(Article).where(Article.event_id.is_(None))).all()
+    assign_events(db, unclustered)
+    db.commit()
+    return {"added": added}
+
+
+@app.post("/api/events/rebuild")
+def events_rebuild(db: Session = Depends(get_db)):
+    """Recluster every stored article from scratch."""
+    return {"events": rebuild_events(db)}
+
+
+@app.get("/api/events/{event_id}")
+async def event_detail(event_id: int, lang: str = Query(default=""),
+                       db: Session = Depends(get_db)):
+    """One event with its full article timeline (newest first)."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(404, "Event not found")
+    articles = db.scalars(
+        select(Article).where(Article.event_id == event_id)
+        .order_by(Article.published_at.desc()).limit(100)
+    ).all()
+    tr = await translate.translate_articles(db, articles, lang)
+    return {
+        "id": event.id,
+        "title": event.title,
+        "importance": event.importance,
+        "article_count": event.article_count,
+        "countries": event.countries or [],
+        "categories": event.categories or [],
+        "first_seen": event.first_seen.isoformat() + "Z",
+        "updated_at": event.updated_at.isoformat() + "Z",
+        "articles": [_article_json(a, tr) for a in articles],
+    }
 
 
 @app.get("/api/stream")
