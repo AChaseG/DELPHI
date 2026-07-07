@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from . import ingest, translate
@@ -23,7 +23,7 @@ from .database import Base, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer
 from .matching import query_articles
-from .models import Alert, AlertEvent, Article, Event, Feed, Source, utcnow
+from .models import Alert, AlertEvent, Article, Event, Feed, Source, Translation, utcnow
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SourceIn, TopicTrackerIn
 from .scoring import STANDARD_CATEGORIES
 
@@ -446,6 +446,46 @@ def demo_seed(db: Session = Depends(get_db)):
     assign_events(db, unclustered)
     db.commit()
     return {"added": added}
+
+
+@app.post("/api/demo/purge")
+def demo_purge(db: Session = Depends(get_db)):
+    """Remove every trace of demo/sample data: seeded articles (example.org
+    URLs), local test sources, their alert hits and cached translations, and
+    any events left with no articles."""
+    demo_sources = db.scalars(select(Source).where(or_(
+        Source.rss_url.like("http://127.0.0.1%"),
+        Source.rss_url.like("http://localhost%"),
+        Source.rss_url.like("https://example.org%"),
+    ))).all()
+
+    conds = [Article.url.like("https://example.org/demo/%")]
+    if demo_sources:
+        conds.append(Article.source_id.in_([s.id for s in demo_sources]))
+    article_ids = list(db.scalars(select(Article.id).where(or_(*conds))))
+
+    removed = {"articles": len(article_ids), "sources": len(demo_sources), "events": 0}
+    if article_ids:
+        db.execute(sa_delete(AlertEvent).where(AlertEvent.article_id.in_(article_ids)))
+        db.execute(sa_delete(Translation).where(Translation.article_id.in_(article_ids)))
+        db.execute(sa_delete(Article).where(Article.id.in_(article_ids)))
+    for source in demo_sources:
+        db.delete(source)
+    db.flush()
+
+    used_events = select(Article.event_id).where(Article.event_id.is_not(None))
+    removed["events"] = db.execute(
+        sa_delete(Event).where(Event.id.not_in(used_events))
+    ).rowcount
+    # Demo articles may have clustered into surviving events; fix their counts.
+    counts = dict(db.execute(
+        select(Article.event_id, func.count()).where(Article.event_id.is_not(None))
+        .group_by(Article.event_id)
+    ).all())
+    for event in db.scalars(select(Event)):
+        event.article_count = counts.get(event.id, 0)
+    db.commit()
+    return removed
 
 
 @app.post("/api/events/rebuild")

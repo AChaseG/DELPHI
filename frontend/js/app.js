@@ -84,6 +84,19 @@ function wireTopbar() {
       toast("Topic tracker added", `Now ingesting worldwide coverage of “${q}”. Refresh to pull articles.`);
     } catch (e) { toast("Could not add topic", e.message); }
   };
+  el("btn-purge-demo").onclick = async () => {
+    if (!confirm("Delete all demo/sample articles and local test sources? Real news is untouched.")) return;
+    try {
+      const r = await API.purgeDemo();
+      toast("Demo data removed",
+        `${r.articles} sample articles, ${r.sources} test sources, ${r.events} empty events deleted`);
+      SOURCES = await API.sources();
+      Builder.init(META, SOURCES);
+      renderSourcesPanel();
+      renderStats(await API.meta());
+      await Promise.all([refreshFeeds(), refreshAlerts()]);
+    } catch (e) { toast("Purge failed", e.message); }
+  };
   el("btn-add-source").onclick = async () => {
     const name = el("src-name").value.trim(), url = el("src-url").value.trim();
     if (!name || !url) return;
@@ -296,10 +309,6 @@ async function starterPack() {
     { name: "Science & technology", criteria: { categories: ["science", "technology"] }, sort: "newest" },
   ];
   for (const s of starters) await API.createFeed(s);
-  if (META.stats.total_articles === 0) {
-    await API.seedDemo();   // instant content even before the first live poll finishes
-    renderStats(await API.meta());
-  }
   await refreshFeeds();
 }
 

@@ -66,5 +66,5 @@ const API = {
     api(`/api/articles/search?sort=${sort}&limit=${limit}${langQS()}`, { method: "POST", body: JSON.stringify({ criteria }) }),
   validateQuery: (query) => api("/api/query/validate", { method: "POST", body: JSON.stringify({ query }) }),
   runIngest: () => api("/api/ingest/run", { method: "POST" }),
-  seedDemo: () => api("/api/demo/seed", { method: "POST" }),
+  purgeDemo: () => api("/api/demo/purge", { method: "POST" }),
 };

@@ -90,9 +90,12 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 On first run the source catalog is seeded and a full poll starts automatically
-(every 5 minutes thereafter). Use **⟳** to poll on demand, **Add starter
-feeds** for an instant dashboard, or `POST /api/demo/seed` for offline sample
-data.
+(every 5 minutes thereafter). Use **⟳** to poll on demand and **Add starter
+feeds** for a ready-made dashboard layout. For offline demos,
+`POST /api/demo/seed` loads sample articles (all with `example.org` URLs);
+`POST /api/demo/purge` — or the **🧹 Remove demo data** button in the Sources
+panel — deletes every trace of them (sample articles, local test sources,
+their alert history and empty events). Real ingested news is never touched.
 
 ## Going live
 
