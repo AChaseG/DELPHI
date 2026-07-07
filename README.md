@@ -64,7 +64,19 @@ feeds**.
 **No machine handy?** Open the repo in **GitHub Codespaces** (Code ▸ Codespaces
 ▸ Create codespace on this branch). The included devcontainer installs the
 dependencies and starts the server automatically; when port 8000 is forwarded,
-your browser opens the dashboard. Note: browser-only sandboxes such as
+your browser opens the dashboard.
+
+> **502 on the forwarded port?** The server isn't listening (it may still be
+> installing on first boot, or the codespace was resumed without re-running
+> hooks). Open a terminal in the codespace and run:
+>
+> ```bash
+> bash .devcontainer/start.sh
+> ```
+>
+> It (re)installs anything missing, restarts the server, waits until
+> `/api/meta` responds, and prints the tail of `/tmp/news-dashboard.log` if
+> startup fails — then reload the forwarded-port tab. Note: browser-only sandboxes such as
 bolt.new / StackBlitz cannot run this project — it is a Python server
 application (FastAPI + SQLite + a background ingestion loop), not a Node
 frontend, and news feeds must be fetched server-side (browser CORS blocks
