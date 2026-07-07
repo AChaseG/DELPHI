@@ -61,6 +61,15 @@ feeds**.
 # then open http://127.0.0.1:8000
 ```
 
+**No machine handy?** Open the repo in **GitHub Codespaces** (Code ▸ Codespaces
+▸ Create codespace on this branch). The included devcontainer installs the
+dependencies and starts the server automatically; when port 8000 is forwarded,
+your browser opens the dashboard. Note: browser-only sandboxes such as
+bolt.new / StackBlitz cannot run this project — it is a Python server
+application (FastAPI + SQLite + a background ingestion loop), not a Node
+frontend, and news feeds must be fetched server-side (browser CORS blocks
+cross-origin RSS fetches).
+
 Or manually:
 
 ```bash

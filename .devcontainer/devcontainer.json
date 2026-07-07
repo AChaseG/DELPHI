@@ -1,0 +1,13 @@
+{
+  "name": "Global News Dashboard",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install -r requirements.txt",
+  "postStartCommand": "sh -c 'nohup uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 > /tmp/news-dashboard.log 2>&1 &'",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Global News Dashboard",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}
