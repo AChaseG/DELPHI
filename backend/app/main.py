@@ -431,7 +431,11 @@ def mark_alert_seen(alert_id: int, user_id: str = Depends(user_id_header),
 
 @app.post("/api/ingest/run")
 async def ingest_run():
-    return await ingest.run_ingest_cycle()
+    try:
+        return await ingest.run_ingest_cycle()
+    except Exception as exc:
+        ingest.status["last_error"] = f"{type(exc).__name__}: {exc}"[:300]
+        raise HTTPException(500, f"Ingest cycle failed: {type(exc).__name__}: {exc}")
 
 
 @app.get("/api/ingest/status")

@@ -99,21 +99,31 @@ def _corroboration(source_id: int, tokens: str, recent: list[tuple[int, str]]) -
     return len(others)
 
 
-def process_entries(db, source: Source, entries: list, recent_clusters: list) -> list[Article]:
-    """Normalize feed entries into Article rows; returns newly inserted articles."""
-    new_articles: list[Article] = []
-    existing_urls = {
-        u for (u,) in db.execute(
-            select(Article.url).where(Article.source_id == source.id)
-        ).all()
-    }
+def process_entries(db, source: Source, entries: list, recent_clusters: list,
+                    seen_urls: set[str]) -> list[Article]:
+    """Normalize feed entries into Article rows; returns newly inserted articles.
 
+    Dedup must be GLOBAL, not per-source: articles.url is unique across the
+    table and different feeds routinely syndicate the same URL (Google News
+    country/topic feeds especially). `seen_urls` spans the whole cycle.
+    """
+    new_articles: list[Article] = []
+    candidates = []
     for entry in entries[:80]:
-        url = (entry.get("link") or "").strip()
+        url = (entry.get("link") or "").strip()[:1000]
         title = _strip_html(entry.get("title", "")).strip()
-        if not url or not title or url in existing_urls:
+        if url and title and url not in seen_urls:
+            candidates.append((url, title, entry))
+    if not candidates:
+        return []
+    existing = set(db.scalars(
+        select(Article.url).where(Article.url.in_([c[0] for c in candidates]))
+    ))
+
+    for url, title, entry in candidates:
+        if url in existing or url in seen_urls:
             continue
-        existing_urls.add(url)
+        seen_urls.add(url)
 
         summary = _strip_html(entry.get("summary", ""))[:2000]
         text = f"{title}\n{summary}"
@@ -125,7 +135,7 @@ def process_entries(db, source: Source, entries: list, recent_clusters: list) ->
         article = Article(
             source_id=source.id,
             guid=(entry.get("id") or "")[:500],
-            url=url[:1000],
+            url=url,
             title=title,
             summary=summary,
             image_url=_entry_image(entry)[:1000],
@@ -182,15 +192,24 @@ async def run_ingest_cycle() -> dict:
 
         all_new: list[Article] = []
         ok_sources = 0
+        seen_urls: set[str] = set()
         for source, entries, fetch_status in results:
             source.last_fetched_at = utcnow()
             source.last_status = fetch_status
-            if fetch_status == "ok":
-                ok_sources += 1
-                new = process_entries(db, source, entries, recent)
+            if fetch_status != "ok":
+                continue
+            # Commit per source so one bad feed can't roll back the whole cycle.
+            try:
+                new = process_entries(db, source, entries, recent, seen_urls)
                 source.last_article_count = len(new)
+                ok_sources += 1
+                db.commit()
                 all_new.extend(new)
-        db.commit()  # assign article ids before clustering / alert evaluation
+            except Exception as exc:
+                db.rollback()
+                source.last_status = f"error: processing: {type(exc).__name__}: {exc}"[:200]
+                log.exception("processing failed for source %s", source.name)
+        db.commit()  # persist statuses; article ids are assigned for clustering/alerts
 
         new_events = assign_events(db, all_new)
         hits = evaluate_alerts(db, all_new)
@@ -198,6 +217,7 @@ async def run_ingest_cycle() -> dict:
 
         status.update({
             "last_run": utcnow().isoformat(),
+            "last_error": None,
             "last_new_events": new_events,
             "last_new_articles": len(all_new),
             "sources_ok": ok_sources,
@@ -224,6 +244,7 @@ async def ingest_loop():
     while True:
         try:
             await run_ingest_cycle()
-        except Exception:
+        except Exception as exc:
+            status["last_error"] = f"{type(exc).__name__}: {exc}"[:300]
             log.exception("ingest cycle failed")
         await asyncio.sleep(FETCH_INTERVAL)

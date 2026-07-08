@@ -53,6 +53,11 @@ graceful message instead; test map drawing only with real network.
 
 ## Gotchas
 
+- **Always test ingest with two local feeds sharing one article URL** —
+  articles.url is globally unique and real feeds (Google News especially)
+  syndicate identical URLs across sources. Per-source-only dedup once made
+  every real-world cycle roll back with IntegrityError (0 articles forever).
+
 - Elements hidden via the `hidden` attribute need the `[hidden]{display:none!important}`
   rule in styles.css — several containers set their own `display`.
 - Alert evaluation happens only inside ingest cycles, not on demo seed.
