@@ -81,6 +81,8 @@ const Builder = {
     selectValues(el("b-sources"), (c.source_ids || []).map(String));
     for (const cb of el("b-scopes").querySelectorAll("input"))
       cb.checked = (c.scopes || []).includes(cb.value);
+    for (const cb of el("b-platforms").querySelectorAll("input"))
+      cb.checked = (c.platforms || []).includes(cb.value);
     this.keywords.length = 0; this.keywords.push(...(c.keywords || []));
     this.exclude.length = 0; this.exclude.push(...(c.exclude_keywords || []));
     renderChips("b-keywords-box", this.keywords);
@@ -108,9 +110,11 @@ const Builder = {
 
   collect() {
     const scopes = [...el("b-scopes").querySelectorAll("input:checked")].map(i => i.value);
+    const platforms = [...el("b-platforms").querySelectorAll("input:checked")].map(i => i.value);
     const criteria = {
       countries: selectedValues(el("b-countries")),
       scopes,
+      platforms,
       categories: selectedValues(el("b-categories")),
       languages: selectedValues(el("b-languages")),
       source_ids: selectedValues(el("b-sources")).map(Number),

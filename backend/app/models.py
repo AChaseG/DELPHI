@@ -33,6 +33,7 @@ class Source(Base):
     language: Mapped[str] = mapped_column(String(8), default="en")
     scope: Mapped[str] = mapped_column(String(20), default="national")  # local | national | international
     categories: Mapped[list] = mapped_column(JSON, default=list)
+    platform: Mapped[str] = mapped_column(String(20), default="news")  # news | reddit | mastodon | bluesky | youtube
     tier: Mapped[int] = mapped_column(Integer, default=2)  # 1 = major wire/global, 2 = national, 3 = local/niche
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     added_by: Mapped[str] = mapped_column(String(50), default="catalog")  # catalog | user | topic-tracker

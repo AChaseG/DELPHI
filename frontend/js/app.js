@@ -86,6 +86,22 @@ function wireTopbar() {
       toast("Topic tracker added", `Now ingesting worldwide coverage of “${q}”. Refresh to pull articles.`);
     } catch (e) { toast("Could not add topic", e.message); }
   };
+  // country dropdown for the add-source form
+  const cs = el("src-country");
+  cs.appendChild(new Option("🌐 Global", ""));
+  for (const c of META.countries) cs.appendChild(new Option(`${flagEmoji(c.iso2)} ${c.name}`, c.iso2));
+
+  el("btn-track-social").onclick = async () => {
+    const q = el("topic-query").value.trim();
+    if (!q) return;
+    try {
+      const r = await API.trackSocial(q);
+      el("topic-query").value = "";
+      await reloadSources();
+      toast("Social trackers added", r.created.join(" · ") + " — refresh ⟳ to pull posts.");
+    } catch (e) { toast("Could not add social trackers", e.message); }
+  };
+
   el("btn-purge-demo").onclick = async () => {
     if (!confirm("Delete all demo/sample articles and local test sources? Real news is untouched.")) return;
     try {
@@ -101,17 +117,28 @@ function wireTopbar() {
   };
   el("btn-add-source").onclick = async () => {
     const name = el("src-name").value.trim(), url = el("src-url").value.trim();
-    if (!name || !url) return;
+    if (!name || !url) { toast("Missing fields", "A source needs a name and a feed URL."); return; }
     try {
-      await API.addSource({ name, rss_url: url });
+      await API.addSource({
+        name, rss_url: url,
+        platform: el("src-platform").value,
+        scope: el("src-scope").value,
+        country: el("src-country").value,
+      });
       el("src-name").value = ""; el("src-url").value = "";
-      SOURCES = await API.sources();
-      Builder.init(META, SOURCES);
-      renderSourcesPanel();
-      toast("Source added", name);
+      await reloadSources();
+      toast("Source added", `${name} — refresh ⟳ to pull it for the first time.`);
     } catch (e) { toast("Could not add source", e.message); }
   };
 }
+
+async function reloadSources() {
+  SOURCES = await API.sources();
+  Builder.init(META, SOURCES);
+  renderSourcesPanel();
+}
+
+const PLATFORM_ICONS = { news: "📰", reddit: "👽", mastodon: "🐘", bluesky: "🦋", youtube: "▶️" };
 
 /* ---------- stats ---------- */
 function renderStats(meta) {
@@ -207,6 +234,11 @@ function criteriaBadges(c, sort) {
     out.push(tag(cats[0] + more, cats.join(", ")));
   }
   if ((c.scopes || []).length && c.scopes.length < 3) out.push(tag(c.scopes.join("/")));
+  if ((c.platforms || []).length && c.platforms.length < 5) {
+    const ps = [...c.platforms].sort();
+    const more = ps.length > 2 ? ` +${ps.length - 2}` : "";
+    out.push(tag("📡 " + ps.slice(0, 2).join("/") + more, ps.join(", ")));
+  }
   if ((c.keywords || []).length) {
     const kws = [...c.keywords].sort((a, b) => a.localeCompare(b));
     const more = kws.length > 1 ? ` +${kws.length - 1}` : "";
@@ -401,24 +433,82 @@ async function renderSourcesPanel() {
     status.textContent = ok ? "●" : (s.last_status ? "●" : "○");
     const name = document.createElement("span");
     name.className = "s-name";
-    name.textContent = `${flagEmoji(s.country)} ${s.name}`;
+    name.textContent = `${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name}`;
+    name.title = s.rss_url;
     const meta = document.createElement("span");
     meta.className = "s-meta";
     meta.textContent = `${s.scope} · ${s.language}${s.added_by !== "catalog" ? " · " + s.added_by : ""}`;
     row.append(
       status, name, meta,
+      toolBtn("✎", "Edit source", () => row.replaceWith(sourceEditor(s))),
       toolBtn(s.enabled ? "⏸" : "▶", s.enabled ? "Disable" : "Enable", async () => {
         await API.patchSource(s.id, { enabled: !s.enabled });
-        SOURCES = await API.sources(); renderSourcesPanel();
+        await reloadSources();
       }),
       toolBtn("🗑", "Delete source", async () => {
         if (!confirm(`Delete source “${s.name}” and its articles?`)) return;
         await API.deleteSource(s.id);
-        SOURCES = await API.sources(); Builder.init(META, SOURCES); renderSourcesPanel();
+        await reloadSources();
       }),
     );
     box.appendChild(row);
   }
+}
+
+function sourceEditor(s) {
+  const form = document.createElement("div");
+  form.className = "source-edit";
+  const field = (labelText, node) => {
+    const l = document.createElement("label");
+    const sp = document.createElement("span"); sp.textContent = labelText;
+    l.append(sp, node);
+    return l;
+  };
+  const input = (val) => { const i = document.createElement("input"); i.value = val || ""; return i; };
+  const sel = (options, val) => {
+    const e = document.createElement("select");
+    for (const [v, label] of options) e.appendChild(new Option(label, v));
+    e.value = val;
+    return e;
+  };
+  const name = input(s.name);
+  const url = input(s.rss_url);
+  const platform = sel(Object.entries(PLATFORM_ICONS).map(([v, ic]) => [v, `${ic} ${v}`]), s.platform || "news");
+  const scope = sel([["local", "local"], ["national", "national"], ["international", "international"]], s.scope);
+  const country = sel([["", "🌐 Global"], ...META.countries.map(c => [c.iso2, `${flagEmoji(c.iso2)} ${c.name}`])], s.country || "");
+  const language = input(s.language);
+  const cats = input((s.categories || []).join(", "));
+  form.append(
+    field("Name", name), field("Feed URL", url),
+    field("Platform", platform), field("Scope", scope),
+    field("Country", country), field("Language (code)", language),
+    field("Categories (comma-separated)", cats),
+  );
+  const actions = document.createElement("div");
+  actions.className = "source-edit-actions";
+  const save = document.createElement("button");
+  save.className = "btn btn-primary"; save.textContent = "Save";
+  save.onclick = async () => {
+    try {
+      await API.patchSource(s.id, {
+        name: name.value.trim() || s.name,
+        rss_url: url.value.trim(),
+        platform: platform.value,
+        scope: scope.value,
+        country: country.value,
+        language: language.value.trim() || "en",
+        categories: cats.value.split(",").map(c => c.trim().toLowerCase()).filter(Boolean),
+      });
+      await reloadSources();
+      toast("Source updated", name.value.trim());
+    } catch (e) { toast("Could not save source", e.message); }
+  };
+  const cancel = document.createElement("button");
+  cancel.className = "btn"; cancel.textContent = "Cancel";
+  cancel.onclick = () => renderSourcesPanel();
+  actions.append(save, cancel);
+  form.appendChild(actions);
+  return form;
 }
 
 /* ---------- live stream ---------- */

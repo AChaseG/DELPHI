@@ -54,13 +54,26 @@
       <button class="icon-btn" id="btn-close-sources">✕</button>
     </div>
     <div class="source-tools">
-      <input id="topic-query" type="text" placeholder="Track a topic worldwide (via Google News)…">
-      <button class="btn" id="btn-track-topic">Track topic</button>
+      <input id="topic-query" type="text" placeholder="Track a topic…">
+      <button class="btn" id="btn-track-topic" title="Worldwide press coverage via Google News search">📰 Press</button>
+      <button class="btn" id="btn-track-social" title="Reddit search + Mastodon hashtag feeds for this topic">💬 Social</button>
     </div>
     <div class="source-tools">
       <input id="src-name" type="text" placeholder="Source name">
-      <input id="src-url" type="text" placeholder="RSS feed URL">
-      <button class="btn" id="btn-add-source">Add RSS</button>
+      <input id="src-url" type="text" placeholder="RSS/Atom feed URL">
+    </div>
+    <div class="source-tools">
+      <select id="src-platform">
+        <option value="news">📰 press</option><option value="reddit">reddit</option>
+        <option value="mastodon">mastodon</option><option value="bluesky">bluesky</option>
+        <option value="youtube">youtube</option>
+      </select>
+      <select id="src-scope">
+        <option value="national">national</option><option value="local">local</option>
+        <option value="international">international</option>
+      </select>
+      <select id="src-country"></select>
+      <button class="btn btn-primary" id="btn-add-source">Add source</button>
     </div>
     <div class="source-tools">
       <button class="btn" id="btn-purge-demo"
@@ -98,6 +111,14 @@
               <label><input type="checkbox" value="local"> local</label>
               <label><input type="checkbox" value="national"> national</label>
               <label><input type="checkbox" value="international"> international</label>
+            </div>
+            <span style="margin-top:10px">Platforms</span>
+            <div class="check-row" id="b-platforms">
+              <label><input type="checkbox" value="news"> 📰 press</label>
+              <label><input type="checkbox" value="reddit"> reddit</label>
+              <label><input type="checkbox" value="mastodon"> mastodon</label>
+              <label><input type="checkbox" value="bluesky"> bluesky</label>
+              <label><input type="checkbox" value="youtube"> youtube</label>
             </div>
             <span style="margin-top:10px">Languages</span>
             <select id="b-languages" multiple size="3"></select>

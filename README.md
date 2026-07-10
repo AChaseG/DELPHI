@@ -7,6 +7,19 @@ feeds**.
 
 ## What it does
 
+- **Social media ingestion.** Alongside the press, Delphi pulls the social
+  platforms that publish open feeds: **Reddit** (news subreddits + per-topic
+  search feeds), **Bluesky** (newsroom account feeds), **Mastodon** (hashtag
+  feeds), and **YouTube** (news channel uploads). Feeds and alerts can filter
+  by platform (e.g. "social only" or "press only"). A per-topic social tracker
+  creates Reddit-search + Mastodon-hashtag sources for any query. X/Twitter,
+  Facebook, and Instagram expose no open feeds (closed or paid APIs), so they
+  can't be ingested; the Sources panel lets you add any feed URL if you have
+  one from another platform or an RSS bridge.
+- **Manage sources in the UI.** Add any RSS/Atom feed with platform, scope,
+  and country; edit everything about an existing source in place (name, URL,
+  platform, scope, country, language, categories); enable/disable or delete;
+  per-source health dots show the last fetch status.
 - **Global ingestion.** A background engine polls a curated catalog of 70+
   RSS/Atom feeds spanning every continent — wire-level internationals (BBC, Al
   Jazeera, DW, France 24, UN News, ReliefWeb…), national outlets (Times of

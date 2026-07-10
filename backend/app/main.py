@@ -24,7 +24,7 @@ from .events import broadcaster
 from .geo import load_gazetteer
 from .matching import query_articles
 from .models import Alert, AlertEvent, Article, Event, Feed, Source, Translation, utcnow
-from .schemas import AlertIn, FeedIn, QueryValidateIn, SourceIn, TopicTrackerIn
+from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
 from .scoring import STANDARD_CATEGORIES
 
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +38,7 @@ def _ensure_schema():
     wanted = {
         "articles": {"event_id": "INTEGER"},
         "feeds": {"group_events": "BOOLEAN DEFAULT 0"},
+        "sources": {"platform": "VARCHAR(20) DEFAULT 'news'"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -122,6 +123,7 @@ def meta(db: Session = Depends(get_db)):
     return {
         "categories": STANDARD_CATEGORIES,
         "scopes": ["local", "national", "international"],
+        "platforms": ["news", "reddit", "mastodon", "bluesky", "youtube"],
         "countries": [
             {"iso2": c["iso2"], "name": c["name"]}
             for c in sorted(gaz["countries"], key=lambda c: c["name"])
@@ -149,6 +151,7 @@ def list_sources(db: Session = Depends(get_db)):
         "id": s.id, "name": s.name, "rss_url": s.rss_url, "homepage": s.homepage,
         "country": s.country, "region": s.region, "language": s.language,
         "scope": s.scope, "categories": s.categories or [], "tier": s.tier,
+        "platform": s.platform or "news",
         "enabled": s.enabled, "added_by": s.added_by,
         "last_fetched_at": s.last_fetched_at.isoformat() + "Z" if s.last_fetched_at else None,
         "last_status": s.last_status, "last_article_count": s.last_article_count,
@@ -193,11 +196,50 @@ def update_source(source_id: int, body: dict, db: Session = Depends(get_db)):
     source = db.get(Source, source_id)
     if not source:
         raise HTTPException(404, "Source not found")
-    for key in ("name", "enabled", "country", "language", "scope", "categories", "tier"):
+    new_url = (body.get("rss_url") or "").strip()
+    if new_url and new_url != source.rss_url:
+        if db.scalar(select(Source).where(Source.rss_url == new_url)):
+            raise HTTPException(409, "Another source already uses this RSS URL")
+        source.rss_url = new_url
+        source.last_status = ""  # health unknown until next poll
+    for key in ("name", "enabled", "country", "language", "scope",
+                "categories", "tier", "platform", "homepage", "region"):
         if key in body:
             setattr(source, key, body[key])
     db.commit()
     return {"ok": True}
+
+
+@app.post("/api/sources/social-tracker", status_code=201)
+def create_social_tracker(body: SocialTrackerIn, db: Session = Depends(get_db)):
+    """Track a topic across social platforms with open feeds: a Reddit search
+    feed and a Mastodon hashtag feed. (X/Facebook/Instagram expose no open
+    feeds, so they cannot be ingested here.)"""
+    q = body.query.strip()
+    if not q:
+        raise HTTPException(422, "Query must not be empty")
+    tag = "".join(ch for ch in q.title() if ch.isalnum())
+    candidates = [
+        {"name": f"Reddit search: {q}", "platform": "reddit",
+         "rss_url": "https://www.reddit.com/search.rss?q=" + urllib.parse.quote(q) + "&sort=new",
+         "homepage": "https://www.reddit.com"},
+        {"name": f"Mastodon #{tag}", "platform": "mastodon",
+         "rss_url": f"https://mastodon.social/tags/{urllib.parse.quote(tag)}.rss",
+         "homepage": "https://mastodon.social"},
+    ]
+    created = []
+    for c in candidates:
+        if db.scalar(select(Source).where(Source.rss_url == c["rss_url"])):
+            continue
+        source = Source(**c, country="", region="Social", language="en",
+                        scope="international", categories=[], tier=3,
+                        added_by="topic-tracker")
+        db.add(source)
+        created.append(c["name"])
+    db.commit()
+    if not created:
+        raise HTTPException(409, "This topic is already tracked on social platforms")
+    return {"created": created}
 
 
 @app.delete("/api/sources/{source_id}", status_code=204)

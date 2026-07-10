@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class Criteria(BaseModel):
     countries: list[str] = Field(default_factory=list)
     scopes: list[str] = Field(default_factory=list)
+    platforms: list[str] = Field(default_factory=list)  # news/reddit/mastodon/bluesky/youtube
     categories: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     source_ids: list[int] = Field(default_factory=list)
@@ -63,8 +64,14 @@ class SourceIn(BaseModel):
     language: str = "en"
     scope: str = "national"
     categories: list[str] = Field(default_factory=list)
+    platform: str = "news"
     tier: int = 2
     enabled: bool = True
+
+
+class SocialTrackerIn(BaseModel):
+    """Creates social-platform search/tag feeds for a topic."""
+    query: str
 
 
 class TopicTrackerIn(BaseModel):

@@ -40,6 +40,7 @@ class CriteriaMatcher:
         self.criteria = criteria or {}
         self.countries = set(self.criteria.get("countries") or [])
         self.scopes = set(self.criteria.get("scopes") or [])
+        self.platforms = set(self.criteria.get("platforms") or [])
         self.categories = set(self.criteria.get("categories") or [])
         self.languages = set(self.criteria.get("languages") or [])
         self.source_ids = set(self.criteria.get("source_ids") or [])
@@ -71,6 +72,8 @@ class CriteriaMatcher:
         if self.source_ids and article.source_id not in self.source_ids:
             return False
         if self.scopes and (not source or source.scope not in self.scopes):
+            return False
+        if self.platforms and (not source or (source.platform or "news") not in self.platforms):
             return False
         if self.languages and article.language not in self.languages:
             return False
