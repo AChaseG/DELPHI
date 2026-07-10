@@ -118,12 +118,14 @@ button { font: inherit; }
 }
 .feed-col.wide { grid-column: span 2; }
 .feed-head {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; flex-direction: column; gap: 6px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
 }
-.feed-head h3 { margin: 0; font-size: 14.5px; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-head-row { display: flex; align-items: center; gap: 8px; }
+.feed-head h3 { margin: 0; font-size: 14.5px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.feed-badges .tag { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-tools { display: flex; gap: 2px; }
 .feed-tools button { opacity: 0.55; }
 .feed-tools button:hover { opacity: 1; }

@@ -3,9 +3,11 @@ let META = null;
 let SOURCES = [];
 let FEEDS = [];
 let ALERTS = [];
+let COUNTRY_NAMES = new Map();
 
 async function boot() {
   [META, SOURCES] = await Promise.all([API.meta(), API.sources()]);
+  COUNTRY_NAMES = new Map(META.countries.map(c => [c.iso2, c.name]));
   Builder.init(META, SOURCES);
   Builder.onSaved = async (mode) => {
     if (mode === "alert") await refreshAlerts();
@@ -149,17 +151,11 @@ function feedColumn(feed) {
 
   const head = document.createElement("div");
   head.className = "feed-head";
+  const row = document.createElement("div");
+  row.className = "feed-head-row";
   const h = document.createElement("h3");
   h.textContent = feed.name;
   h.title = feed.name;
-  const badges = document.createElement("div");
-  badges.className = "feed-badges";
-  badges.append(...criteriaBadges(feed.criteria, feed.sort));
-  if (feed.group_events) {
-    const t = document.createElement("span");
-    t.className = "tag"; t.textContent = "🧵 events";
-    badges.appendChild(t);
-  }
   const tools = document.createElement("div");
   tools.className = "feed-tools";
   tools.append(
@@ -168,7 +164,17 @@ function feedColumn(feed) {
     toolBtn("⇔", "Toggle width", () => toggleWidth(feed)),
     toolBtn("✎", "Edit feed", () => Builder.open("feed", feed)),
   );
-  head.append(h, badges, tools);
+  row.append(h, tools);
+  head.appendChild(row);
+  const badges = document.createElement("div");
+  badges.className = "feed-badges";
+  badges.append(...criteriaBadges(feed.criteria, feed.sort));
+  if (feed.group_events) {
+    const t = document.createElement("span");
+    t.className = "tag"; t.textContent = "🧵 events";
+    badges.appendChild(t);
+  }
+  if (badges.childElementCount) head.appendChild(badges);
 
   const body = document.createElement("div");
   body.className = "feed-body";
@@ -179,12 +185,34 @@ function feedColumn(feed) {
 
 function criteriaBadges(c, sort) {
   const out = [];
-  const tag = (t) => { const s = document.createElement("span"); s.className = "tag"; s.textContent = t; return s; };
-  if ((c.countries || []).length) out.push(tag(c.countries.map(flagEmoji).join(" ")));
-  for (const cat of (c.categories || []).slice(0, 3)) out.push(tag(cat));
+  const tag = (t, tip) => {
+    const s = document.createElement("span");
+    s.className = "tag"; s.textContent = t;
+    if (tip) s.title = tip;
+    return s;
+  };
+  // Compact multi-value criteria: first value alphabetically + "+N", full
+  // list in the tooltip — a long selection must never crowd out the title.
+  if ((c.countries || []).length) {
+    const names = c.countries
+      .map(iso => ({ iso, name: COUNTRY_NAMES.get(iso) || iso }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const more = names.length > 1 ? ` +${names.length - 1}` : "";
+    out.push(tag(`${flagEmoji(names[0].iso)} ${names[0].name}${more}`,
+                 names.map(n => n.name).join(", ")));
+  }
+  if ((c.categories || []).length) {
+    const cats = [...c.categories].sort();
+    const more = cats.length > 1 ? ` +${cats.length - 1}` : "";
+    out.push(tag(cats[0] + more, cats.join(", ")));
+  }
   if ((c.scopes || []).length && c.scopes.length < 3) out.push(tag(c.scopes.join("/")));
-  if ((c.keywords || []).length) out.push(tag("kw:" + c.keywords.length));
-  if (c.query) out.push(tag("boolean"));
+  if ((c.keywords || []).length) {
+    const kws = [...c.keywords].sort((a, b) => a.localeCompare(b));
+    const more = kws.length > 1 ? ` +${kws.length - 1}` : "";
+    out.push(tag(`“${kws[0]}”${more}`, kws.join(", ")));
+  }
+  if (c.query) out.push(tag("boolean", c.query));
   if (c.min_importance) out.push(tag("imp≥" + c.min_importance));
   if (c.geo) out.push(tag("📍 map area"));
   if (c.hours) out.push(tag("last " + c.hours + "h"));
