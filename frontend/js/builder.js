@@ -278,10 +278,11 @@ function timeAgo(iso) {
 }
 
 function impTier(score) {
-  if (score >= 80) return { cls: "imp-critical", icon: "▲", label: "Critical" };
-  if (score >= 60) return { cls: "imp-high", icon: "◆", label: "High" };
-  if (score >= 40) return { cls: "imp-notable", icon: "●", label: "Notable" };
-  return { cls: "imp-routine", icon: "○", label: "Routine" };
+  // Colors are the fixed status palette (never reused as series colors).
+  if (score >= 80) return { cls: "imp-critical", icon: "▲", label: "Critical", color: "#d03b3b" };
+  if (score >= 60) return { cls: "imp-high", icon: "◆", label: "High", color: "#ec835a" };
+  if (score >= 40) return { cls: "imp-notable", icon: "●", label: "Notable", color: "#fab219" };
+  return { cls: "imp-routine", icon: "○", label: "Routine", color: "#898781" };
 }
 
 function wireChips(inputId, boxId, list) {

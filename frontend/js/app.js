@@ -61,6 +61,10 @@ function wireTopbar() {
   };
   el("btn-alerts-panel").onclick = () => { el("alerts-panel").hidden = false; renderAlertsPanel(); };
   el("btn-close-alerts").onclick = () => { el("alerts-panel").hidden = true; };
+  el("btn-toggle-alerts-map").onclick = () => {
+    localStorage.setItem("gnd_alerts_map", alertsMapWanted() ? "0" : "1");
+    renderAlertsPanel();
+  };
   el("btn-sources").onclick = () => { el("sources-panel").hidden = false; renderSourcesPanel(); };
   el("btn-close-sources").onclick = () => { el("sources-panel").hidden = true; };
 
@@ -318,11 +322,25 @@ function articleRow(a) {
   span.textContent = bits.join("  ·  ");
   meta.appendChild(span);
 
-  row.append(title, meta);
+  const text = document.createElement("div");
+  text.className = "article-text";
+  text.append(title, meta);
   if (a.summary) {
     const s = document.createElement("div");
     s.className = "summary"; s.textContent = a.summary;
-    row.appendChild(s);
+    text.appendChild(s);
+  }
+  row.appendChild(text);
+  if (a.image_url) {
+    const img = document.createElement("img");
+    img.className = "thumb";
+    img.loading = "lazy";
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    img.onerror = () => img.remove();  // dead image -> clean text-only row
+    img.src = a.image_url;
+    row.appendChild(img);
+    row.classList.add("has-thumb");
   }
   return row;
 }
@@ -387,12 +405,17 @@ async function renderAlertsPanel() {
   const box = el("alerts-list");
   box.innerHTML = "";
   if (!ALERTS.length) {
+    el("alerts-map").hidden = true;
     box.innerHTML = '<div class="feed-empty">No alerts yet. Create one with “+ Alert” — ' +
       "you'll get a live notification whenever a new article matches its criteria " +
       "(keywords, boolean query, countries, importance, or a drawn map area).</div>";
     return;
   }
-  for (const alert of ALERTS) {
+  const eventsByAlert = await Promise.all(
+    ALERTS.map(async (alert) => ({ alert, events: await API.alertEvents(alert.id).catch(() => []) }))
+  );
+  renderAlertsMap(eventsByAlert);
+  for (const { alert, events: evs } of eventsByAlert) {
     const block = document.createElement("div");
     block.className = "alert-block" + (alert.active ? "" : " alert-inactive");
     const head = document.createElement("div");
@@ -410,13 +433,69 @@ async function renderAlertsPanel() {
     );
     const events = document.createElement("div");
     events.className = "alert-events";
+    if (!evs.length) events.innerHTML = '<div class="feed-empty">No hits yet.</div>';
+    for (const ev of evs.slice(0, 10)) events.appendChild(articleRow(ev.article));
     block.append(head, events);
     box.appendChild(block);
-    API.alertEvents(alert.id).then(evs => {
-      if (!evs.length) { events.innerHTML = '<div class="feed-empty">No hits yet.</div>'; return; }
-      for (const ev of evs.slice(0, 10)) events.appendChild(articleRow(ev.article));
-    });
   }
+}
+
+/* Map of where recent alert hits are geolocated, plus alert geofences. */
+let alertsMap = null;
+let alertsMapLayer = null;
+
+function alertsMapWanted() { return localStorage.getItem("gnd_alerts_map") !== "0"; }
+
+function renderAlertsMap(eventsByAlert) {
+  const box = el("alerts-map");
+  if (typeof L === "undefined" || !alertsMapWanted()) { box.hidden = true; return; }
+  box.hidden = false;
+  if (!alertsMap) {
+    alertsMap = L.map("alerts-map", { worldCopyJump: true }).setView([25, 10], 1);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(alertsMap);
+    alertsMapLayer = L.featureGroup().addTo(alertsMap);
+  }
+  alertsMapLayer.clearLayers();
+  for (const { alert, events } of eventsByAlert) {
+    const geo = alert.criteria && alert.criteria.geo;
+    if (geo) {
+      const style = { color: "#3987e5", weight: 1.5, dashArray: "5 5", fillOpacity: 0.06 };
+      if (geo.type === "Circle") {
+        alertsMapLayer.addLayer(L.circle([geo.center[0], geo.center[1]],
+          { radius: geo.radius_km * 1000, ...style }));
+      } else {
+        L.geoJSON({ type: "Feature", geometry: geo }, { style })
+          .eachLayer(l => alertsMapLayer.addLayer(l));
+      }
+    }
+    for (const ev of events.slice(0, 30)) {
+      const place = (ev.article.places || [])[0];
+      if (!place) continue;
+      const t = impTier(ev.article.importance);
+      const marker = L.circleMarker([place.lat, place.lon], {
+        radius: ev.seen ? 5 : 7, color: t.color, fillColor: t.color,
+        fillOpacity: ev.seen ? 0.45 : 0.85, weight: 1.5,
+      });
+      const popup = document.createElement("div");
+      const b = document.createElement("b"); b.textContent = alert.name;
+      const link = document.createElement("a");
+      link.href = ev.article.url; link.target = "_blank"; link.rel = "noopener";
+      link.textContent = ev.article.title;
+      const small = document.createElement("div");
+      small.textContent = `${t.icon} ${t.label} ${ev.article.importance} · ${place.name}`;
+      popup.append(b, document.createElement("br"), link, small);
+      marker.bindPopup(popup);
+      alertsMapLayer.addLayer(marker);
+    }
+  }
+  setTimeout(() => {
+    alertsMap.invalidateSize();
+    const layers = alertsMapLayer.getLayers();
+    if (layers.length) alertsMap.fitBounds(alertsMapLayer.getBounds().pad(0.35), { maxZoom: 8 });
+  }, 60);
 }
 
 /* ---------- sources panel ---------- */

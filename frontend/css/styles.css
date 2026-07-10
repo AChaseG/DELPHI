@@ -157,6 +157,14 @@ button { font: inherit; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 
+.article.has-thumb { display: flex; gap: 10px; align-items: flex-start; }
+.article .article-text { flex: 1; min-width: 0; }
+.article .thumb {
+  width: 66px; height: 66px; flex: 0 0 66px;
+  object-fit: cover; border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
 /* Importance badge: status color + icon + label (never color alone) */
 .imp {
   display: inline-flex; align-items: center; gap: 3px;
@@ -207,6 +215,12 @@ button { font: inherit; }
   border-bottom: 1px solid var(--hairline);
 }
 .side-panel-head h2 { margin: 0; font-size: 16px; }
+
+.alerts-map {
+  height: 250px; margin: 10px 16px;
+  border-radius: 10px; border: 1px solid var(--border);
+}
+.alerts-map .leaflet-container, .alerts-map.leaflet-container { border-radius: 10px; }
 
 .alert-block { padding: 10px 16px; border-bottom: 1px solid var(--hairline); }
 .alert-block .alert-head { display: flex; align-items: center; gap: 8px; }

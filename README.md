@@ -48,7 +48,11 @@ feeds**.
 - **Alerts (Dataminr-style).** An alert takes the exact same criteria as a
   feed. Every ingest cycle, new articles are evaluated against all active
   alerts; hits are stored, counted on the bell, and **pushed live to the
-  dashboard over Server-Sent Events** as toast notifications.
+  dashboard over Server-Sent Events** as toast notifications. The alerts
+  panel opens with a **live map of recent hits** — markers colored by
+  importance tier (dimmed once seen), popups linking to the article, and your
+  alert geofences drawn on top — plus **article thumbnails** pulled from each
+  feed's enclosure/media images.
 - **Event clustering.** Cross-source coverage of the same story is clustered
   into *events* (incremental headline-similarity clustering over a 72h rolling
   window). Any feed can be switched to grouped mode: one card per event with a
@@ -175,7 +179,7 @@ backend/data
 ├── sources.json      the editable global source catalog
 └── gazetteer.json    countries (centroids + aliases) and ~160 major cities
 
-frontend/             no build step — plain HTML/CSS/JS + Leaflet from CDN
+frontend/             no build step — plain HTML/CSS/JS; Leaflet vendored in frontend/vendor
 ```
 
 ### API sketch
