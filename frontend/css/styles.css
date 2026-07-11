@@ -552,6 +552,34 @@ button { font: inherit; }
 /* compact mode: headlines only */
 body.compact .article .summary, body.compact .article .thumb { display: none; }
 
+/* ---------- FAQ modal ---------- */
+.faq-modal { width: 700px; }
+.faq-modal .modal-body { max-height: 76vh; overflow-y: auto; }
+.faq-body details {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0 14px;
+  background: var(--surface-2);
+}
+.faq-body summary {
+  cursor: pointer;
+  padding: 11px 0;
+  font-weight: 700; font-size: 13.5px;
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: 0.4px;
+}
+.faq-body details[open] summary { border-bottom: 1px solid var(--gold-soft); }
+.faq-body p, .faq-body li {
+  font-size: 13px; color: var(--ink-2); line-height: 1.55;
+}
+.faq-body b { color: var(--ink); }
+.faq-body code {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px; font-size: 12px;
+}
+.faq-body ol, .faq-body ul { padding-left: 20px; margin: 8px 0 12px; }
+.faq-body li { margin-bottom: 6px; }
+
 /* ---------- toasts ---------- */
 .toasts { position: fixed; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
 .toasts.pos-br { bottom: 16px; right: 16px; }

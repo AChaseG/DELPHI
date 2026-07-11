@@ -90,10 +90,166 @@
       <label class="set-row"><span>Desktop notifications <em>(alert pop-ups while this tab is in the background)</em></span>
         <input type="checkbox" id="set-desktop">
       </label>
+      <h3 class="set-h">Help</h3>
+      <div class="set-row">
+        <span>New here, or wondering how something works?</span>
+        <button class="btn small" id="btn-open-faq">❓ FAQ &amp; tutorial</button>
+      </div>
       <p class="set-note">Settings are saved on this device. Your feeds, alerts, and account
          work from any device; display preferences are per browser.</p>
     </div>
   </aside>
+
+  <!-- FAQ / tutorial modal -->
+  <div id="faq-backdrop" class="modal-backdrop" hidden>
+    <div class="modal faq-modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>❓ D.E.L.P.H.I. — FAQ &amp; tutorial</h2>
+        <button class="icon-btn" id="btn-close-faq">✕</button>
+      </div>
+      <div class="modal-body faq-body">
+
+        <details open>
+          <summary>🚀 Getting started — a two-minute tour</summary>
+          <ol>
+            <li><b>Home</b> is your situational overview: columns curated by D.E.L.P.H.I.
+              (top events, breaking, conflict, politics, business, sci-tech, social pulse),
+              generated live from everything ingested. Scroll the board sideways; each
+              column scrolls its own articles vertically.</li>
+            <li>Click any <b>event card</b> to open <b>Event Focus</b> — synopsis, map,
+              cross-source timeline, outlets (each links to its article), and related
+              events. Viewed events dim so you can see what you've already triaged.</li>
+            <li>Press <b>📌</b> on a Home column to copy it into <b>📋 My feeds</b>, or
+              <b>+ Feed</b> to build your own with the four-step wizard: Topic
+              (keywords/boolean queries), Where (countries or a shape drawn on the map),
+              Refine (categories, platforms, importance…), Review (summary + live match
+              count).</li>
+            <li>Create a <b>🔔 Alert</b> the same way for anything you must know about
+              the moment it happens.</li>
+            <li>Add sources or track new topics in <b>Sources</b>; tune appearance,
+              language, timestamps, and notifications in <b>⚙ Settings</b>.</li>
+          </ol>
+        </details>
+
+        <details>
+          <summary>📋 Feeds vs 🔔 Alerts — what's the difference?</summary>
+          <p>Both use the <em>same criteria</em> (keywords, boolean queries, countries,
+             categories, map areas, importance…). The difference is posture:</p>
+          <p><b>A feed is a place you look.</b> It's a column on your board that always
+             shows the current matching articles, sorted and optionally grouped into
+             events. Nothing interrupts you.</p>
+          <p><b>An alert looks for you.</b> Every ingest cycle (about every 5 minutes),
+             new articles are tested against your active alerts. A hit is pushed live to
+             the dashboard — toast, sound, bell counter, optional desktop notification —
+             and stored in the alert's history with a map of where hits happened.</p>
+          <p>Rule of thumb: broad topics you check on your schedule → feed. Narrow,
+             time-critical triggers ("anything Critical inside this drawn box") → alert.</p>
+        </details>
+
+        <details>
+          <summary>📊 How importance scoring works</summary>
+          <p>Every article gets a transparent 0–100 score — no black box. It adds up:</p>
+          <ul>
+            <li><b>Source reach</b> — base score by scope: international 45, national 35,
+                local 25; major wires (tier 1) +8, niche/local outlets (tier 3) −4.</li>
+            <li><b>Breaking signals</b> — weighted terms in the headline/summary
+                ("breaking", "earthquake", "state of emergency", "assassination"…),
+                capped at +30.</li>
+            <li><b>Geographic breadth</b> — a story implicating two or more countries +6.</li>
+            <li><b>Corroboration</b> — +8 for each additional outlet reporting a similar
+                headline within 48h, capped at +24. Many independent outlets = the story
+                matters.</li>
+          </ul>
+          <p>Tiers: <b>▲ Critical ≥ 80</b> · <b>◆ High 60–79</b> · <b>● Notable 40–59</b> ·
+             <b>○ Routine &lt; 40</b>. An event's importance is its highest-scoring
+             report. Filter any feed or alert with the minimum-importance slider.</p>
+        </details>
+
+        <details>
+          <summary>🧵 Events, Event Focus, and dimming</summary>
+          <p>Coverage of the same story from different outlets is clustered into an
+             <b>event</b> (headline similarity, 72-hour rolling window). Feeds with
+             "group into events" show one card per story with a report/source count.</p>
+          <p>Selecting an event opens <b>Event Focus</b>: the founding report's synopsis,
+             stats, a map of tagged places, the full timeline newest-first, "covered by"
+             outlet links, and related events. Once viewed, the event's cards dim across
+             the whole board (hover to read them at full strength again). Views are
+             remembered on your account, on every device.</p>
+        </details>
+
+        <details>
+          <summary>🔍 Boolean queries — syntax and the builder</summary>
+          <p>Queries match the article's headline, summary, <em>and fetched body text</em>.
+             Syntax: <code>AND</code>, <code>OR</code>, <code>NOT</code>, parentheses,
+             <code>"exact phrases"</code>. Google-style also works: <code>-term</code>
+             for NOT, <code>|</code> for OR, smart quotes are cleaned up.</p>
+          <p><code>("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor</code></p>
+          <p>A feed can hold <b>several queries</b> — each runs separately, all fill the
+             same feed. Prefer boxes over syntax? Click <b>🪄 build</b> next to any query
+             row: "must include at least one from each row, none of these", with a live
+             match count.</p>
+        </details>
+
+        <details>
+          <summary>🌍 Where the news comes from</summary>
+          <p>A catalog of 85+ sources across every continent — international wires,
+             national outlets, local papers — plus the social platforms with open feeds:
+             Reddit, Bluesky, Mastodon, YouTube (X/Facebook/Instagram expose no open
+             feeds). Feeds/alerts can filter by platform.</p>
+          <p>Saving a feed or alert with queries/keywords also creates a <b>Google News
+             tracker</b> (the 🔍 checkbox) that ingests worldwide press coverage of your
+             topic, so matches aren't limited to the catalog. Track topics manually in
+             <b>Sources</b> (📰 Press / 💬 Social), add any RSS/Atom URL, edit sources in
+             place, and watch their health dots: green = last poll OK, red = the error
+             is in the tooltip.</p>
+          <p>For matching, each new article's page is fetched once and reduced to text,
+             so criteria see the whole story, not just the headline.</p>
+        </details>
+
+        <details>
+          <summary>🗺 Drawing areas on the map</summary>
+          <p>In the wizard's "Where" step, draw a polygon, rectangle, or circle. Only
+             news geolocated inside the shape matches — via places mentioned in the
+             article (countries and major cities), falling back to the country of the
+             outlet. Works identically for alerts: "alert me on anything Critical inside
+             this box" is the classic use.</p>
+        </details>
+
+        <details>
+          <summary>🌐 Translation</summary>
+          <p>Pick a reading language in ⚙ Settings (defaults to your browser's). Articles
+             in other languages are machine-translated on the fly and marked
+             "🌐 translated from XX"; translations are cached so each article is
+             translated once. Choose "Original languages" to turn it off.</p>
+        </details>
+
+        <details>
+          <summary>🔐 Accounts, privacy, and what's shared</summary>
+          <p><b>Private to your account:</b> feeds, alerts and their history, viewed-event
+             dimming. Sign in with username or email from any device.</p>
+          <p><b>Shared by everyone on this server:</b> the article database and the source
+             catalog — one ingestion pipeline feeds all users, and any user can add or
+             edit sources. Display preferences (theme, timestamps, sound) stay on the
+             device.</p>
+        </details>
+
+        <details>
+          <summary>🛠 Troubleshooting</summary>
+          <p><b>A feed is empty:</b> open it (✎) and use <b>Preview matches</b> while
+             removing one filter at a time — the culprit is usually an over-tight
+             combination. For niche topics make sure the 🔍 worldwide-coverage box is
+             ticked, then hit ⟳ and give it a cycle or two.</p>
+          <p><b>⟳ says a poll is already running:</b> the scheduled 5-minute cycle is
+             mid-flight; results land when it finishes.</p>
+          <p><b>A source shows a red dot:</b> hover it in Sources for the exact error.
+             404 = moved/dead URL (edit it in place), 429 = rate-limited (backs off
+             automatically), "not a feed" = the URL returns a web page, not RSS.</p>
+          <p><b>Stat tile shows …/N:</b> the first poll since startup hasn't finished.</p>
+        </details>
+
+      </div>
+    </div>
+  </div>
 
   <!-- Sign-in gate: the system requires an account -->
   <div id="gate" class="gate" hidden>

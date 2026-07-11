@@ -244,6 +244,11 @@ function desktopNotify(title, body) {
 function wireSettings() {
   el("btn-settings").onclick = () => { el("settings-panel").hidden = false; };
   el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
+  el("btn-open-faq").onclick = () => { el("faq-backdrop").hidden = false; };
+  el("btn-close-faq").onclick = () => { el("faq-backdrop").hidden = true; };
+  el("faq-backdrop").addEventListener("mousedown", (e) => {
+    if (e.target === el("faq-backdrop")) el("faq-backdrop").hidden = true;
+  });
 
   const theme = el("set-theme"), compact = el("set-compact"),
         timefmt = el("set-timefmt"), pos = el("set-toast-pos"),
