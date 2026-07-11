@@ -42,8 +42,12 @@ _QUOTE_TRANSLATION = str.maketrans({
 })
 
 
+def normalize_quotes(text: str) -> str:
+    return text.translate(_QUOTE_TRANSLATION)
+
+
 def tokenize(query: str) -> list[Token]:
-    query = query.translate(_QUOTE_TRANSLATION)
+    query = normalize_quotes(query)
     tokens: list[Token] = []
     i = 0
     while i < len(query):

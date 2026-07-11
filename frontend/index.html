@@ -142,12 +142,11 @@
           <span>Boolean query <em>(AND / OR / NOT, quotes, parentheses)</em></span>
           <input id="b-query" type="text" placeholder='("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor'>
           <span id="b-query-status" class="query-status"></span>
-          <div class="geo-tools">
-            <button class="btn small" id="btn-query-coverage"
-              title="Delphi only searches articles its sources have published. This adds a Google News source that ingests worldwide press coverage matching this query / these keywords, so the feed can find niche stories.">
-              🔍 Also ingest worldwide coverage of this query</button>
-            <span id="query-coverage-status" class="geo-summary"></span>
-          </div>
+          <label class="check-row" style="margin-top:6px">
+            <input type="checkbox" id="b-coverage" checked>
+            🔍 Automatically ingest worldwide coverage of this query/keywords
+            <em style="color:var(--ink-muted);font-style:normal">(adds a Google News source on save — recommended, so matches aren't limited to the catalog)</em>
+          </label>
         </label>
 
         <div class="builder-grid two">

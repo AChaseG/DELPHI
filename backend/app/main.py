@@ -16,7 +16,7 @@ from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from . import ingest, translate
-from .boolean_query import validate_query
+from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_demo_articles, seed_sources
 from .clustering import assign_events, rebuild_events
 from .database import Base, engine, get_db
@@ -289,6 +289,7 @@ def list_feeds(user_id: str = Depends(user_id_header), db: Session = Depends(get
 @app.post("/api/feeds", status_code=201)
 def create_feed(body: FeedIn, user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     _reject_invalid_query(body.criteria.query)
+    _ensure_coverage_source(db, body.criteria)
     max_pos = db.scalar(
         select(func.max(Feed.position)).where(Feed.user_id == user_id)
     )
@@ -307,6 +308,7 @@ def update_feed(feed_id: int, body: FeedIn, user_id: str = Depends(user_id_heade
                 db: Session = Depends(get_db)):
     feed = _owned(db, Feed, feed_id, user_id)
     _reject_invalid_query(body.criteria.query)
+    _ensure_coverage_source(db, body.criteria)
     feed.name = body.name
     feed.criteria = body.criteria.model_dump()
     feed.sort = body.sort
@@ -409,6 +411,7 @@ def list_alerts(user_id: str = Depends(user_id_header), db: Session = Depends(ge
 def create_alert(body: AlertIn, user_id: str = Depends(user_id_header),
                  db: Session = Depends(get_db)):
     _reject_invalid_query(body.criteria.query)
+    _ensure_coverage_source(db, body.criteria)
     alert = Alert(user_id=user_id, name=body.name,
                   criteria=body.criteria.model_dump(), active=body.active)
     db.add(alert)
@@ -421,6 +424,7 @@ def update_alert(alert_id: int, body: AlertIn, user_id: str = Depends(user_id_he
                  db: Session = Depends(get_db)):
     alert = _owned(db, Alert, alert_id, user_id)
     _reject_invalid_query(body.criteria.query)
+    _ensure_coverage_source(db, body.criteria)
     alert.name = body.name
     alert.criteria = body.criteria.model_dump()
     alert.active = body.active
@@ -612,6 +616,38 @@ def _owned(db: Session, model, obj_id: int, user_id: str):
     if not obj or obj.user_id != user_id:
         raise HTTPException(404, f"{model.__name__} not found")
     return obj
+
+
+def _google_query(criteria) -> str:
+    """Convert feed criteria into a Google News search string."""
+    import re as _re
+    q = (criteria.query or "").strip() or " OR ".join(k for k in criteria.keywords if k.strip())
+    if not q:
+        return ""
+    q = normalize_quotes(q)
+    q = _re.sub(r"[()]", " ", q)
+    q = _re.sub(r"\bAND\b", " ", q, flags=_re.IGNORECASE)
+    q = _re.sub(r"\bNOT\s+", "-", q, flags=_re.IGNORECASE)
+    return _re.sub(r"\s+", " ", q).strip()[:200]
+
+
+def _ensure_coverage_source(db: Session, criteria) -> None:
+    """Create (idempotently) a Google News tracker source for the criteria's
+    query/keywords when auto_coverage is on."""
+    if not getattr(criteria, "auto_coverage", False):
+        return
+    q = _google_query(criteria)
+    if not q:
+        return
+    rss = ("https://news.google.com/rss/search?q=" + urllib.parse.quote(q)
+           + "&hl=en-US&gl=US&ceid=US:en")
+    if db.scalar(select(Source).where(Source.rss_url == rss)):
+        return
+    db.add(Source(
+        name=f"Topic: {q}", rss_url=rss, homepage="https://news.google.com",
+        country="", region="Global", language="en", scope="international",
+        categories=[], tier=2, added_by="topic-tracker",
+    ))
 
 
 def _reject_invalid_query(query: str):

@@ -61,24 +61,6 @@ const Builder = {
       }, 350);
     };
 
-    el("btn-query-coverage").onclick = async () => {
-      const st = el("query-coverage-status");
-      const { criteria } = this.collect();
-      // Prefer the boolean string; fall back to keywords. Convert our syntax
-      // to Google News search syntax (space=AND, minus=NOT, OR kept).
-      let q = criteria.query || (criteria.keywords || []).join(" OR ");
-      if (!q.trim()) { st.textContent = "Enter a boolean query or keywords first."; return; }
-      q = q.replace(/[()]/g, " ")
-           .replace(/\bAND\b/gi, " ")
-           .replace(/\bNOT\s+/gi, "-")
-           .replace(/\s+/g, " ").trim();
-      try {
-        await API.trackTopic(q);
-        st.textContent = `✓ Now ingesting worldwide coverage of: ${q} — hit ⟳ after saving.`;
-      } catch (e) {
-        st.textContent = e.message.includes("already") ? "Already tracking this query." : "Failed: " + e.message;
-      }
-    };
     el("btn-toggle-map").onclick = () => this.toggleMap();
     el("btn-clear-geo").onclick = () => this.setGeo(null);
     el("btn-preview").onclick = () => this.preview();
@@ -107,6 +89,7 @@ const Builder = {
     renderChips("b-exclude-box", this.exclude);
     el("b-query").value = c.query || "";
     el("b-query-status").textContent = "";
+    el("b-coverage").checked = item ? !!c.auto_coverage : true;
     el("b-importance").value = c.min_importance || 0;
     el("b-importance").dispatchEvent(new Event("input"));
     el("b-hours").value = c.hours || "";
@@ -142,6 +125,7 @@ const Builder = {
       min_importance: +el("b-importance").value,
       hours: el("b-hours").value ? +el("b-hours").value : null,
       geo: this.geo,
+      auto_coverage: el("b-coverage").checked,
     };
     const sort = document.querySelector('input[name="b-sort"]:checked').value;
     return { name: el("b-name").value.trim() || "Untitled", criteria, sort };

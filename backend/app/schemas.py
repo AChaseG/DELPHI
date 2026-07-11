@@ -19,6 +19,10 @@ class Criteria(BaseModel):
     min_importance: int = 0
     hours: float | None = None
     geo: dict | None = None
+    # When true, saving the feed/alert also ensures a Google News tracker
+    # source exists for the query/keywords, so worldwide press coverage of
+    # the topic is ingested rather than only what the catalog publishes.
+    auto_coverage: bool = False
 
 
 class FeedIn(BaseModel):
