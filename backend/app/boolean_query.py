@@ -9,6 +9,10 @@ Grammar (case-insensitive keywords):
 
 Words and phrases match on word boundaries, case-insensitively.
 Example:  ("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor
+
+Google-style input is accepted too, since users paste queries they first
+tried in a search engine: curly “smart quotes” are normalized, a leading
+minus negates a term (-sports == NOT sports), and | / || mean OR (&& = AND).
 """
 from __future__ import annotations
 
@@ -28,11 +32,18 @@ class Token:
 
 
 _TOKEN_RE = re.compile(
-    r'\s*(?:(?P<lparen>\()|(?P<rparen>\))|(?P<phrase>"[^"]*")|(?P<word>[^\s()"]+))'
+    r'\s*(?:(?P<lparen>\()|(?P<rparen>\))|(?P<or_>\|\|?)|(?P<and_>&&)'
+    r'|(?P<phrase>"[^"]*")|(?P<word>[^\s()"|&]+))'
 )
+
+_QUOTE_TRANSLATION = str.maketrans({
+    "“": '"', "”": '"', "„": '"', "«": '"', "»": '"',
+    "‘": "'", "’": "'",
+})
 
 
 def tokenize(query: str) -> list[Token]:
+    query = query.translate(_QUOTE_TRANSLATION)
     tokens: list[Token] = []
     i = 0
     while i < len(query):
@@ -46,6 +57,10 @@ def tokenize(query: str) -> list[Token]:
             tokens.append(Token("LPAREN", "(", m.start()))
         elif m.group("rparen"):
             tokens.append(Token("RPAREN", ")", m.start()))
+        elif m.group("or_"):
+            tokens.append(Token("OR", "OR", m.start()))
+        elif m.group("and_"):
+            tokens.append(Token("AND", "AND", m.start()))
         elif m.group("phrase") is not None:
             phrase = m.group("phrase")[1:-1].strip()
             if not phrase:
@@ -56,10 +71,10 @@ def tokenize(query: str) -> list[Token]:
             upper = word.upper()
             if upper in ("AND", "OR", "NOT"):
                 tokens.append(Token(upper, upper, m.start()))
-            elif upper == "&&":
-                tokens.append(Token("AND", "AND", m.start()))
-            elif upper == "||":
-                tokens.append(Token("OR", "OR", m.start()))
+            elif word.startswith("-") and len(word) > 1:
+                # Google-style negation: -sports == NOT sports
+                tokens.append(Token("NOT", "NOT", m.start()))
+                tokens.append(Token("TERM", word[1:], m.start() + 1))
             else:
                 tokens.append(Token("TERM", word, m.start()))
     return tokens

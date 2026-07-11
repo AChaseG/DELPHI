@@ -273,7 +273,10 @@ async function loadFeedArticles(feed) {
     if (!items.length) {
       body.innerHTML = '<div class="feed-empty">No matching articles yet. ' +
         "Open the feed (✎) and use <b>Preview matches</b> while removing one filter " +
-        "at a time to see which criterion is limiting it — or hit ⟳ to poll sources.</div>";
+        "at a time to see which criterion is limiting it. For niche topics, click " +
+        "<b>🔍 Also ingest worldwide coverage</b> under the boolean query — Delphi " +
+        "only searches articles its sources publish, and that button adds a source " +
+        "that pulls in press coverage matching your query.</div>";
       return;
     }
     if (feed.group_events) for (const g of items) body.appendChild(eventGroup(g));
