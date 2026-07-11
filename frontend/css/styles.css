@@ -378,6 +378,22 @@ button { font: inherit; }
 .wiz-summary-row { font-size: 12.5px; color: var(--ink-2); }
 .wiz-summary-row b { color: var(--ink); font-weight: 600; }
 
+/* ---------- boolean query builder ---------- */
+.qb-modal { width: 560px; }
+#qb-groups { display: flex; flex-direction: column; gap: 6px; }
+.qb-group { display: flex; gap: 6px; align-items: center; }
+.qb-group .chip-input { flex: 1; }
+.qb-conj {
+  font-size: 11px; font-weight: 700; color: var(--gold);
+  letter-spacing: 1px; padding: 1px 0 1px 12px;
+}
+.qb-preview {
+  display: block; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 11px; font-size: 12.5px; word-break: break-word;
+  color: var(--ink);
+}
+
 /* ---------- event focus modal ---------- */
 .event-modal { width: 680px; }
 .event-modal .modal-body { max-height: 76vh; overflow-y: auto; }

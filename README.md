@@ -52,7 +52,10 @@ feeds**.
   - free keywords + exclude-keywords
   - **user-written boolean queries** — `("supply chain" OR semiconductor) AND
     (china OR taiwan) NOT rumor` — with live validation; a feed can hold
-    **several queries**, each running separately, all populating the same feed
+    **several queries**, each running separately, all populating the same feed.
+    A 🪄 **query builder** composes the string from fill-in boxes ("at least
+    one from each row, none of these") with a live preview and match count —
+    no syntax needed
   - **event focus** — selecting an event opens a detail panel: synopsis, stats,
     a map of where it's happening, the full cross-source timeline, the outlets
     covering it, and related events

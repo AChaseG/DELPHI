@@ -192,6 +192,10 @@ const Builder = {
     input.value = value || "";
     const st = document.createElement("span");
     st.className = "query-status";
+    const wand = document.createElement("button");
+    wand.className = "btn small"; wand.textContent = "🪄 build";
+    wand.title = "Build this query step by step (no syntax needed)";
+    wand.onclick = () => QueryBuilder.open(input);
     const rm = document.createElement("button");
     rm.className = "icon-btn"; rm.textContent = "✕"; rm.title = "Remove this query";
     rm.onclick = () => {
@@ -200,7 +204,7 @@ const Builder = {
     };
     const line = document.createElement("div");
     line.className = "query-line";
-    line.append(input, rm);
+    line.append(input, wand, rm);
     row.append(line, st);
     el("b-queries").appendChild(row);
   },
@@ -355,6 +359,132 @@ const Builder = {
       ? `Circle, radius ${this.geo.radius_km.toFixed(1)} km`
       : `${this.geo.type} area set`;
     el("btn-clear-geo").hidden = false;
+  },
+};
+
+/* Guided boolean-query builder: "(a OR b) AND (c OR d) NOT e" from boxes. */
+const QueryBuilder = {
+  target: null,
+  groups: [],      // array of term-arrays; OR within a group, AND between groups
+  notTerms: [],
+
+  open(targetInput) {
+    this.target = targetInput;
+    this.groups = [[], []];
+    this.notTerms = [];
+    this._wire();
+    this._render();
+    el("qb-backdrop").hidden = false;
+  },
+
+  close() { el("qb-backdrop").hidden = true; },
+
+  build() {
+    const quote = (t) => (/\s/.test(t) ? `"${t}"` : t);
+    const parts = this.groups.filter(g => g.length)
+      .map(g => g.length > 1 ? "(" + g.map(quote).join(" OR ") + ")" : quote(g[0]));
+    let q = parts.join(" AND ");
+    for (const n of this.notTerms) q += (q ? " " : "") + "NOT " + quote(n);
+    return q;
+  },
+
+  _chipBox(list, placeholder, onChange) {
+    const box = document.createElement("div");
+    box.className = "chip-input";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = placeholder;
+    const redraw = () => {
+      for (const c of box.querySelectorAll(".chip")) c.remove();
+      list.forEach((term, i) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = term + " ";
+        const x = document.createElement("button");
+        x.textContent = "✕";
+        x.onclick = () => { list.splice(i, 1); redraw(); onChange(); };
+        chip.appendChild(x);
+        box.insertBefore(chip, input);
+      });
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === ",") {
+        e.preventDefault();
+        const v = input.value.trim().replace(/,$/, "");
+        if (v && !list.includes(v)) { list.push(v); redraw(); onChange(); }
+        input.value = "";
+      } else if (e.key === "Backspace" && !input.value && list.length) {
+        list.pop(); redraw(); onChange();
+      }
+    });
+    box.appendChild(input);
+    redraw();
+    return box;
+  },
+
+  _render() {
+    const groupsBox = el("qb-groups");
+    groupsBox.innerHTML = "";
+    this.groups.forEach((group, i) => {
+      const row = document.createElement("div");
+      row.className = "qb-group";
+      if (i > 0) {
+        const conj = document.createElement("div");
+        conj.className = "qb-conj";
+        conj.textContent = "AND";
+        groupsBox.appendChild(conj);
+      }
+      row.appendChild(this._chipBox(group, i === 0
+        ? "e.g. earthquake, “magnitude 6”, tsunami — Enter after each"
+        : "e.g. japan, tokyo, honshu", () => this._update()));
+      if (this.groups.length > 1) {
+        const rm = document.createElement("button");
+        rm.className = "icon-btn"; rm.textContent = "✕"; rm.title = "Remove this requirement";
+        rm.onclick = () => { this.groups.splice(i, 1); this._render(); };
+        row.appendChild(rm);
+      }
+      groupsBox.appendChild(row);
+    });
+    const notBox = el("qb-not");
+    notBox.innerHTML = "";
+    notBox.appendChild(this._chipBox(this.notTerms, "e.g. sports, opinion, rumor", () => this._update()));
+    this._update();
+  },
+
+  _update() {
+    const q = this.build();
+    el("qb-preview").textContent = q || "—";
+    const st = el("qb-status");
+    if (!q) { st.textContent = ""; st.className = "query-status"; return; }
+    clearTimeout(this._timer);
+    this._timer = setTimeout(async () => {
+      try {
+        const r = await API.validateQuery(q);
+        if (!r.valid) { st.textContent = "✗ " + r.error; st.className = "query-status err"; return; }
+        const matches = await API.search({ query: q }, "newest", 200);
+        st.textContent = `✓ valid — matches ${matches.length}${matches.length === 200 ? "+" : ""} stored article(s) right now`;
+        st.className = "query-status ok";
+      } catch (e) { /* offline */ }
+    }, 350);
+  },
+
+  _wire() {
+    if (this._wired) return;
+    this._wired = true;
+    el("btn-close-qb").onclick = () => this.close();
+    el("btn-qb-cancel").onclick = () => this.close();
+    el("btn-qb-add-group").onclick = () => { this.groups.push([]); this._render(); };
+    el("btn-qb-insert").onclick = () => {
+      const q = this.build();
+      if (q && this.target) {
+        this.target.value = q;
+        this.target.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      this.close();
+    };
+    el("qb-backdrop").addEventListener("mousedown", (e) => {
+      if (e.target === el("qb-backdrop")) this.close();
+    });
   },
 };
 

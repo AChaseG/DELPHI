@@ -345,6 +345,40 @@
     </div>
   </div>
 
+  <!-- Boolean query builder -->
+  <div id="qb-backdrop" class="modal-backdrop" hidden>
+    <div class="modal qb-modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>🪄 Build a boolean query</h2>
+        <button class="icon-btn" id="btn-close-qb">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="wiz-guide">Fill the boxes — the query writes itself. An article matches when it
+           contains <b>at least one term from every “must include” row</b> and
+           <b>none</b> of the excluded terms. Multi-word terms are treated as exact phrases.</p>
+        <div class="field">
+          <span>Must include — at least one from each row</span>
+          <div id="qb-groups"></div>
+          <div><button class="btn small" id="btn-qb-add-group">+ AND another requirement</button></div>
+        </div>
+        <div class="field">
+          <span>Must NOT include any of these</span>
+          <div id="qb-not"></div>
+        </div>
+        <div class="field">
+          <span>Generated query</span>
+          <code id="qb-preview" class="qb-preview">—</code>
+          <span id="qb-status" class="query-status"></span>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="spacer"></span>
+        <button class="btn" id="btn-qb-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-qb-insert">Use this query</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Event focus modal -->
   <div id="event-backdrop" class="modal-backdrop" hidden>
     <div class="modal event-modal" role="dialog" aria-modal="true">
