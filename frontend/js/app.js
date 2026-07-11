@@ -74,6 +74,16 @@ async function renderBoard() {
 }
 
 function wireTopbar() {
+  // The board is a lateral rail: a vertical mouse wheel over it scrolls
+  // sideways — except over a feed's own article list, which scrolls
+  // vertically as usual.
+  el("board").addEventListener("wheel", (e) => {
+    if (!e.deltaY || e.deltaX || e.shiftKey) return;
+    if (e.target.closest(".feed-body")) return;
+    el("board").scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
+
   el("btn-view-home").onclick = () => setView("home");
   el("btn-view-mine").onclick = () => setView("mine");
   el("btn-view-home").classList.toggle("active", VIEW === "home");

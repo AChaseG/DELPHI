@@ -179,13 +179,28 @@ button { font: inherit; }
 }
 
 /* ---------- board ---------- */
+/* Single lateral rail: feeds never wrap below one another. */
 .board {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 14px;
-  padding: 22px 16px 40px;
-  align-items: start;
+  padding: 22px 16px 14px;
+  align-items: flex-start;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  min-height: calc(100vh - 90px);
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold-soft) transparent;
 }
+.board::-webkit-scrollbar { height: 10px; }
+.board::-webkit-scrollbar-track { background: transparent; }
+.board::-webkit-scrollbar-thumb {
+  background: var(--gold-soft);
+  border-radius: 5px;
+}
+.board::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+.board > .feed-col { flex: 0 0 360px; width: 360px; }
+.board > .feed-col.wide { flex: 0 0 734px; width: 734px; }
 @media (min-width: 1281px) {
   .board, .empty-state { padding-left: 70px; padding-right: 70px; }
 }
@@ -197,7 +212,7 @@ button { font: inherit; }
   max-height: calc(100vh - 130px);
   overflow: hidden;
 }
-.feed-col.wide { grid-column: span 2; }
+
 .feed-head {
   display: flex; flex-direction: column; gap: 6px;
   padding: 10px 12px;
