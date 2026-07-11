@@ -87,6 +87,8 @@ const API = {
 
   search: (criteria, sort = "newest", limit = 60) =>
     api(`/api/articles/search?sort=${sort}&limit=${limit}${langQS()}`, { method: "POST", body: JSON.stringify({ criteria }) }),
+  searchGrouped: (criteria, sort = "newest", limit = 30) =>
+    api(`/api/articles/search-grouped?sort=${sort}&limit=${limit}${langQS()}`, { method: "POST", body: JSON.stringify({ criteria }) }),
   validateQuery: (query) => api("/api/query/validate", { method: "POST", body: JSON.stringify({ query }) }),
   runIngest: () => api("/api/ingest/run", { method: "POST" }),
   purgeDemo: () => api("/api/demo/purge", { method: "POST" }),

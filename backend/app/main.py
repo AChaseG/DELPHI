@@ -422,15 +422,9 @@ async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
     return [_article_json(a, tr) for a in articles]
 
 
-@app.get("/api/feeds/{feed_id}/events")
-async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
-                      lang: str = Query(default=""),
-                      user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
-    """Feed contents clustered into events. Groups keep the feed's sort order
-    (order of each event's first matching article); articles without an event
-    form singleton groups."""
-    feed = _owned(db, Feed, feed_id, user_id)
-    articles = query_articles(db, feed.criteria, sort=feed.sort, limit=200)
+async def _grouped_response(db: Session, articles: list[Article], lang: str, limit: int):
+    """Cluster a result list into event groups (feed's order preserved by each
+    event's first matching article; articles without an event are singletons)."""
     groups: dict = {}
     order: list = []
     for a in articles:
@@ -457,6 +451,28 @@ async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
             "articles": [_article_json(a, tr) for a in members[:6]],
         })
     return out
+
+
+@app.get("/api/feeds/{feed_id}/events")
+async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
+                      lang: str = Query(default=""),
+                      user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    feed = _owned(db, Feed, feed_id, user_id)
+    articles = query_articles(db, feed.criteria, sort=feed.sort, limit=200)
+    return await _grouped_response(db, articles, lang, limit)
+
+
+@app.post("/api/articles/search-grouped")
+async def search_grouped(
+    body: dict,
+    sort: str = Query(default="newest"),
+    limit: int = Query(default=30, le=100),
+    lang: str = Query(default=""),
+    db: Session = Depends(get_db),
+):
+    """Ad-hoc criteria search clustered into events (used by Home columns)."""
+    articles = query_articles(db, body.get("criteria", body), sort=sort, limit=200)
+    return await _grouped_response(db, articles, lang, limit)
 
 
 # ---------- alerts ----------

@@ -20,6 +20,7 @@ import os
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .models import Article, Translation
@@ -117,5 +118,17 @@ async def translate_articles(db: Session, articles: list[Article], target: str) 
                 out[article_id] = {"title": title, "summary": summary or ""}
                 dirty = True
         if dirty:
-            db.commit()
+            try:
+                db.commit()
+            except IntegrityError:
+                # Concurrent request cached the same article+lang first (e.g.
+                # several dashboard columns containing the same article load
+                # in parallel). Their rows win; reuse them.
+                db.rollback()
+                rows = db.scalars(select(Translation).where(
+                    Translation.lang == target,
+                    Translation.article_id.in_([a.id for a in missing]),
+                )).all()
+                for t in rows:
+                    out[t.article_id] = {"title": t.title, "summary": t.summary}
     return out

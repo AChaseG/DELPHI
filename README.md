@@ -39,7 +39,13 @@ feeds**.
   the browser's existing feeds/alerts into the account. Articles and sources
   are shared infrastructure — one ingestion pipeline feeds every user. Feeds
   are arranged in columns you can reorder, widen, edit, and delete.
-- **Feed builder** with combinable criteria:
+- **Home & My feeds.** The dashboard opens on **🏠 Home** — Delphi-curated
+  columns generated live from everything ingested (top events, breaking now,
+  conflict & disasters, politics, business, sci-tech, social pulse). 📌 any
+  Home column to copy it into **📋 My feeds**, your own editable panel.
+- **Guided feed builder** — a four-step wizard (Topic → Where → Refine →
+  Review) with per-step guidance, a criteria summary, and a live match-count
+  preview before saving. Combinable criteria:
   - country (article country *or* any place mentioned in it)
   - standard news categories (politics, business, economy, technology, science,
     health, environment, conflict, disaster, crime, sports, entertainment, culture, world)

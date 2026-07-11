@@ -17,6 +17,10 @@
       <div class="stat-tile"><div class="stat-value" id="stat-sources">–</div><div class="stat-label">sources healthy</div></div>
       <div class="stat-tile"><div class="stat-value" id="stat-alerts">–</div><div class="stat-label">alert hits unseen</div></div>
     </div>
+    <div class="view-switch" role="tablist">
+      <button id="btn-view-home" class="active" title="Delphi-curated overview of everything ingested">🏠 Home</button>
+      <button id="btn-view-mine" title="Feeds and alerts you created">📋 My feeds</button>
+    </div>
     <div class="topbar-actions">
       <input id="global-search" type="search" placeholder="Search all news… (supports AND OR NOT)" autocomplete="off">
       <select id="lang-select" title="Reading language — articles in other languages are translated automatically"></select>
@@ -59,7 +63,9 @@
   <div id="empty-state" class="empty-state" hidden>
     <h2>Your dashboard is empty</h2>
     <p>Create a feed to start monitoring news — filter by country, category, keywords,
-       boolean queries, importance, or an area you draw on the map.</p>
+       boolean queries, importance, or an area you draw on the map.
+       Or flip to <b>🏠 Home</b> for Delphi's curated overview and 📌 any column there
+       to make it yours.</p>
     <button class="btn btn-primary" id="btn-empty-new-feed">Create your first feed</button>
     <button class="btn" id="btn-starter-pack">Add starter feeds</button>
   </div>
@@ -116,123 +122,142 @@
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h2 id="builder-title">New feed</h2>
+        <nav class="wiz-nav" id="wiz-nav">
+          <button data-step="0">1 · Topic</button>
+          <button data-step="1">2 · Where</button>
+          <button data-step="2">3 · Refine</button>
+          <button data-step="3">4 · Review</button>
+        </nav>
         <button class="icon-btn" id="btn-close-builder">✕</button>
       </div>
       <div class="modal-body">
-        <label class="field">
-          <span>Name</span>
-          <input id="b-name" type="text" placeholder="e.g. East Africa security">
-        </label>
 
-        <div class="builder-grid">
+        <section class="wiz-step" data-step="0">
+          <p class="wiz-guide">What should this watch for? A name plus keywords is enough —
+             the boolean query is optional power. Everything can stay empty to match all news.</p>
           <label class="field">
-            <span>Countries</span>
-            <select id="b-countries" multiple size="6"></select>
+            <span>Name</span>
+            <input id="b-name" type="text" placeholder="e.g. East Africa security">
           </label>
+          <div class="builder-grid two">
+            <label class="field">
+              <span>Keywords <em>(any match — press Enter to add each)</em></span>
+              <div class="chip-input" id="b-keywords-box"><input id="b-keywords" type="text" placeholder="earthquake, ceasefire…"></div>
+            </label>
+            <label class="field">
+              <span>Exclude keywords <em>(hide matches containing these)</em></span>
+              <div class="chip-input" id="b-exclude-box"><input id="b-exclude" type="text" placeholder="opinion, horoscope…"></div>
+            </label>
+          </div>
           <label class="field">
-            <span>Categories</span>
-            <select id="b-categories" multiple size="6"></select>
+            <span>Boolean query <em>(optional — AND / OR / NOT, quotes, parentheses; Google-style -term and | work too)</em></span>
+            <input id="b-query" type="text" placeholder='("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor'>
+            <span id="b-query-status" class="query-status"></span>
+            <label class="check-row" style="margin-top:6px">
+              <input type="checkbox" id="b-coverage" checked>
+              🔍 Automatically ingest worldwide coverage of this query/keywords
+              <em style="color:var(--ink-muted);font-style:normal">(recommended — adds a Google News source so matches aren't limited to the catalog)</em>
+            </label>
+          </label>
+        </section>
+
+        <section class="wiz-step" data-step="1" hidden>
+          <p class="wiz-guide">Narrow to places — or skip this step entirely for worldwide coverage.
+             Countries match where the news is about (mentioned places or the outlet's home).
+             Drawing on the map is the strictest filter: only news geolocated inside the shape matches.</p>
+          <label class="field">
+            <span>Countries <em>(Ctrl/Cmd-click for several; none = everywhere)</em></span>
+            <select id="b-countries" multiple size="8"></select>
           </label>
           <div class="field">
-            <span>Source scope</span>
-            <div class="check-row" id="b-scopes">
-              <label><input type="checkbox" value="local"> local</label>
-              <label><input type="checkbox" value="national"> national</label>
-              <label><input type="checkbox" value="international"> international</label>
+            <span>Geographic area</span>
+            <div class="geo-tools">
+              <button class="btn small" id="btn-toggle-map">Draw area on map</button>
+              <span id="geo-summary" class="geo-summary">No area set</span>
+              <button class="btn small" id="btn-clear-geo" hidden>Clear area</button>
             </div>
-            <span style="margin-top:10px">Platforms</span>
-            <div class="check-row" id="b-platforms">
-              <label><input type="checkbox" value="news"> 📰 press</label>
-              <label><input type="checkbox" value="reddit"> reddit</label>
-              <label><input type="checkbox" value="mastodon"> mastodon</label>
-              <label><input type="checkbox" value="bluesky"> bluesky</label>
-              <label><input type="checkbox" value="youtube"> youtube</label>
-            </div>
-            <span style="margin-top:10px">Languages</span>
-            <select id="b-languages" multiple size="3"></select>
+            <div id="builder-map" class="builder-map" hidden></div>
           </div>
-        </div>
+        </section>
 
-        <div class="builder-grid two">
+        <section class="wiz-step" data-step="2" hidden>
+          <p class="wiz-guide">Optional refinements. Anything left untouched stays wide open.</p>
+          <div class="builder-grid">
+            <label class="field">
+              <span>Categories</span>
+              <select id="b-categories" multiple size="7"></select>
+            </label>
+            <div class="field">
+              <span>Source scope</span>
+              <div class="check-row" id="b-scopes">
+                <label><input type="checkbox" value="local"> local</label>
+                <label><input type="checkbox" value="national"> national</label>
+                <label><input type="checkbox" value="international"> international</label>
+              </div>
+              <span style="margin-top:10px">Platforms</span>
+              <div class="check-row" id="b-platforms">
+                <label><input type="checkbox" value="news"> 📰 press</label>
+                <label><input type="checkbox" value="reddit"> reddit</label>
+                <label><input type="checkbox" value="mastodon"> mastodon</label>
+                <label><input type="checkbox" value="bluesky"> bluesky</label>
+                <label><input type="checkbox" value="youtube"> youtube</label>
+              </div>
+            </div>
+            <div class="field">
+              <span>Languages</span>
+              <select id="b-languages" multiple size="3"></select>
+              <span style="margin-top:10px">Recency window</span>
+              <select id="b-hours">
+                <option value="">All time</option>
+                <option value="1">Last hour</option>
+                <option value="6">Last 6 hours</option>
+                <option value="24">Last 24 hours</option>
+                <option value="72">Last 3 days</option>
+                <option value="168">Last week</option>
+              </select>
+            </div>
+          </div>
           <label class="field">
-            <span>Keywords <em>(any match — press Enter to add)</em></span>
-            <div class="chip-input" id="b-keywords-box"><input id="b-keywords" type="text" placeholder="earthquake, ceasefire…"></div>
-          </label>
-          <label class="field">
-            <span>Exclude keywords</span>
-            <div class="chip-input" id="b-exclude-box"><input id="b-exclude" type="text" placeholder="opinion, horoscope…"></div>
-          </label>
-        </div>
-
-        <label class="field">
-          <span>Boolean query <em>(AND / OR / NOT, quotes, parentheses)</em></span>
-          <input id="b-query" type="text" placeholder='("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor'>
-          <span id="b-query-status" class="query-status"></span>
-          <label class="check-row" style="margin-top:6px">
-            <input type="checkbox" id="b-coverage" checked>
-            🔍 Automatically ingest worldwide coverage of this query/keywords
-            <em style="color:var(--ink-muted);font-style:normal">(adds a Google News source on save — recommended, so matches aren't limited to the catalog)</em>
-          </label>
-        </label>
-
-        <div class="builder-grid two">
-          <label class="field">
-            <span>Minimum importance: <strong id="b-imp-val">0</strong> <em id="b-imp-tier"></em></span>
+            <span>Minimum importance: <strong id="b-imp-val">0</strong> <em id="b-imp-tier"></em>
+              <em> — how much the story matters to the international community (source reach, breaking signals, cross-outlet corroboration)</em></span>
             <input id="b-importance" type="range" min="0" max="100" step="5" value="0">
           </label>
-          <label class="field">
-            <span>Recency window</span>
-            <select id="b-hours">
-              <option value="">All time</option>
-              <option value="1">Last hour</option>
-              <option value="6">Last 6 hours</option>
-              <option value="24">Last 24 hours</option>
-              <option value="72">Last 3 days</option>
-              <option value="168">Last week</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="field">
-          <span>Geographic area — draw a polygon, rectangle or circle; only news geolocated inside it will match</span>
-          <div class="geo-tools">
-            <button class="btn small" id="btn-toggle-map">Draw area on map</button>
-            <span id="geo-summary" class="geo-summary">No area set</span>
-            <button class="btn small" id="btn-clear-geo" hidden>Clear area</button>
+          <div class="field">
+            <details>
+              <summary>Restrict to specific sources (optional)</summary>
+              <select id="b-sources" multiple size="8"></select>
+            </details>
           </div>
-          <div id="builder-map" class="builder-map" hidden></div>
-        </div>
+        </section>
 
-        <div class="field" id="alert-only-fields" hidden>
-          <label class="check-row"><input type="checkbox" id="b-active" checked> Alert active (fires on new matching articles)</label>
-        </div>
-
-        <div class="field">
-          <details>
-            <summary>Restrict to specific sources (optional)</summary>
-            <select id="b-sources" multiple size="8"></select>
-          </details>
-        </div>
-
-        <div class="field">
-          <span>Sort feed by</span>
-          <div class="check-row">
-            <label><input type="radio" name="b-sort" value="newest" checked> newest first</label>
-            <label><input type="radio" name="b-sort" value="importance"> importance</label>
+        <section class="wiz-step" data-step="3" hidden>
+          <p class="wiz-guide">Check the summary, preview the live match count, pick how it displays, and save.</p>
+          <div id="wiz-summary" class="wiz-summary"></div>
+          <div class="field">
+            <span>Sort by</span>
+            <div class="check-row">
+              <label><input type="radio" name="b-sort" value="newest" checked> newest first</label>
+              <label><input type="radio" name="b-sort" value="importance"> importance</label>
+            </div>
           </div>
-        </div>
+          <div class="field" id="feed-only-fields">
+            <label class="check-row"><input type="checkbox" id="b-group">
+              🧵 Group similar articles into events (clusters cross-source coverage of the same story)</label>
+          </div>
+          <div class="field" id="alert-only-fields" hidden>
+            <label class="check-row"><input type="checkbox" id="b-active" checked> Alert active (fires live on new matching articles)</label>
+          </div>
+        </section>
 
-        <div class="field" id="feed-only-fields">
-          <label class="check-row"><input type="checkbox" id="b-group">
-            Group similar articles into events (clusters cross-source coverage of the same story, with a timeline)</label>
-        </div>
       </div>
       <div class="modal-foot">
+        <button class="btn" id="btn-wiz-back">‹ Back</button>
         <button class="btn" id="btn-preview">Preview matches</button>
         <span id="preview-count" class="preview-count"></span>
         <span class="spacer"></span>
         <button class="btn danger" id="btn-delete-item" hidden>Delete</button>
-        <button class="btn btn-primary" id="btn-save-item">Save</button>
+        <button class="btn btn-primary" id="btn-wiz-next">Next ›</button>
+        <button class="btn btn-primary" id="btn-save-item" hidden>Save</button>
       </div>
     </div>
   </div>

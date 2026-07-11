@@ -29,10 +29,73 @@ const Builder = {
     this._wire();
   },
 
+  step: 0,
+  LAST_STEP: 3,
+
+  showStep(n) {
+    this.step = Math.max(0, Math.min(this.LAST_STEP, n));
+    for (const s of document.querySelectorAll(".wiz-step"))
+      s.hidden = +s.dataset.step !== this.step;
+    for (const b of el("wiz-nav").querySelectorAll("button"))
+      b.classList.toggle("active", +b.dataset.step === this.step);
+    el("btn-wiz-back").disabled = this.step === 0;
+    el("btn-wiz-next").hidden = this.step === this.LAST_STEP;
+    el("btn-save-item").hidden = this.step !== this.LAST_STEP;
+    if (this.step === this.LAST_STEP) this._renderSummary();
+    if (this.step === 1 && this.map && !el("builder-map").hidden)
+      setTimeout(() => this.map.invalidateSize(), 60);
+  },
+
+  _renderSummary() {
+    const { name, criteria: c, sort } = this.collect();
+    const lines = [];
+    const names = (c.countries || []).map(iso => COUNTRY_NAMES.get(iso) || iso);
+    if (c.query) lines.push(["Query", c.query]);
+    if (c.keywords.length) lines.push(["Keywords (any)", c.keywords.join(", ")]);
+    if (c.exclude_keywords.length) lines.push(["Excluding", c.exclude_keywords.join(", ")]);
+    if (names.length) lines.push(["Countries", names.join(", ")]);
+    if (c.geo) lines.push(["Map area", c.geo.type === "Circle"
+      ? `circle, ${c.geo.radius_km.toFixed(0)} km radius` : "drawn shape"]);
+    if (c.categories.length) lines.push(["Categories", c.categories.join(", ")]);
+    if (c.scopes.length) lines.push(["Scope", c.scopes.join(", ")]);
+    if (c.platforms.length) lines.push(["Platforms", c.platforms.join(", ")]);
+    if (c.languages.length) lines.push(["Languages", c.languages.join(", ")]);
+    if (c.min_importance) lines.push(["Importance", `≥ ${c.min_importance} (${impTier(c.min_importance).label}+)`]);
+    if (c.hours) lines.push(["Recency", `last ${c.hours}h`]);
+    if (c.source_ids.length) lines.push(["Sources", `${c.source_ids.length} selected`]);
+    if ((c.query || c.keywords.length) && c.auto_coverage)
+      lines.push(["Coverage", "ingesting worldwide press for this topic"]);
+    const box = el("wiz-summary");
+    box.innerHTML = "";
+    const h = document.createElement("div");
+    h.className = "wiz-summary-name";
+    h.textContent = `${this.mode === "alert" ? "🔔" : "📋"} ${name}`;
+    box.appendChild(h);
+    if (!lines.length) {
+      const p = document.createElement("div");
+      p.className = "wiz-summary-row";
+      p.textContent = "No filters — matches all ingested news, sorted by " + sort + ".";
+      box.appendChild(p);
+    }
+    for (const [k, v] of lines) {
+      const row = document.createElement("div");
+      row.className = "wiz-summary-row";
+      const key = document.createElement("b"); key.textContent = k + ": ";
+      row.append(key, document.createTextNode(v));
+      box.appendChild(row);
+    }
+  },
+
   _wire() {
     if (this._wired) return;
     this._wired = true;
     el("btn-close-builder").onclick = () => this.close();
+    el("btn-wiz-back").onclick = () => this.showStep(this.step - 1);
+    el("btn-wiz-next").onclick = () => this.showStep(this.step + 1);
+    el("wiz-nav").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-step]");
+      if (b) this.showStep(+b.dataset.step);
+    });
     el("modal-backdrop").addEventListener("mousedown", (e) => {
       if (e.target === el("modal-backdrop")) this.close();
     });
@@ -104,6 +167,7 @@ const Builder = {
     el("builder-map").hidden = true;
     el("btn-toggle-map").textContent = "Draw area on map";
     this.setGeo(c.geo || null, /*renderOnly*/ true);
+    this.showStep(0);
     el("modal-backdrop").hidden = false;
   },
 

@@ -4,6 +4,18 @@ let SOURCES = [];
 let FEEDS = [];
 let ALERTS = [];
 let COUNTRY_NAMES = new Map();
+let VIEW = localStorage.getItem("gnd_view") || "home";  // "home" | "mine"
+
+/* Delphi-curated Home columns, generated live from the shared corpus. */
+const DELPHI_FEEDS = [
+  { home: "top", name: "🌍 Top events worldwide", criteria: { min_importance: 55 }, sort: "importance", group_events: true },
+  { home: "breaking", name: "⚡ Breaking now", criteria: { hours: 6, min_importance: 40 }, sort: "importance" },
+  { home: "conflict", name: "Conflict & disasters", criteria: { categories: ["conflict", "disaster"] }, sort: "newest", group_events: true },
+  { home: "politics", name: "Politics & diplomacy", criteria: { categories: ["politics"] }, sort: "newest" },
+  { home: "business", name: "Business & economy", criteria: { categories: ["business", "economy"] }, sort: "newest" },
+  { home: "scitech", name: "Science & technology", criteria: { categories: ["science", "technology"] }, sort: "newest" },
+  { home: "social", name: "💬 Social pulse", criteria: { platforms: ["reddit", "mastodon", "bluesky", "youtube"] }, sort: "newest" },
+];
 
 async function boot() {
   [META, SOURCES] = await Promise.all([API.meta(), API.sources()]);
@@ -11,7 +23,10 @@ async function boot() {
   Builder.init(META, SOURCES);
   Builder.onSaved = async (mode) => {
     if (mode === "alert") await refreshAlerts();
-    else await refreshFeeds();
+    else {
+      FEEDS = await API.feeds();
+      setView("mine");  // show the user what they just created/edited
+    }
   };
   wireTopbar();
   renderStats();
@@ -28,7 +43,35 @@ async function boot() {
   }
 }
 
+function setView(view) {
+  VIEW = view;
+  localStorage.setItem("gnd_view", view);
+  el("btn-view-home").classList.toggle("active", view === "home");
+  el("btn-view-mine").classList.toggle("active", view === "mine");
+  renderBoard();
+}
+
+async function renderBoard() {
+  const board = el("board");
+  const searchCol = el("search-col");
+  board.innerHTML = "";
+  if (searchCol) board.appendChild(searchCol);
+  if (VIEW === "home") {
+    el("empty-state").hidden = true;
+    for (const hf of DELPHI_FEEDS) board.appendChild(feedColumn(hf, /*readonly*/ true));
+    await Promise.all(DELPHI_FEEDS.map(f => loadFeedArticles(f)));
+  } else {
+    el("empty-state").hidden = FEEDS.length > 0;
+    for (const feed of FEEDS) board.appendChild(feedColumn(feed));
+    await Promise.all(FEEDS.map(f => loadFeedArticles(f)));
+  }
+}
+
 function wireTopbar() {
+  el("btn-view-home").onclick = () => setView("home");
+  el("btn-view-mine").onclick = () => setView("mine");
+  el("btn-view-home").classList.toggle("active", VIEW === "home");
+  el("btn-view-mine").classList.toggle("active", VIEW === "mine");
   // Reading-language picker: articles in other languages are translated
   // automatically into this language (defaults to the browser language).
   const sel = el("lang-select");
@@ -213,19 +256,13 @@ function renderStats(meta) {
 /* ---------- feed board ---------- */
 async function refreshFeeds() {
   FEEDS = await API.feeds();
-  const board = el("board");
-  const searchCol = el("search-col");
-  board.innerHTML = "";
-  if (searchCol) board.appendChild(searchCol);
-  el("empty-state").hidden = FEEDS.length > 0;
-  for (const feed of FEEDS) board.appendChild(feedColumn(feed));
-  await Promise.all(FEEDS.map(loadFeedArticles));
+  await renderBoard();
 }
 
-function feedColumn(feed) {
+function feedColumn(feed, readonly = false) {
   const col = document.createElement("section");
   col.className = "feed-col" + (feed.width > 1 ? " wide" : "");
-  col.id = "feed-" + feed.id;
+  col.id = "feed-" + (feed.id ?? feed.home);
 
   const head = document.createElement("div");
   head.className = "feed-head";
@@ -236,12 +273,21 @@ function feedColumn(feed) {
   h.title = feed.name;
   const tools = document.createElement("div");
   tools.className = "feed-tools";
-  tools.append(
-    toolBtn("◀", "Move left", () => moveFeed(feed.id, -1)),
-    toolBtn("▶", "Move right", () => moveFeed(feed.id, +1)),
-    toolBtn("⇔", "Toggle width", () => toggleWidth(feed)),
-    toolBtn("✎", "Edit feed", () => Builder.open("feed", feed)),
-  );
+  if (readonly) {
+    tools.append(toolBtn("📌", "Add a copy to My feeds (editable)", async () => {
+      await API.createFeed({ name: feed.name.replace(/^[^\w]*\s*/, ""), criteria: feed.criteria,
+                             sort: feed.sort, group_events: !!feed.group_events });
+      FEEDS = await API.feeds();
+      toast("Added to My feeds", `“${feed.name}” is now yours to edit.`);
+    }));
+  } else {
+    tools.append(
+      toolBtn("◀", "Move left", () => moveFeed(feed.id, -1)),
+      toolBtn("▶", "Move right", () => moveFeed(feed.id, +1)),
+      toolBtn("⇔", "Toggle width", () => toggleWidth(feed)),
+      toolBtn("✎", "Edit feed", () => Builder.open("feed", feed)),
+    );
+  }
   row.append(h, tools);
   head.appendChild(row);
   const badges = document.createElement("div");
@@ -310,10 +356,17 @@ function toolBtn(txt, title, fn) {
 }
 
 async function loadFeedArticles(feed) {
-  const body = document.querySelector(`#feed-${feed.id} .feed-body`);
+  const body = document.querySelector(`#feed-${feed.id ?? feed.home} .feed-body`);
   if (!body) return;
   try {
-    const items = feed.group_events ? await API.feedEvents(feed.id) : await API.feedArticles(feed.id);
+    let items;
+    if (feed.home) {  // Delphi-generated Home column: ad-hoc criteria search
+      items = feed.group_events
+        ? await API.searchGrouped(feed.criteria, feed.sort)
+        : await API.search(feed.criteria, feed.sort, 40);
+    } else {
+      items = feed.group_events ? await API.feedEvents(feed.id) : await API.feedArticles(feed.id);
+    }
     body.innerHTML = "";
     if (!items.length) {
       body.innerHTML = '<div class="feed-empty">No matching articles yet. ' +
@@ -654,7 +707,8 @@ function connectStream() {
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(async () => {
         renderStats(await API.meta());
-        await Promise.all(FEEDS.map(loadFeedArticles));
+        const visible = VIEW === "home" ? DELPHI_FEEDS : FEEDS;
+        await Promise.all(visible.map(loadFeedArticles));
       }, 1500);
     } else if (msg.type === "alert" && msg.user_id === Session.userKey()) {
       const t = impTier(msg.importance);
