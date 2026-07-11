@@ -11,7 +11,9 @@ import calendar
 import logging
 import os
 import re
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 import feedparser
 import httpx
@@ -31,8 +33,18 @@ FETCH_INTERVAL = int(os.environ.get("NEWS_FETCH_INTERVAL", "300"))
 FETCH_TIMEOUT = float(os.environ.get("NEWS_FETCH_TIMEOUT", "20"))
 CONCURRENCY = int(os.environ.get("NEWS_FETCH_CONCURRENCY", "10"))
 USER_AGENT = "Delphi/1.0 (+RSS reader; respects robots and publisher feeds)"
+# Some CDNs 403 any unknown agent while happily serving browsers the same
+# public syndication feed; retry once with a browser UA before giving up.
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+ACCEPT = "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8"
 
 status: dict = {"running": False, "last_run": None, "last_new_articles": 0, "cycles": 0}
+
+# source_id -> don't poll again before this time (set on HTTP 429)
+_backoff_until: dict[int, datetime] = {}
+# Only one ingest cycle at a time; the API returns "busy" instead of racing.
+cycle_lock = asyncio.Lock()
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
@@ -66,12 +78,32 @@ def _entry_image(entry) -> str:
 
 
 async def fetch_source(client: httpx.AsyncClient, source: Source) -> tuple[Source, list, str]:
+    until = _backoff_until.get(source.id)
+    if until and utcnow() < until:
+        return source, [], f"rate-limited; retrying after {until:%H:%M} UTC"
     try:
-        resp = await client.get(source.rss_url, headers={"User-Agent": USER_AGENT})
+        resp = await client.get(source.rss_url,
+                                headers={"User-Agent": USER_AGENT, "Accept": ACCEPT})
+        if resp.status_code == 403:
+            resp = await client.get(source.rss_url,
+                                    headers={"User-Agent": BROWSER_UA, "Accept": ACCEPT})
+        if resp.status_code == 429:
+            try:
+                retry_after = int(resp.headers.get("Retry-After", "0"))
+            except ValueError:
+                retry_after = 0
+            delay = min(max(retry_after, 900), 3600)
+            _backoff_until[source.id] = utcnow() + timedelta(seconds=delay)
+            return source, [], f"error: 429 rate-limited (backing off {delay // 60} min)"
         resp.raise_for_status()
+        _backoff_until.pop(source.id, None)
+
+        head = resp.content[:400].lstrip().lower()
+        if head.startswith(b"<!doctype html") or head.startswith(b"<html"):
+            return source, [], "error: not a feed — URL returns an HTML page (edit the URL in Sources)"
         parsed = feedparser.parse(resp.content)
         if parsed.bozo and not parsed.entries:
-            return source, [], f"parse error: {parsed.get('bozo_exception', 'unknown')}"
+            return source, [], f"parse error: {parsed.get('bozo_exception', 'unknown')}"[:200]
         return source, parsed.entries, "ok"
     except Exception as exc:  # network errors must never kill the cycle
         return source, [], f"error: {type(exc).__name__}: {exc}"[:200]
@@ -177,16 +209,36 @@ def evaluate_alerts(db, new_articles: list[Article]) -> list[dict]:
 
 
 async def run_ingest_cycle() -> dict:
-    """One full poll of all enabled sources. Returns cycle stats."""
+    """One full poll of all enabled sources. Returns cycle stats.
+
+    Serialized by cycle_lock — a manual refresh during the scheduled poll
+    waits instead of racing it (double inserts, spurious per-source errors).
+    """
+    async with cycle_lock:
+        return await _run_ingest_cycle_locked()
+
+
+async def _run_ingest_cycle_locked() -> dict:
     db = SessionLocal()
     try:
         sources = db.scalars(select(Source).where(Source.enabled.is_(True))).all()
         recent = _recent_clusters(db)
 
         sem = asyncio.Semaphore(CONCURRENCY)
+        # Serialize + space out requests to hosts that serve several of our
+        # feeds (reddit.com, news.google.com…): they rate-limit per IP.
+        host_counts = Counter(urlparse(s.rss_url).netloc for s in sources)
+        host_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+
         async with httpx.AsyncClient(timeout=FETCH_TIMEOUT, follow_redirects=True) as client:
             async def bounded(source):
+                host = urlparse(source.rss_url).netloc
                 async with sem:
+                    if host_counts[host] > 1:
+                        async with host_locks[host]:
+                            result = await fetch_source(client, source)
+                            await asyncio.sleep(1.0)  # politeness gap per host
+                            return result
                     return await fetch_source(client, source)
             results = await asyncio.gather(*(bounded(s) for s in sources))
 

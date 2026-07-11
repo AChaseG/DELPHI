@@ -56,7 +56,9 @@ function wireTopbar() {
       toast("Ingest complete", `${r.new_articles} new articles (${r.sources_ok}/${r.sources_total} sources ok)`);
       renderStats(await API.meta());
       await refreshFeeds();
-    } catch (e) { toast("Refresh failed", e.message); }
+    } catch (e) {
+      toast(e.message.includes("already running") ? "Refresh" : "Refresh failed", e.message);
+    }
     el("btn-refresh").disabled = false;
   };
   el("btn-alerts-panel").onclick = () => { el("alerts-panel").hidden = false; renderAlertsPanel(); };

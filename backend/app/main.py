@@ -473,6 +473,9 @@ def mark_alert_seen(alert_id: int, user_id: str = Depends(user_id_header),
 
 @app.post("/api/ingest/run")
 async def ingest_run():
+    if ingest.cycle_lock.locked():
+        raise HTTPException(
+            409, "A poll cycle is already running — new articles will appear when it finishes.")
     try:
         return await ingest.run_ingest_cycle()
     except Exception as exc:
