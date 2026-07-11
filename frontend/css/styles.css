@@ -471,11 +471,15 @@ button { font: inherit; }
 .ev-related-row:hover { background: var(--surface-2); }
 .ev-related-title { flex: 1; }
 
-.event-actions { padding: 0 12px 6px; }
-.event-focus-btn {
-  background: none; border: none; cursor: pointer;
-  color: var(--accent); font-size: 11.5px; padding: 0;
+.event-clickable { cursor: pointer; }
+.event-clickable:hover { background: var(--surface-2); }
+.event-clickable .article:hover { background: transparent; }
+.event-open-hint {
+  padding: 0 12px 8px;
+  font-size: 11.5px; color: var(--accent);
 }
+.chip-link { cursor: pointer; }
+.chip-link:hover { border-color: var(--accent); color: var(--ink); }
 
 /* ---------- sign-in gate ---------- */
 .gate {

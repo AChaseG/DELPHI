@@ -527,30 +527,21 @@ async function loadFeedArticles(feed) {
 function eventGroup(g) {
   const wrap = document.createElement("div");
   wrap.className = "event-group";
-  wrap.appendChild(articleRow(g.articles[0]));
-  const actions = document.createElement("div");
-  actions.className = "event-actions";
-  if (g.event_id) {
-    const focus = document.createElement("button");
-    focus.className = "event-focus-btn";
-    focus.textContent = "⤢ Event focus";
-    focus.title = "Summary, timeline, sources, map, and related events";
-    focus.onclick = () => openEventFocus(g.event_id);
-    actions.appendChild(focus);
+  if (!g.event_id) {           // unclustered stray: behave like a plain article
+    wrap.appendChild(articleRow(g.articles[0]));
+    return wrap;
   }
-  if (g.articles.length > 1) {
-    const det = document.createElement("details");
-    det.className = "event-timeline";
-    const sum = document.createElement("summary");
-    const srcs = g.source_count > 1 ? `${g.source_count} sources` : "1 source";
-    sum.textContent = `🧵 ${g.total_count} reports · ${srcs} — show timeline`;
-    det.appendChild(sum);
-    for (const a of g.articles.slice(1)) det.appendChild(articleRow(a));
-    wrap.appendChild(actions);
-    wrap.appendChild(det);
-  } else if (actions.childElementCount) {
-    wrap.appendChild(actions);
-  }
+  // Selecting the event opens Event Focus; article links live inside it.
+  wrap.classList.add("event-clickable");
+  wrap.setAttribute("role", "button");
+  wrap.title = "Open event: summary, timeline, sources, map, related events";
+  wrap.appendChild(articleRow(g.articles[0], /*plain*/ true));
+  const meta = document.createElement("div");
+  meta.className = "event-open-hint";
+  const srcs = g.source_count > 1 ? `${g.source_count} sources` : "1 source";
+  meta.textContent = `🧵 ${g.total_count} report${g.total_count > 1 ? "s" : ""} · ${srcs} — open event ⤢`;
+  wrap.appendChild(meta);
+  wrap.onclick = () => openEventFocus(g.event_id);
   return wrap;
 }
 
@@ -595,12 +586,21 @@ async function openEventFocus(eventId) {
   el("ev-count").textContent = `— ${d.articles.length} update${d.articles.length > 1 ? "s" : ""}, newest first`;
   for (const a of d.articles) tl.appendChild(articleRow(a));
 
+  // Each outlet chip links to that outlet's report of this event.
   const src = el("ev-sources");
   src.innerHTML = "";
+  const articleBySource = new Map();
+  for (const a of d.articles)
+    if (a.source && !articleBySource.has(a.source.id)) articleBySource.set(a.source.id, a);
   for (const s of d.sources) {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.textContent = `${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name}`;
+    const chip = document.createElement("a");
+    chip.className = "chip chip-link";
+    chip.textContent = `${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name} ↗`;
+    const article = articleBySource.get(s.id);
+    if (article) {
+      chip.href = article.url; chip.target = "_blank"; chip.rel = "noopener";
+      chip.title = article.title;
+    }
     src.appendChild(chip);
   }
 
@@ -661,11 +661,12 @@ function renderEventMap(d) {
   }, 80);
 }
 
-function articleRow(a) {
+function articleRow(a, plain = false) {
   const t = impTier(a.importance);
-  const row = document.createElement("a");
+  // plain=true renders a non-navigating row (used inside clickable event cards)
+  const row = document.createElement(plain ? "div" : "a");
   row.className = "article";
-  row.href = a.url; row.target = "_blank"; row.rel = "noopener";
+  if (!plain) { row.href = a.url; row.target = "_blank"; row.rel = "noopener"; }
 
   const title = document.createElement("div");
   title.className = "title"; title.textContent = a.title;
