@@ -287,31 +287,78 @@ function wireAuth() {
 
 function wireGate() {
   const st = el("auth-status");
-  el("gate-to-register").onclick = (e) => {
-    e.preventDefault(); st.textContent = "";
-    el("gate-signin").hidden = true; el("gate-register").hidden = false;
-    el("reg-username").focus();
+  const say = (msg, ok = false) => {
+    st.textContent = msg;
+    st.className = "query-status " + (ok ? "ok" : "err");
   };
-  el("gate-to-signin").onclick = (e) => {
-    e.preventDefault(); st.textContent = "";
-    el("gate-register").hidden = true; el("gate-signin").hidden = false;
-    el("auth-username").focus();
+  const show = (pane) => {
+    for (const id of ["gate-signin", "gate-register", "gate-forgot", "gate-reset"])
+      el(id).hidden = id !== pane;
   };
+  el("gate-to-register").onclick = (e) => { e.preventDefault(); say(""); show("gate-register"); el("reg-username").focus(); };
+  el("gate-to-signin").onclick = (e) => { e.preventDefault(); say(""); show("gate-signin"); el("auth-username").focus(); };
+  el("gate-to-forgot").onclick = (e) => { e.preventDefault(); say(""); show("gate-forgot"); el("forgot-email").focus(); };
+  el("gate-forgot-back").onclick = (e) => { e.preventDefault(); say(""); show("gate-signin"); };
+
   const finish = async (r) => {
     Session.set(r.token, r.username, r.user_key);
     try { await API.claim(); } catch (e) { /* nothing to migrate */ }
-    location.reload();
+    location.replace(location.pathname);  // drop any action params, reload
   };
   el("btn-login").onclick = async () => {
-    try { await finish(await API.login(el("auth-username").value.trim(), el("auth-password").value)); }
-    catch (e) { st.textContent = e.message; }
+    const ident = el("auth-username").value.trim();
+    try { await finish(await API.login(ident, el("auth-password").value)); }
+    catch (e) {
+      if (e.message.startsWith("unverified")) {
+        say("Your email isn't verified yet — check your inbox. ");
+        const a = document.createElement("a");
+        a.href = "#"; a.textContent = "Resend the link";
+        a.onclick = async (ev) => {
+          ev.preventDefault();
+          await API.resendVerification(ident).catch(() => {});
+          say("Verification email sent again — check your inbox.", true);
+        };
+        st.appendChild(a);
+      } else say(e.message);
+    }
   };
   el("btn-register").onclick = async () => {
     try {
-      await finish(await API.register(
-        el("reg-username").value.trim(), el("reg-email").value.trim(), el("reg-password").value));
-    } catch (e) { st.textContent = e.message; }
+      const r = await API.register(
+        el("reg-username").value.trim(), el("reg-email").value.trim(), el("reg-password").value);
+      if (r.token) return finish(r);            // self-host mode: no mail configured
+      show("gate-signin");                      // verification required
+      say(`Almost there — we emailed a verification link to ${r.email}. Click it, then sign in.`, true);
+    } catch (e) { say(e.message); }
   };
+  el("btn-forgot").onclick = async () => {
+    const r = await API.forgotPassword(el("forgot-email").value.trim()).catch(() => ({}));
+    show("gate-signin");
+    say(r.mail_enabled === false
+      ? "Email isn't configured on this server — ask the administrator to reset your password."
+      : "If that address has an account, a reset link is on its way.", true);
+  };
+
+  // Action links from emails land here as URL parameters.
+  const params = new URLSearchParams(location.search);
+  if (params.get("verify")) {
+    API.verifyEmail(params.get("verify"))
+      .then(r => say(`Email verified — welcome, ${r.username}! Sign in below.`, true))
+      .catch(e => say(e.message));
+    history.replaceState(null, "", location.pathname);
+  } else if (params.get("reset")) {
+    show("gate-reset");
+    const token = params.get("reset");
+    el("btn-reset").onclick = async () => {
+      try {
+        const r = await API.resetPassword(token, el("reset-password").value);
+        show("gate-signin");
+        say(`Password updated, ${r.username} — sign in with it below.`, true);
+        history.replaceState(null, "", location.pathname);
+      } catch (e) { say(e.message); }
+    };
+  }
+
   el("auth-password").addEventListener("keydown", (e) => { if (e.key === "Enter") el("btn-login").click(); });
   el("reg-password").addEventListener("keydown", (e) => { if (e.key === "Enter") el("btn-register").click(); });
   el("auth-username").focus();

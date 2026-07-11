@@ -59,6 +59,30 @@ def make_token(user_id: int) -> str:
     return f"{payload_b64}.{sig}"
 
 
+def make_scoped_token(purpose: str, user_id: int, ttl_seconds: int) -> str:
+    """One-purpose token (email verification, password reset) — cannot be
+    used as a session token and vice versa."""
+    payload = f"{purpose}:{user_id}:{int(time.time()) + ttl_seconds}"
+    payload_b64 = base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+    sig = hmac.new(_secret(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{sig}"
+
+
+def parse_scoped_token(purpose: str, token: str) -> int | None:
+    try:
+        payload_b64, sig = token.split(".", 1)
+        expected = hmac.new(_secret(), payload_b64.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+        got_purpose, user_id_str, expiry_str = base64.urlsafe_b64decode(padded).decode().split(":", 2)
+        if got_purpose != purpose or int(expiry_str) < time.time():
+            return None
+        return int(user_id_str)
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_token(token: str) -> int | None:
     """Return the user id for a valid, unexpired token; None otherwise."""
     try:

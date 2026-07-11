@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 import re as _username_re
 
-from . import auth, ingest, translate
+from . import auth, ingest, mailer, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_demo_articles, seed_sources
 from .clustering import assign_events, rebuild_events
@@ -41,7 +41,8 @@ def _ensure_schema():
         "articles": {"event_id": "INTEGER"},
         "feeds": {"group_events": "BOOLEAN DEFAULT 0"},
         "sources": {"platform": "VARCHAR(20) DEFAULT 'news'"},
-        "users": {"email": "VARCHAR(200) DEFAULT ''"},
+        "users": {"email": "VARCHAR(200) DEFAULT ''",
+                  "email_verified": "BOOLEAN DEFAULT 0"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -178,8 +179,16 @@ _USERNAME_RE = _username_re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
 _EMAIL_RE = _username_re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 
 
+def _action_link(request: Request, param: str, token: str) -> str:
+    """Absolute link to the app carrying an action token, respecting the
+    forwarding proxy (Codespaces, reverse proxies) for scheme/host."""
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.headers.get("host", "localhost"))
+    return f"{proto}://{host}/?{param}={token}"
+
+
 @app.post("/api/auth/register", status_code=201)
-def register(body: dict, db: Session = Depends(get_db)):
+def register(body: dict, request: Request, db: Session = Depends(get_db)):
     username = (body.get("username") or "").strip().lower()
     email = (body.get("email") or "").strip().lower()
     password = body.get("password") or ""
@@ -193,9 +202,15 @@ def register(body: dict, db: Session = Depends(get_db)):
         raise HTTPException(409, "That username is taken")
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, "An account with that email already exists")
-    user = User(username=username, email=email, password_hash=auth.hash_password(password))
+    user = User(username=username, email=email, password_hash=auth.hash_password(password),
+                email_verified=not mailer.enabled())  # self-host mode: auto-verify
     db.add(user)
     db.commit()
+    if mailer.enabled():
+        link = _action_link(request, "verify",
+                            auth.make_scoped_token("verify", user.id, 48 * 3600))
+        mailer.send_verification(email, username, link)
+        return {"verification_sent": True, "username": username, "email": email}
     return {"token": auth.make_token(user.id), "username": username,
             "email": email, "user_key": f"acct:{user.id}"}
 
@@ -207,8 +222,60 @@ def login(body: dict, db: Session = Depends(get_db)):
         or_(User.username == ident, User.email == ident)))
     if not user or not auth.verify_password(body.get("password") or "", user.password_hash):
         raise HTTPException(401, "Wrong username/email or password")
+    if mailer.enabled() and not user.email_verified:
+        raise HTTPException(403, "unverified: check your inbox for the verification link")
     return {"token": auth.make_token(user.id), "username": user.username,
             "email": user.email, "user_key": f"acct:{user.id}"}
+
+
+@app.get("/api/auth/verify")
+def verify_email(token: str = Query(default=""), db: Session = Depends(get_db)):
+    uid = auth.parse_scoped_token("verify", token)
+    user = db.get(User, uid) if uid else None
+    if not user:
+        raise HTTPException(400, "This verification link is invalid or has expired")
+    user.email_verified = True
+    db.commit()
+    return {"ok": True, "username": user.username}
+
+
+@app.post("/api/auth/resend-verification")
+def resend_verification(body: dict, request: Request, db: Session = Depends(get_db)):
+    """Always answers 200 — no account enumeration."""
+    ident = (body.get("username") or "").strip().lower()
+    user = db.scalar(select(User).where(or_(User.username == ident, User.email == ident)))
+    if user and not user.email_verified and mailer.enabled():
+        link = _action_link(request, "verify",
+                            auth.make_scoped_token("verify", user.id, 48 * 3600))
+        mailer.send_verification(user.email, user.username, link)
+    return {"ok": True}
+
+
+@app.post("/api/auth/forgot")
+def forgot_password(body: dict, request: Request, db: Session = Depends(get_db)):
+    """Always answers 200 — no account enumeration."""
+    email = (body.get("email") or "").strip().lower()
+    user = db.scalar(select(User).where(User.email == email))
+    if user and mailer.enabled():
+        link = _action_link(request, "reset",
+                            auth.make_scoped_token("reset", user.id, 3600))
+        mailer.send_password_reset(user.email, user.username, link)
+    return {"ok": True, "mail_enabled": mailer.enabled()}
+
+
+@app.post("/api/auth/reset")
+def reset_password(body: dict, db: Session = Depends(get_db)):
+    uid = auth.parse_scoped_token("reset", body.get("token") or "")
+    user = db.get(User, uid) if uid else None
+    if not user:
+        raise HTTPException(400, "This reset link is invalid or has expired")
+    password = body.get("password") or ""
+    if len(password) < 8:
+        raise HTTPException(422, "Password must be at least 8 characters")
+    user.password_hash = auth.hash_password(password)
+    user.email_verified = True  # proving inbox access verifies the email too
+    db.commit()
+    return {"ok": True, "username": user.username}
 
 
 @app.get("/api/auth/me")

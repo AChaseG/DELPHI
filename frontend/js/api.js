@@ -120,4 +120,11 @@ const API = {
   login: (username, password) =>
     api("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   claim: () => api("/api/auth/claim", { method: "POST" }),
+  verifyEmail: (token) => api("/api/auth/verify?token=" + encodeURIComponent(token)),
+  resendVerification: (username) =>
+    api("/api/auth/resend-verification", { method: "POST", body: JSON.stringify({ username }) }),
+  forgotPassword: (email) =>
+    api("/api/auth/forgot", { method: "POST", body: JSON.stringify({ email }) }),
+  resetPassword: (token, password) =>
+    api("/api/auth/reset", { method: "POST", body: JSON.stringify({ token, password }) }),
 };

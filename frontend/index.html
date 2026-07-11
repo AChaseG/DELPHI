@@ -108,7 +108,21 @@
         <label class="field"><span>Password</span>
           <input id="auth-password" type="password" autocomplete="current-password"></label>
         <button class="btn btn-primary gate-btn" id="btn-login">Sign in</button>
-        <p class="gate-switch">No account? <a href="#" id="gate-to-register">Create one</a></p>
+        <p class="gate-switch">No account? <a href="#" id="gate-to-register">Create one</a>
+           · <a href="#" id="gate-to-forgot">Forgot password?</a></p>
+      </div>
+
+      <div id="gate-forgot" hidden>
+        <label class="field"><span>Account email address</span>
+          <input id="forgot-email" type="email" autocomplete="email"></label>
+        <button class="btn btn-primary gate-btn" id="btn-forgot">Send reset link</button>
+        <p class="gate-switch"><a href="#" id="gate-forgot-back">Back to sign in</a></p>
+      </div>
+
+      <div id="gate-reset" hidden>
+        <label class="field"><span>New password (min 8 characters)</span>
+          <input id="reset-password" type="password" autocomplete="new-password"></label>
+        <button class="btn btn-primary gate-btn" id="btn-reset">Set new password</button>
       </div>
 
       <div id="gate-register" hidden>

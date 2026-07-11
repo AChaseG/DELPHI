@@ -237,13 +237,18 @@ POST /api/demo/seed                offline sample articles
   (e.g. Georgia country vs. US state). Swappable for a proper NER geocoder later.
 - Importance is a transparent heuristic, not a black box — see `scoring.py`
   and tune the weights to taste.
-- Accounts are self-serve (anyone reaching the server can register with any
-  email — addresses are recorded but not yet verified by mail) and passwords
-  are PBKDF2-hashed with HMAC-signed session tokens (`NEWS_SECRET` env or an
-  auto-generated key beside the DB). Every API route except sign-in/register
-  requires a session. This is honest small-team auth — for hostile-internet
-  exposure, add email verification, login rate limiting, and a reverse proxy.
-  Sources and ingestion remain shared and editable by all users by design.
+- Accounts are self-serve; passwords are PBKDF2-hashed with HMAC-signed
+  session tokens (`NEWS_SECRET` env or an auto-generated key beside the DB).
+  Every API route except sign-in/register requires a session. **Email
+  verification and password reset** activate automatically when SMTP is
+  configured (`NEWS_SMTP_HOST/PORT/USER/PASS/FROM`, `NEWS_SMTP_TLS` =
+  starttls|ssl|none — works with Resend, Mailgun, SES, or any SMTP relay):
+  registration then emails a 48h verification link and sign-in is blocked
+  until it's clicked; "Forgot password?" emails a 1h reset link. Without
+  SMTP, accounts auto-verify (self-host mode) and would-be mails are logged.
+  For hostile-internet exposure, still add login rate limiting and a reverse
+  proxy. Sources and ingestion remain shared and editable by all users by
+  design.
 
 ## Roadmap ideas
 
