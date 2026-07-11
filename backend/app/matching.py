@@ -68,7 +68,9 @@ class CriteriaMatcher:
 
     def matches(self, article: Article, source: Source | None = None) -> bool:
         source = source or article.source
-        text = f"{article.title}\n{article.summary}"
+        # Full recall: criteria see the fetched article body, not just the
+        # headline and feed summary.
+        text = f"{article.title}\n{article.summary}\n{article.content or ''}"
 
         if self.since and article.published_at and article.published_at < self.since:
             return False

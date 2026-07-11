@@ -20,6 +20,7 @@ import httpx
 from sqlalchemy import select
 
 from .clustering import assign_events
+from .content import fetch_article_text
 from .database import SessionLocal
 from .events import broadcaster
 from .matching import CriteriaMatcher
@@ -40,6 +41,13 @@ BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 ACCEPT = "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8"
 
 status: dict = {"running": False, "last_run": None, "last_new_articles": 0, "cycles": 0}
+
+# Full-article content fetching (match criteria against the story body, not
+# just headline + feed summary). NEWS_CONTENT_FETCH=0 disables.
+CONTENT_FETCH = os.environ.get("NEWS_CONTENT_FETCH", "1") == "1"
+CONTENT_MAX_PER_CYCLE = int(os.environ.get("NEWS_CONTENT_MAX_PER_CYCLE", "150"))
+CONTENT_TIMEOUT = float(os.environ.get("NEWS_CONTENT_TIMEOUT", "10"))
+CONTENT_CONCURRENCY = int(os.environ.get("NEWS_CONTENT_CONCURRENCY", "8"))
 
 # source_id -> don't poll again before this time (set on HTTP 429)
 _backoff_until: dict[int, datetime] = {}
@@ -185,6 +193,37 @@ def process_entries(db, source: Source, entries: list, recent_clusters: list,
     return new_articles
 
 
+async def enrich_with_content(db, articles: list[Article], cap: int | None = None) -> int:
+    """Fetch article bodies (newest first, capped) and re-run the text-derived
+    enrichment — geotagging and categorization — over headline + summary +
+    body. Failures leave an article headline-matched, as before."""
+    todo = [a for a in articles if not a.content and a.url.startswith("http")]
+    todo.sort(key=lambda a: a.published_at or utcnow(), reverse=True)
+    todo = todo[:cap if cap is not None else CONTENT_MAX_PER_CYCLE]
+    if not todo:
+        return 0
+    sem = asyncio.Semaphore(CONTENT_CONCURRENCY)
+    async with httpx.AsyncClient(timeout=CONTENT_TIMEOUT, follow_redirects=True) as client:
+        async def one(article):
+            async with sem:
+                return article, await fetch_article_text(client, article.url)
+        results = await asyncio.gather(*(one(a) for a in todo))
+    fetched = 0
+    for article, text in results:
+        if not text:
+            continue
+        article.content = text
+        full = f"{article.title}\n{article.summary}\n{text}"
+        article.places = extract_places(full)
+        if article.places:
+            article.country = article.country or article.places[0]["country"]
+        source_cats = article.source.categories if article.source else []
+        article.categories = classify_categories(full, source_cats)  # title still weighted 2x
+        fetched += 1
+    db.commit()
+    return fetched
+
+
 def evaluate_alerts(db, new_articles: list[Article]) -> list[dict]:
     """Match new articles against every active alert; persist and return hits."""
     alerts = db.scalars(select(Alert).where(Alert.active.is_(True))).all()
@@ -263,6 +302,11 @@ async def _run_ingest_cycle_locked() -> dict:
                 log.exception("processing failed for source %s", source.name)
         db.commit()  # persist statuses; article ids are assigned for clustering/alerts
 
+        # Pull article bodies BEFORE alert evaluation so alerts see full text.
+        content_fetched = 0
+        if CONTENT_FETCH:
+            content_fetched = await enrich_with_content(db, all_new)
+
         new_events = assign_events(db, all_new)
         hits = evaluate_alerts(db, all_new)
         db.commit()
@@ -271,6 +315,7 @@ async def _run_ingest_cycle_locked() -> dict:
             "last_run": utcnow().isoformat(),
             "last_error": None,
             "last_new_events": new_events,
+            "last_content_fetched": content_fetched,
             "last_new_articles": len(all_new),
             "sources_ok": ok_sources,
             "sources_total": len(sources),
@@ -285,7 +330,7 @@ async def _run_ingest_cycle_locked() -> dict:
         log.info("ingest cycle: %d/%d sources ok, %d new articles, %d alert hits",
                  ok_sources, len(sources), len(all_new), len(hits))
         return {"new_articles": len(all_new), "new_events": new_events,
-                "alert_hits": len(hits),
+                "alert_hits": len(hits), "content_fetched": content_fetched,
                 "sources_ok": ok_sources, "sources_total": len(sources)}
     finally:
         db.close()

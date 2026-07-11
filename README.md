@@ -32,6 +32,10 @@ feeds**.
   into standard news categories, and given an **importance score (0–100)** that
   blends source reach, breaking-news signals, geographic breadth, and
   cross-source corroboration (similar headlines from distinct outlets).
+  **Full-text matching:** the article page itself is fetched and its body text
+  extracted, so feed criteria, alerts, geotagging, and categories see the whole
+  story — not just the headline and feed snippet. Backfill stored articles with
+  `POST /api/maintenance/fetch-content`.
 - **Accounts required.** The system opens on a sign-in page; an account
   (username + **email** + password, sessions via signed tokens) is required to
   access anything. Sign in with username or email from any browser or device.
@@ -178,6 +182,8 @@ polling and alerting, same as a codespace.)
 | `NEWS_FETCH_CONCURRENCY` | `10` | parallel source fetches |
 | `NEWS_DB_PATH` | `backend/data/news.db` | SQLite location |
 | `NEWS_DISABLE_INGEST` | unset | `1` disables the background poller |
+| `NEWS_CONTENT_FETCH` | `1` | fetch article bodies for full-text matching (`0` = headlines/summaries only) |
+| `NEWS_CONTENT_MAX_PER_CYCLE` | `150` | article pages fetched per ingest cycle |
 | `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
 | `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
 
@@ -228,9 +234,12 @@ POST /api/demo/seed                offline sample articles
 
 ## Notes & limits
 
-- **Respectful by design**: ingestion uses publishers' own RSS/Atom syndication
-  feeds (plus Google News RSS), not HTML scraping, with a modest poll interval
-  and an honest User-Agent. Review each publisher's terms before heavy use.
+- **Ingestion posture**: source discovery uses publishers' own RSS/Atom
+  syndication feeds (plus Google News RSS) on a modest poll interval. For
+  matching, D.E.L.P.H.I. additionally fetches each new article's page once and
+  extracts its text — like a feed reader's readability view — capped per cycle
+  (`NEWS_CONTENT_MAX_PER_CYCLE`, default 150) and disable-able with
+  `NEWS_CONTENT_FETCH=0`. Review publishers' terms before heavy use.
 - The catalog is a *seed*, not a census — some third-party feed URLs go stale;
   the Sources panel shows per-source health (`ok` / error) so dead ones are
   easy to spot, fix, or disable. Add more by editing

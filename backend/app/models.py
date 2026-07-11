@@ -81,6 +81,7 @@ class Article(Base):
     url: Mapped[str] = mapped_column(String(1000))
     title: Mapped[str] = mapped_column(Text)
     summary: Mapped[str] = mapped_column(Text, default="")
+    content: Mapped[str] = mapped_column(Text, default="")  # fetched article body text
     image_url: Mapped[str] = mapped_column(String(1000), default="")
     published_at: Mapped[datetime] = mapped_column(DateTime, index=True, default=utcnow)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

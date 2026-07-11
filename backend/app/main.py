@@ -38,7 +38,7 @@ DISABLE_INGEST = os.environ.get("NEWS_DISABLE_INGEST", "") == "1"
 def _ensure_schema():
     """Additive migrations for databases created by earlier versions."""
     wanted = {
-        "articles": {"event_id": "INTEGER"},
+        "articles": {"event_id": "INTEGER", "content": "TEXT DEFAULT ''"},
         "feeds": {"group_events": "BOOLEAN DEFAULT 0"},
         "sources": {"platform": "VARCHAR(20) DEFAULT 'news'"},
         "users": {"email": "VARCHAR(200) DEFAULT ''",
@@ -724,6 +724,25 @@ def demo_purge(db: Session = Depends(get_db)):
         event.article_count = counts.get(event.id, 0)
     db.commit()
     return removed
+
+
+@app.post("/api/maintenance/fetch-content")
+async def fetch_content_backfill(body: dict | None = None, db: Session = Depends(get_db)):
+    """Fetch article bodies for recent stored articles that don't have one yet
+    (feed criteria then match against full text). Use after upgrading, or to
+    deepen coverage of a busy window."""
+    from datetime import timedelta
+    body = body or {}
+    hours = float(body.get("hours", 48))
+    limit = min(int(body.get("limit", 300)), 1000)
+    candidates = db.scalars(
+        select(Article).where(
+            Article.content == "",
+            Article.published_at >= utcnow() - timedelta(hours=hours))
+        .order_by(Article.published_at.desc()).limit(limit)
+    ).all()
+    fetched = await ingest.enrich_with_content(db, candidates, cap=limit)
+    return {"candidates": len(candidates), "content_fetched": fetched}
 
 
 @app.post("/api/maintenance/reclassify")
