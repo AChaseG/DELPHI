@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 64">
+  <defs>
+    <linearGradient id="cyl" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#948c72"/>
+      <stop offset="0.10" stop-color="#b9b299"/>
+      <stop offset="0.32" stop-color="#f4f1e6"/>
+      <stop offset="0.55" stop-color="#dcd7c4"/>
+      <stop offset="0.85" stop-color="#b9b299"/>
+      <stop offset="1" stop-color="#948c72"/>
+    </linearGradient>
+    <linearGradient id="flute" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="rgba(0,0,0,0.50)"/>
+      <stop offset="0.25" stop-color="rgba(0,0,0,0.18)"/>
+      <stop offset="0.55" stop-color="rgba(255,255,255,0.10)"/>
+      <stop offset="0.80" stop-color="rgba(255,255,255,0.22)"/>
+      <stop offset="1" stop-color="rgba(0,0,0,0.30)"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f1e6"/>
+      <stop offset="0.45" stop-color="#dcd7c4"/>
+      <stop offset="1" stop-color="#948c72"/>
+    </linearGradient>
+    <linearGradient id="ringup" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#948c72"/>
+      <stop offset="0.5" stop-color="#dcd7c4"/>
+      <stop offset="1" stop-color="#f4f1e6"/>
+    </linearGradient>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"
+                    stitchTiles="stitch" result="n"/>
+      <feColorMatrix in="n" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.4 0.4 0.4 0 0"/>
+      <feComposite operator="in" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+  <!-- end of fluted shaft with apophyge flare -->
+  <g>
+    <rect x="6" y="0" width="96" height="26" fill="url(#cyl)"/>
+    <g transform="scale(0.888,1) translate(6.8,0)"><rect x="1" y="0" width="16" height="26" fill="url(#flute)"/>
+    <rect x="0" y="0" width="1.2" height="26" fill="rgba(255,255,255,0.16)"/>
+    <rect x="19" y="0" width="16" height="26" fill="url(#flute)"/>
+    <rect x="18" y="0" width="1.2" height="26" fill="rgba(255,255,255,0.16)"/>
+    <rect x="37" y="0" width="16" height="26" fill="url(#flute)"/>
+    <rect x="36" y="0" width="1.2" height="26" fill="rgba(255,255,255,0.16)"/>
+    <rect x="55" y="0" width="16" height="26" fill="url(#flute)"/>
+    <rect x="54" y="0" width="1.2" height="26" fill="rgba(255,255,255,0.16)"/>
+    <rect x="73" y="0" width="16" height="26" fill="url(#flute)"/>
+    <rect x="72" y="0" width="1.2" height="26" fill="rgba(255,255,255,0.16)"/>
+    <rect x="91" y="0" width="16" height="26" fill="url(#flute)"/>
+    <rect x="90" y="0" width="1.2" height="26" fill="rgba(255,255,255,0.16)"/>
+    <rect x="107" y="0" width="1" height="26" fill="rgba(0,0,0,0.4)"/></g>
+  </g>
+  <path d="M 6 26 C 6 30 2 32 0 34 L 108 34 C 106 32 102 30 102 26 Z" fill="url(#ringup)"/>
+  <!-- upper torus -->
+  <rect x="0" y="34" width="108" height="10" rx="5" fill="url(#ring)"/>
+  <rect x="4" y="35.5" width="100" height="2.5" rx="1" fill="rgba(255,255,255,0.65)"/>
+  <!-- scotia -->
+  <rect x="3" y="44" width="102" height="5" fill="#948c72"/>
+  <!-- lower torus -->
+  <rect x="0" y="49" width="108" height="8" rx="4" fill="url(#ring)"/>
+  <!-- plinth -->
+  <rect x="0" y="55" width="108" height="9" fill="url(#ringup)"/>
+  <rect x="0" y="55" width="108" height="1.5" fill="rgba(255,255,255,0.65)"/>
+  <rect x="0" y="0" width="108" height="64" filter="url(#grain)" opacity="0.05"/>
+</svg>
