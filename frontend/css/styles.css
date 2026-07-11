@@ -486,6 +486,7 @@ button { font: inherit; }
 .ev-related-row:hover { background: var(--surface-2); }
 .ev-related-title { flex: 1; }
 
+.article-focus { cursor: pointer; }
 .event-clickable { cursor: pointer; }
 .event-clickable:hover { background: var(--surface-2); }
 /* previously viewed events recede; hover brings them back for re-reading */

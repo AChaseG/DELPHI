@@ -107,13 +107,24 @@ def user_id_header(authorization: str = Header(default=""),
     return f"acct:{uid}"
 
 
-def _article_json(a: Article, tr: dict | None = None) -> dict:
+def _viewed_events(db: Session, user_id: str, articles: list[Article]) -> set[int]:
+    """Event ids among these articles that the user has opened in Event Focus."""
+    event_ids = {a.event_id for a in articles if a.event_id is not None}
+    if not user_id or not event_ids:
+        return set()
+    return set(db.scalars(select(ViewedEvent.event_id).where(
+        ViewedEvent.user_id == user_id, ViewedEvent.event_id.in_(event_ids))))
+
+
+def _article_json(a: Article, tr: dict | None = None,
+                  viewed: set[int] | None = None) -> dict:
     """Serialize an article; `tr` is a {article_id: {title, summary}} map of
     translations into the requester's language."""
     t = (tr or {}).get(a.id)
     return {
         "id": a.id,
         "event_id": a.event_id,
+        "viewed": a.event_id in (viewed or set()),
         "title": t["title"] if t else a.title,
         "summary": (t["summary"] if t else a.summary)[:400],
         "translated_from": a.language if t else None,
@@ -429,12 +440,14 @@ async def search_articles(
     sort: str = Query(default="newest"),
     limit: int = Query(default=50, le=200),
     lang: str = Query(default=""),
+    user_id: str = Depends(user_id_header),
     db: Session = Depends(get_db),
 ):
     """Ad-hoc search with a criteria object (used for feed preview and search bar)."""
     articles = query_articles(db, body.get("criteria", body), sort=sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
-    return [_article_json(a, tr) for a in articles]
+    viewed = _viewed_events(db, user_id, articles)
+    return [_article_json(a, tr, viewed) for a in articles]
 
 
 @app.post("/api/query/validate")
@@ -515,7 +528,8 @@ async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
     feed = _owned(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
-    return [_article_json(a, tr) for a in articles]
+    viewed = _viewed_events(db, user_id, articles)
+    return [_article_json(a, tr, viewed) for a in articles]
 
 
 async def _grouped_response(db: Session, articles: list[Article], lang: str, limit: int,

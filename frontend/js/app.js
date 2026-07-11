@@ -533,7 +533,7 @@ async function loadFeedArticles(feed) {
       return;
     }
     if (feed.group_events) for (const g of items) body.appendChild(eventGroup(g));
-    else for (const a of items) body.appendChild(articleRow(a));
+    else for (const a of items) body.appendChild(articleRow(a, "focus"));
   } catch (e) {
     body.innerHTML = `<div class="feed-empty">Failed to load: ${e.message}</div>`;
   }
@@ -552,7 +552,7 @@ function eventGroup(g) {
   if (g.viewed) wrap.classList.add("event-viewed");
   wrap.setAttribute("role", "button");
   wrap.title = "Open event: summary, timeline, sources, map, related events";
-  wrap.appendChild(articleRow(g.articles[0], /*plain*/ true));
+  wrap.appendChild(articleRow(g.articles[0], "plain"));
   const meta = document.createElement("div");
   meta.className = "event-open-hint";
   const srcs = g.source_count > 1 ? `${g.source_count} sources` : "1 source";
@@ -683,12 +683,23 @@ function renderEventMap(d) {
   }, 80);
 }
 
-function articleRow(a, plain = false) {
+function articleRow(a, mode = "link") {
+  // "link":  navigates to the article (alert hits, Event Focus timeline)
+  // "plain": inert row inside an already-clickable event card
+  // "focus": selecting the row opens Event Focus for its event
   const t = impTier(a.importance);
-  // plain=true renders a non-navigating row (used inside clickable event cards)
-  const row = document.createElement(plain ? "div" : "a");
+  if (mode === "focus" && !a.event_id) mode = "link";  // unclustered stray
+  const row = document.createElement(mode === "link" ? "a" : "div");
   row.className = "article";
-  if (!plain) { row.href = a.url; row.target = "_blank"; row.rel = "noopener"; }
+  if (mode === "link") { row.href = a.url; row.target = "_blank"; row.rel = "noopener"; }
+  if (mode === "focus") {
+    row.classList.add("article-focus");
+    row.dataset.eventId = a.event_id;
+    if (a.viewed) row.classList.add("event-viewed");
+    row.setAttribute("role", "button");
+    row.title = "Open event: summary, timeline, sources, map, related events";
+    row.onclick = () => openEventFocus(a.event_id);
+  }
 
   const title = document.createElement("div");
   title.className = "title"; title.textContent = a.title;
@@ -705,6 +716,7 @@ function articleRow(a, plain = false) {
   bits.push(timeAgo(a.published_at));
   if (a.translated_from) bits.push("🌐 translated from " + a.translated_from.toUpperCase());
   if ((a.categories || []).length) bits.push(a.categories.slice(0, 3).join(" · "));
+  if (mode === "focus") bits.push("⤢ event");
   const span = document.createElement("span");
   span.textContent = bits.join("  ·  ");
   meta.appendChild(span);
@@ -761,7 +773,7 @@ function renderSearchColumn(q, arts) {
   const body = document.createElement("div");
   body.className = "feed-body";
   if (!arts.length) body.innerHTML = '<div class="feed-empty">No matches.</div>';
-  for (const a of arts) body.appendChild(articleRow(a));
+  for (const a of arts) body.appendChild(articleRow(a, "focus"));
   col.append(head, body);
   el("board").prepend(col);
 }
