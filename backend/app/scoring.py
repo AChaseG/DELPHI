@@ -44,30 +44,44 @@ STANDARD_CATEGORIES = [
 
 _CATEGORY_HINTS: dict[str, list[str]] = {
     "politics": ["election", "parliament", "senate", "congress", "president",
-                 "minister", "policy", "vote", "campaign", "legislation", "government"],
+                 "minister", "policy", "vote", "campaign", "legislation", "government",
+                 "prime minister", "governor", "mayor", "coalition", "diplomat",
+                 "sanctions", "bill", "lawmakers", "opposition", "cabinet", "white house"],
     "business": ["company", "merger", "acquisition", "startup", "earnings",
-                 "revenue", "ipo", "shares", "stock", "profit", "ceo"],
+                 "revenue", "ipo", "shares", "stock", "profit", "ceo",
+                 "investors", "billion", "deal", "shareholders", "layoffs", "retailer"],
     "economy": ["inflation", "gdp", "recession", "central bank", "interest rate",
-                "unemployment", "economy", "trade deficit", "tariff"],
+                "unemployment", "economy", "trade deficit", "tariff",
+                "economic", "federal reserve", "jobs report", "consumer prices", "exports"],
     "technology": ["ai", "artificial intelligence", "software", "chip", "semiconductor",
-                   "smartphone", "cyber", "robot", "app", "internet", "data breach", "crypto"],
+                   "smartphone", "cyber", "robot", "app", "internet", "data breach", "crypto",
+                   "tech", "startup", "google", "apple", "microsoft", "meta", "hacker"],
     "science": ["research", "study finds", "scientists", "space", "nasa", "telescope",
-                "physics", "genome", "discovery", "quantum"],
+                "physics", "genome", "discovery", "quantum",
+                "researchers", "astronomers", "spacecraft", "fossil", "experiment"],
     "health": ["health", "hospital", "vaccine", "virus", "disease", "outbreak",
-               "cancer", "drug", "who", "epidemic", "mental health"],
+               "cancer", "drug", "who", "epidemic", "mental health",
+               "patients", "doctors", "fda", "medical", "surgery", "obesity"],
     "environment": ["climate", "emissions", "warming", "biodiversity", "pollution",
-                    "renewable", "deforestation", "carbon", "drought"],
+                    "renewable", "deforestation", "carbon", "drought",
+                    "wildlife", "conservation", "heatwave", "climate change", "solar", "wind farm"],
     "conflict": ["war", "military", "troops", "airstrike", "missile", "ceasefire",
-                 "invasion", "insurgent", "front line", "offensive"],
+                 "invasion", "insurgent", "front line", "offensive",
+                 "shelling", "drone strike", "hostilities", "armed group"],
     "disaster": ["earthquake", "flood", "hurricane", "wildfire", "tsunami", "typhoon",
-                 "eruption", "landslide", "storm", "evacuation"],
+                 "eruption", "landslide", "storm", "evacuation",
+                 "cyclone", "tornado", "avalanche", "heat wave"],
     "crime": ["police", "arrested", "murder", "fraud", "trafficking", "trial",
-              "sentenced", "theft", "shooting", "court"],
+              "sentenced", "theft", "shooting", "court",
+              "homicide", "kidnapping", "smuggling", "indictment", "manhunt"],
     "sports": ["match", "tournament", "league", "cup", "olympic", "championship",
-               "goal", "coach", "player", "fifa", "grand slam"],
+               "goal", "coach", "player", "fifa", "grand slam",
+               "season", "playoffs", "transfer", "medal", "grand prix"],
     "entertainment": ["film", "movie", "album", "celebrity", "box office", "netflix",
-                      "festival", "actor", "singer", "premiere"],
-    "culture": ["museum", "heritage", "art exhibition", "literature", "novel", "opera"],
+                      "festival", "actor", "singer", "premiere",
+                      "trailer", "hollywood", "series", "concert", "streaming"],
+    "culture": ["museum", "heritage", "art exhibition", "literature", "novel", "opera",
+                "gallery", "archaeologists", "unesco", "manuscript"],
 }
 
 _CATEGORY_RES = {
@@ -91,10 +105,19 @@ def breaking_signal(text: str) -> int:
 
 
 def classify_categories(text: str, source_categories: list[str] | None = None) -> list[str]:
+    """Assign standard categories from headline + summary keywords.
+
+    A hit in the headline (first line of `text`) counts double: headlines are
+    short and deliberate, so one strong keyword there is a reliable signal,
+    while body text needs corroboration. Many feeds ship little or no summary,
+    so requiring two hits overall would leave most articles category-less.
+    """
+    title, _, body = text.partition("\n")
     cats = set(c for c in (source_categories or []) if c in STANDARD_CATEGORIES)
     for cat, patterns in _CATEGORY_RES.items():
-        hits = sum(1 for p in patterns if p.search(text))
-        if hits >= 2 or (hits == 1 and cat in ("disaster", "conflict", "sports")):
+        score = sum(2 if p.search(title) else (1 if p.search(body) else 0)
+                    for p in patterns)
+        if score >= 2 or (score >= 1 and cat in ("disaster", "conflict", "sports")):
             cats.add(cat)
     if not cats:
         cats.add("world")

@@ -272,7 +272,8 @@ async function loadFeedArticles(feed) {
     body.innerHTML = "";
     if (!items.length) {
       body.innerHTML = '<div class="feed-empty">No matching articles yet. ' +
-        "Try widening the criteria, or hit ⟳ to poll sources.</div>";
+        "Open the feed (✎) and use <b>Preview matches</b> while removing one filter " +
+        "at a time to see which criterion is limiting it — or hit ⟳ to poll sources.</div>";
       return;
     }
     if (feed.group_events) for (const g of items) body.appendChild(eventGroup(g));

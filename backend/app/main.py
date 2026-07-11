@@ -25,7 +25,7 @@ from .geo import load_gazetteer
 from .matching import query_articles
 from .models import Alert, AlertEvent, Article, Event, Feed, Source, Translation, utcnow
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
-from .scoring import STANDARD_CATEGORIES
+from .scoring import STANDARD_CATEGORIES, classify_categories
 
 logging.basicConfig(level=logging.INFO)
 
@@ -535,6 +535,22 @@ def demo_purge(db: Session = Depends(get_db)):
         event.article_count = counts.get(event.id, 0)
     db.commit()
     return removed
+
+
+@app.post("/api/maintenance/reclassify")
+def reclassify_articles(db: Session = Depends(get_db)):
+    """Re-run the category classifier over every stored article (use after
+    classifier upgrades so old articles match category feeds too)."""
+    changed = total = 0
+    for article in db.scalars(select(Article)):
+        total += 1
+        source_cats = article.source.categories if article.source else []
+        new = classify_categories(f"{article.title}\n{article.summary}", source_cats)
+        if new != (article.categories or []):
+            article.categories = new
+            changed += 1
+    db.commit()
+    return {"articles": total, "reclassified": changed}
 
 
 @app.post("/api/events/rebuild")
