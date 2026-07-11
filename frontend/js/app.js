@@ -543,6 +543,8 @@ function eventGroup(g) {
   }
   // Selecting the event opens Event Focus; article links live inside it.
   wrap.classList.add("event-clickable");
+  wrap.dataset.eventId = g.event_id;
+  if (g.viewed) wrap.classList.add("event-viewed");
   wrap.setAttribute("role", "button");
   wrap.title = "Open event: summary, timeline, sources, map, related events";
   wrap.appendChild(articleRow(g.articles[0], /*plain*/ true));
@@ -559,6 +561,11 @@ function eventGroup(g) {
 let EVENT_MAP = null;
 
 async function openEventFocus(eventId) {
+  // Remember the view (per account) and dim every card of this event now.
+  API.markEventViewed(eventId).catch(() => {});
+  for (const card of document.querySelectorAll(`[data-event-id="${eventId}"]`))
+    card.classList.add("event-viewed");
+
   let d;
   try { d = await API.eventDetail(eventId); }
   catch (e) { toast("Could not load event", e.message); return; }

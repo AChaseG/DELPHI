@@ -98,6 +98,17 @@ class Article(Base):
     event = relationship("Event")
 
 
+class ViewedEvent(Base):
+    """Per-user record that an event was opened in Event Focus."""
+    __tablename__ = "viewed_events"
+    __table_args__ = (UniqueConstraint("user_id", "event_id", name="uq_viewed"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Translation(Base):
     """Cached machine translation of an article into one target language."""
     __tablename__ = "translations"

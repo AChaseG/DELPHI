@@ -98,6 +98,7 @@ const API = {
   feedArticles: (id) => api(`/api/feeds/${id}/articles?limit=40${langQS()}`),
   feedEvents: (id) => api(`/api/feeds/${id}/events?limit=30${langQS()}`),
   eventDetail: (id) => api(`/api/events/${id}?x=1${langQS()}`),
+  markEventViewed: (id) => api(`/api/events/${id}/viewed`, { method: "POST" }),
   rebuildEvents: () => api("/api/events/rebuild", { method: "POST" }),
 
   alerts: () => api("/api/alerts"),

@@ -488,6 +488,10 @@ button { font: inherit; }
 
 .event-clickable { cursor: pointer; }
 .event-clickable:hover { background: var(--surface-2); }
+/* previously viewed events recede; hover brings them back for re-reading */
+.event-viewed { opacity: 0.5; }
+.event-viewed:hover { opacity: 0.9; }
+.event-viewed .event-open-hint { color: var(--ink-muted); }
 .event-clickable .article:hover { background: transparent; }
 .event-open-hint {
   padding: 0 12px 8px;

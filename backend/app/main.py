@@ -25,7 +25,8 @@ from .database import Base, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer
 from .matching import query_articles
-from .models import Alert, AlertEvent, Article, Event, Feed, Source, Translation, User, utcnow
+from .models import (Alert, AlertEvent, Article, Event, Feed, Source, Translation,
+                     User, ViewedEvent, utcnow)
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
 from .scoring import STANDARD_CATEGORIES, classify_categories
 
@@ -517,7 +518,8 @@ async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
     return [_article_json(a, tr) for a in articles]
 
 
-async def _grouped_response(db: Session, articles: list[Article], lang: str, limit: int):
+async def _grouped_response(db: Session, articles: list[Article], lang: str, limit: int,
+                            user_id: str = ""):
     """Cluster a result list into event groups (feed's order preserved by each
     event's first matching article; articles without an event are singletons)."""
     groups: dict = {}
@@ -532,12 +534,19 @@ async def _grouped_response(db: Session, articles: list[Article], lang: str, lim
     shown = [a for key in order for a in groups[key][:6]]
     tr = await translate.translate_articles(db, shown, lang)
 
+    event_ids = [k for k in order if isinstance(k, int)]
+    viewed: set[int] = set()
+    if user_id and event_ids:
+        viewed = set(db.scalars(select(ViewedEvent.event_id).where(
+            ViewedEvent.user_id == user_id, ViewedEvent.event_id.in_(event_ids))))
+
     out = []
     for key in order:
         members = groups[key]
         event = members[0].event if members[0].event_id else None
         out.append({
             "event_id": members[0].event_id,
+            "viewed": members[0].event_id in viewed,
             "matched_count": len(members),
             "total_count": event.article_count if event else len(members),
             "source_count": len({a.source_id for a in members}),
@@ -554,7 +563,7 @@ async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
                       user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     feed = _owned(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=200)
-    return await _grouped_response(db, articles, lang, limit)
+    return await _grouped_response(db, articles, lang, limit, user_id)
 
 
 @app.post("/api/articles/search-grouped")
@@ -563,11 +572,25 @@ async def search_grouped(
     sort: str = Query(default="newest"),
     limit: int = Query(default=30, le=100),
     lang: str = Query(default=""),
+    user_id: str = Depends(user_id_header),
     db: Session = Depends(get_db),
 ):
     """Ad-hoc criteria search clustered into events (used by Home columns)."""
     articles = query_articles(db, body.get("criteria", body), sort=sort, limit=200)
-    return await _grouped_response(db, articles, lang, limit)
+    return await _grouped_response(db, articles, lang, limit, user_id)
+
+
+@app.post("/api/events/{event_id}/viewed")
+def mark_event_viewed(event_id: int, user_id: str = Depends(user_id_header),
+                      db: Session = Depends(get_db)):
+    if not db.get(Event, event_id):
+        raise HTTPException(404, "Event not found")
+    exists = db.scalar(select(ViewedEvent).where(
+        ViewedEvent.user_id == user_id, ViewedEvent.event_id == event_id))
+    if not exists:
+        db.add(ViewedEvent(user_id=user_id, event_id=event_id))
+        db.commit()
+    return {"ok": True}
 
 
 # ---------- alerts ----------
