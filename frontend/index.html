@@ -95,28 +95,34 @@
     </div>
   </aside>
 
-  <!-- Account modal -->
-  <div id="auth-backdrop" class="modal-backdrop" hidden>
-    <div class="modal auth-modal" role="dialog" aria-modal="true">
-      <div class="modal-head">
-        <h2>Your D.E.L.P.H.I. profile</h2>
-        <button class="icon-btn" id="btn-close-auth">✕</button>
-      </div>
-      <div class="modal-body">
-        <p class="auth-note">Feeds and alerts are private per user. Sign in to keep yours
-           under a name you can use from any browser or device. Without an account, this
-           browser keeps its own anonymous profile.</p>
-        <label class="field"><span>Username</span>
+  <!-- Sign-in gate: the system requires an account -->
+  <div id="gate" class="gate" hidden>
+    <div class="gate-card">
+      <img src="img/logo.png" alt="" class="gate-logo" onerror="this.remove()">
+      <h1 class="gate-title">D.E.L.P.H.I.</h1>
+      <p class="gate-sub">Digital Exploration and Layout for Publicly Harvested Intelligence</p>
+
+      <div id="gate-signin">
+        <label class="field"><span>Username or email</span>
           <input id="auth-username" type="text" autocomplete="username"></label>
-        <label class="field"><span>Password (min 8 characters)</span>
+        <label class="field"><span>Password</span>
           <input id="auth-password" type="password" autocomplete="current-password"></label>
-        <span id="auth-status" class="query-status"></span>
+        <button class="btn btn-primary gate-btn" id="btn-login">Sign in</button>
+        <p class="gate-switch">No account? <a href="#" id="gate-to-register">Create one</a></p>
       </div>
-      <div class="modal-foot">
-        <button class="btn" id="btn-register">Create account</button>
-        <span class="spacer"></span>
-        <button class="btn btn-primary" id="btn-login">Sign in</button>
+
+      <div id="gate-register" hidden>
+        <label class="field"><span>Username</span>
+          <input id="reg-username" type="text" autocomplete="username"></label>
+        <label class="field"><span>Email address</span>
+          <input id="reg-email" type="email" autocomplete="email"></label>
+        <label class="field"><span>Password (min 8 characters)</span>
+          <input id="reg-password" type="password" autocomplete="new-password"></label>
+        <button class="btn btn-primary gate-btn" id="btn-register">Create account</button>
+        <p class="gate-switch">Already registered? <a href="#" id="gate-to-signin">Sign in</a></p>
       </div>
+
+      <span id="auth-status" class="query-status err"></span>
     </div>
   </div>
 

@@ -8,9 +8,9 @@ import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
@@ -41,6 +41,7 @@ def _ensure_schema():
         "articles": {"event_id": "INTEGER"},
         "feeds": {"group_events": "BOOLEAN DEFAULT 0"},
         "sources": {"platform": "VARCHAR(20) DEFAULT 'news'"},
+        "users": {"email": "VARCHAR(200) DEFAULT ''"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -73,21 +74,35 @@ app.add_middleware(
 )
 
 
-def user_id_header(authorization: str = Header(default=""),
-                   x_user_id: str = Header(default="default")) -> str:
-    """Resolve the caller's identity key.
+@app.middleware("http")
+async def require_account(request: Request, call_next):
+    """An account is required to use the system: every API route except
+    /api/auth/* demands a valid session token. Static assets stay public so
+    the sign-in page itself can load. The SSE stream may pass the token as a
+    ?token= query parameter (EventSource cannot set headers)."""
+    path = request.url.path
+    if path.startswith("/api") and not path.startswith("/api/auth/"):
+        token = ""
+        authz = request.headers.get("authorization", "")
+        if authz.startswith("Bearer "):
+            token = authz[7:].strip()
+        elif "token" in request.query_params:
+            token = request.query_params["token"]
+        if not token or auth.parse_token(token) is None:
+            return JSONResponse({"detail": "Authentication required — sign in"}, status_code=401)
+    return await call_next(request)
 
-    A valid Bearer token wins and yields "acct:<id>" (registered account,
-    portable across browsers). Otherwise the anonymous per-browser id from
-    X-User-Id applies. An invalid/expired token is a hard 401 rather than a
-    silent fall-through to a different identity.
-    """
-    if authorization.startswith("Bearer "):
-        uid = auth.parse_token(authorization[7:].strip())
-        if uid is None:
-            raise HTTPException(401, "Invalid or expired session — sign in again")
-        return f"acct:{uid}"
-    return (x_user_id or "default")[:64]
+
+def user_id_header(authorization: str = Header(default=""),
+                   token: str = Query(default="")) -> str:
+    """Resolve the caller's account key ("acct:<id>") from the Bearer token
+    (or ?token= for SSE). The middleware guarantees one is present on
+    protected routes; this is defense in depth."""
+    raw = authorization[7:].strip() if authorization.startswith("Bearer ") else token
+    uid = auth.parse_token(raw) if raw else None
+    if uid is None:
+        raise HTTPException(401, "Authentication required — sign in")
+    return f"acct:{uid}"
 
 
 def _article_json(a: Article, tr: dict | None = None) -> dict:
@@ -160,39 +175,52 @@ def meta(db: Session = Depends(get_db)):
 # ---------- accounts ----------
 
 _USERNAME_RE = _username_re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
+_EMAIL_RE = _username_re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 
 
 @app.post("/api/auth/register", status_code=201)
 def register(body: dict, db: Session = Depends(get_db)):
     username = (body.get("username") or "").strip().lower()
+    email = (body.get("email") or "").strip().lower()
     password = body.get("password") or ""
     if not _USERNAME_RE.match(username):
         raise HTTPException(422, "Username must be 3-32 characters: letters, digits, _ . -")
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(422, "A valid email address is required")
     if len(password) < 8:
         raise HTTPException(422, "Password must be at least 8 characters")
     if db.scalar(select(User).where(User.username == username)):
         raise HTTPException(409, "That username is taken")
-    user = User(username=username, password_hash=auth.hash_password(password))
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(409, "An account with that email already exists")
+    user = User(username=username, email=email, password_hash=auth.hash_password(password))
     db.add(user)
     db.commit()
-    return {"token": auth.make_token(user.id), "username": username, "user_key": f"acct:{user.id}"}
+    return {"token": auth.make_token(user.id), "username": username,
+            "email": email, "user_key": f"acct:{user.id}"}
 
 
 @app.post("/api/auth/login")
 def login(body: dict, db: Session = Depends(get_db)):
-    username = (body.get("username") or "").strip().lower()
-    user = db.scalar(select(User).where(User.username == username))
+    ident = (body.get("username") or "").strip().lower()  # username or email
+    user = db.scalar(select(User).where(
+        or_(User.username == ident, User.email == ident)))
     if not user or not auth.verify_password(body.get("password") or "", user.password_hash):
-        raise HTTPException(401, "Wrong username or password")
-    return {"token": auth.make_token(user.id), "username": username, "user_key": f"acct:{user.id}"}
+        raise HTTPException(401, "Wrong username/email or password")
+    return {"token": auth.make_token(user.id), "username": user.username,
+            "email": user.email, "user_key": f"acct:{user.id}"}
 
 
 @app.get("/api/auth/me")
-def me(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
-    if user_id.startswith("acct:"):
-        user = db.get(User, int(user_id.split(":", 1)[1]))
-        return {"user_key": user_id, "username": user.username if user else None}
-    return {"user_key": user_id, "username": None}
+def me(authorization: str = Header(default=""), db: Session = Depends(get_db)):
+    raw = authorization[7:].strip() if authorization.startswith("Bearer ") else ""
+    uid = auth.parse_token(raw) if raw else None
+    if uid is None:
+        raise HTTPException(401, "Not signed in")
+    user = db.get(User, uid)
+    if not user:
+        raise HTTPException(401, "Account no longer exists")
+    return {"user_key": f"acct:{uid}", "username": user.username, "email": user.email}
 
 
 @app.post("/api/auth/claim")

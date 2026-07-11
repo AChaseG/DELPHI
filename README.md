@@ -32,13 +32,12 @@ feeds**.
   into standard news categories, and given an **importance score (0–100)** that
   blends source reach, breaking-news signals, geographic breadth, and
   cross-source corroboration (similar headlines from distinct outlets).
-- **Customizable per-user dashboard.** Feeds and alerts are private per user:
-  create an **account** (👤 in the top bar — username + password, sessions via
-  signed tokens) to use your dashboard from any browser or device, or stay on
-  the automatic anonymous per-browser profile. Signing in offers to migrate
-  the browser's existing feeds/alerts into the account. Articles and sources
-  are shared infrastructure — one ingestion pipeline feeds every user. Feeds
-  are arranged in columns you can reorder, widen, edit, and delete.
+- **Accounts required.** The system opens on a sign-in page; an account
+  (username + **email** + password, sessions via signed tokens) is required to
+  access anything. Sign in with username or email from any browser or device.
+  Feeds and alerts are private per account; articles and sources are shared
+  infrastructure — one ingestion pipeline feeds every user. Feeds are arranged
+  in columns you can reorder, widen, edit, and delete.
 - **Home & My feeds.** The dashboard opens on **🏠 Home** — Delphi-curated
   columns generated live from everything ingested (top events, breaking now,
   conflict & disasters, politics, business, sci-tech, social pulse). 📌 any
@@ -238,13 +237,13 @@ POST /api/demo/seed                offline sample articles
   (e.g. Georgia country vs. US state). Swappable for a proper NER geocoder later.
 - Importance is a transparent heuristic, not a black box — see `scoring.py`
   and tune the weights to taste.
-- Accounts are self-serve (anyone reaching the server can register) and
-  passwords are PBKDF2-hashed with HMAC-signed session tokens
-  (`NEWS_SECRET` env or an auto-generated key beside the DB). Anonymous
-  per-browser profiles (`X-User-Id`) still work without an account. This is
-  honest small-team auth — for hostile-internet exposure, add rate limiting
-  and a reverse proxy in front. Sources and ingestion remain shared and
-  editable by all users by design.
+- Accounts are self-serve (anyone reaching the server can register with any
+  email — addresses are recorded but not yet verified by mail) and passwords
+  are PBKDF2-hashed with HMAC-signed session tokens (`NEWS_SECRET` env or an
+  auto-generated key beside the DB). Every API route except sign-in/register
+  requires a session. This is honest small-team auth — for hostile-internet
+  exposure, add email verification, login rate limiting, and a reverse proxy.
+  Sources and ingestion remain shared and editable by all users by design.
 
 ## Roadmap ideas
 

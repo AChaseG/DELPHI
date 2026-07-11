@@ -18,6 +18,12 @@ const DELPHI_FEEDS = [
 ];
 
 async function boot() {
+  if (!Session.token()) {   // account required: show the sign-in gate only
+    wireGate();
+    el("gate").hidden = false;
+    document.querySelector(".topbar").hidden = true;
+    return;
+  }
   [META, SOURCES] = await Promise.all([API.meta(), API.sources()]);
   COUNTRY_NAMES = new Map(META.countries.map(c => [c.iso2, c.name]));
   Builder.init(META, SOURCES);
@@ -270,47 +276,45 @@ function wireSettings() {
 }
 
 function wireAuth() {
-  const refreshProfileBtn = () => {
-    el("btn-profile").textContent = Session.username() ? `👤 ${Session.username()}` : "👤 Sign in";
-  };
-  refreshProfileBtn();
-
+  el("btn-profile").textContent = `👤 ${Session.username() || "account"}`;
   el("btn-profile").onclick = () => {
-    if (Session.username()) {
-      if (confirm(`Signed in as ${Session.username()}. Sign out?\n(This browser then shows its anonymous profile again.)`)) {
-        Session.clear();
-        location.reload();
-      }
-    } else {
-      el("auth-status").textContent = "";
-      el("auth-backdrop").hidden = false;
-      el("auth-username").focus();
+    if (confirm(`Signed in as ${Session.username()}. Sign out?`)) {
+      Session.clear();
+      location.reload();
     }
   };
-  el("btn-close-auth").onclick = () => { el("auth-backdrop").hidden = true; };
+}
 
+function wireGate() {
+  const st = el("auth-status");
+  el("gate-to-register").onclick = (e) => {
+    e.preventDefault(); st.textContent = "";
+    el("gate-signin").hidden = true; el("gate-register").hidden = false;
+    el("reg-username").focus();
+  };
+  el("gate-to-signin").onclick = (e) => {
+    e.preventDefault(); st.textContent = "";
+    el("gate-register").hidden = true; el("gate-signin").hidden = false;
+    el("auth-username").focus();
+  };
   const finish = async (r) => {
-    const hadAnonFeeds = FEEDS.length > 0 || ALERTS.length > 0;
     Session.set(r.token, r.username, r.user_key);
-    if (hadAnonFeeds &&
-        confirm("Bring this browser's existing feeds and alerts into your account?")) {
-      await API.claim();
-    }
+    try { await API.claim(); } catch (e) { /* nothing to migrate */ }
     location.reload();
   };
-  const authCall = async (fn) => {
-    const st = el("auth-status");
-    st.className = "query-status err";
+  el("btn-login").onclick = async () => {
+    try { await finish(await API.login(el("auth-username").value.trim(), el("auth-password").value)); }
+    catch (e) { st.textContent = e.message; }
+  };
+  el("btn-register").onclick = async () => {
     try {
-      const r = await fn(el("auth-username").value.trim(), el("auth-password").value);
-      await finish(r);
+      await finish(await API.register(
+        el("reg-username").value.trim(), el("reg-email").value.trim(), el("reg-password").value));
     } catch (e) { st.textContent = e.message; }
   };
-  el("btn-login").onclick = () => authCall(API.login);
-  el("btn-register").onclick = () => authCall(API.register);
-  el("auth-password").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") el("btn-login").click();
-  });
+  el("auth-password").addEventListener("keydown", (e) => { if (e.key === "Enter") el("btn-login").click(); });
+  el("reg-password").addEventListener("keydown", (e) => { if (e.key === "Enter") el("btn-register").click(); });
+  el("auth-username").focus();
 }
 
 async function reloadSources() {
@@ -906,7 +910,8 @@ function sourceEditor(s) {
 /* ---------- live stream ---------- */
 let refreshTimer = null;
 function connectStream() {
-  const es = new EventSource("/api/stream");
+  // EventSource cannot send headers; the token rides as a query parameter.
+  const es = new EventSource("/api/stream?token=" + encodeURIComponent(Session.token()));
   es.onmessage = (e) => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }

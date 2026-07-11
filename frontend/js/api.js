@@ -115,8 +115,8 @@ const API = {
   runIngest: () => api("/api/ingest/run", { method: "POST" }),
   purgeDemo: () => api("/api/demo/purge", { method: "POST" }),
 
-  register: (username, password) =>
-    api("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password }) }),
+  register: (username, email, password) =>
+    api("/api/auth/register", { method: "POST", body: JSON.stringify({ username, email, password }) }),
   login: (username, password) =>
     api("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   claim: () => api("/api/auth/claim", { method: "POST" }),
