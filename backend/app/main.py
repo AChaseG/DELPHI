@@ -621,4 +621,15 @@ def _reject_invalid_query(query: str):
             raise HTTPException(422, f"Invalid boolean query: {err}")
 
 
+# Unknown /api/* paths get a clear JSON 404 (registered after all real API
+# routes). Without this they fall through to the static mount, which answers
+# POSTs with a baffling 405 "Method Not Allowed" — typically seen when the
+# client calls an endpoint newer than the running server.
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+def api_fallback(path: str):
+    raise HTTPException(
+        404, f"Unknown API endpoint: /api/{path}. If this endpoint should exist, "
+             "the server may be running an older version — git pull and restart.")
+
+
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
