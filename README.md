@@ -1,6 +1,6 @@
-# 🔮 Delphi
+# 🏛 D.E.L.P.H.I.
 
-**Delphi** is a self-hosted global news monitoring dashboard: it continuously ingests news from sources across the globe —
+**D.E.L.P.H.I.** — **D**igital **E**xploration and **L**ayout for **P**ublicly **H**arvested **I**ntelligence — is a self-hosted global news monitoring dashboard: it continuously ingests news from sources across the globe —
 local, national, and international — and presents them on a customizable,
 per-user dashboard with Dataminr-style live alerting and **draw-on-map geofenced
 feeds**.

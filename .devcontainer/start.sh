@@ -24,7 +24,7 @@ disown 2>/dev/null || true
 
 for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:$PORT/api/meta" > /dev/null 2>&1; then
-    echo "✔ Delphi is up on port $PORT"
+    echo "✔ D.E.L.P.H.I. is up on port $PORT"
     exit 0
   fi
   sleep 1

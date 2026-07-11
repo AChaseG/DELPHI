@@ -3,33 +3,40 @@
    surfaces #0d0d0d/#1a1a19 (dark) and #f9f9f7/#fcfcfb (light);
    status colors (importance) are fixed and never reused as series colors. */
 
+/* D.E.L.P.H.I. theme: green primary, gold brand accents on near-black.
+   Contrast computed against surfaces (all pairs ≥3.8:1; primary ≥5:1).
+   Status colors (importance tiers) stay fixed and are never themed. */
 :root, :root[data-theme="dark"] {
-  --page: #0d0d0d;
-  --surface: #1a1a19;
-  --surface-2: #232322;
+  --page: #0c0e0c;
+  --surface: #151815;
+  --surface-2: #1e231e;
   --ink: #ffffff;
-  --ink-2: #c3c2b7;
-  --ink-muted: #898781;
-  --hairline: #2c2c2a;
+  --ink-2: #c2c6bc;
+  --ink-muted: #8a8d82;
+  --hairline: #2b312b;
   --border: rgba(255, 255, 255, 0.10);
-  --accent: #3987e5;
+  --accent: #4caf50;
+  --accent-strong: #2e7d32;
   --accent-ink: #ffffff;
+  --gold: #d4af37;
   --critical: #d03b3b;
   --serious: #ec835a;
   --warning: #fab219;
   --good: #0ca30c;
 }
 :root[data-theme="light"] {
-  --page: #f9f9f7;
-  --surface: #fcfcfb;
-  --surface-2: #f0efec;
+  --page: #f7f7f1;
+  --surface: #fcfcf8;
+  --surface-2: #eeeee2;
   --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --ink-muted: #898781;
-  --hairline: #e1e0d9;
+  --ink-2: #504f47;
+  --ink-muted: #86847a;
+  --hairline: #ddddcf;
   --border: rgba(11, 11, 11, 0.10);
-  --accent: #2a78d6;
+  --accent: #2e7d32;
+  --accent-strong: #2e7d32;
   --accent-ink: #ffffff;
+  --gold: #9c7c1c;
 }
 
 * { box-sizing: border-box; }
@@ -54,8 +61,17 @@ button { font: inherit; }
   border-bottom: 1px solid var(--hairline);
   flex-wrap: wrap;
 }
-.brand { font-size: 17px; font-weight: 700; white-space: nowrap; }
-.brand span { letter-spacing: 0.2px; }
+.brand {
+  font-size: 17px; font-weight: 700; white-space: nowrap;
+  display: flex; align-items: center; gap: 9px;
+  color: var(--gold);
+}
+.brand span { letter-spacing: 1.5px; font-family: Georgia, "Times New Roman", serif; }
+.brand-logo {
+  width: 34px; height: 34px; border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--gold);
+}
 
 .stat-row { display: flex; gap: 8px; }
 .stat-tile {
@@ -77,7 +93,7 @@ button { font: inherit; }
   background: var(--surface-2); color: var(--ink-2);
   border: none; padding: 7px 14px; cursor: pointer; font-size: 13px;
 }
-.view-switch button.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.view-switch button.active { background: var(--accent-strong); color: var(--accent-ink); font-weight: 600; }
 
 .topbar-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
 #global-search {
@@ -97,7 +113,7 @@ button { font: inherit; }
   padding: 7px 12px; cursor: pointer;
 }
 .btn:hover { border-color: var(--ink-muted); }
-.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn-primary { background: var(--accent-strong); color: var(--accent-ink); border-color: transparent; }
 .btn.small { padding: 4px 9px; font-size: 12.5px; }
 .btn.danger { color: var(--critical); border-color: var(--critical); background: transparent; }
 .icon-btn { background: none; border: none; color: var(--ink-2); font-size: 16px; cursor: pointer; }

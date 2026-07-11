@@ -3,14 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Delphi — Global News</title>
+  <title>D.E.L.P.H.I. — Digital Exploration and Layout for Publicly Harvested Intelligence</title>
+  <link rel="icon" type="image/png" href="img/logo.png">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="vendor/leaflet-draw/leaflet.draw.css">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🔮 <span>Delphi</span></div>
+    <div class="brand" title="Digital Exploration and Layout for Publicly Harvested Intelligence">
+      <img src="img/logo.png" alt="D.E.L.P.H.I." class="brand-logo" onerror="this.remove()">
+      <span>D.E.L.P.H.I.</span>
+    </div>
     <div class="stat-row" id="stat-row">
       <div class="stat-tile"><div class="stat-value" id="stat-articles">–</div><div class="stat-label">articles (24h)</div></div>
       <div class="stat-tile"><div class="stat-value" id="stat-countries">–</div><div class="stat-label">countries (24h)</div></div>
@@ -95,7 +99,7 @@
   <div id="auth-backdrop" class="modal-backdrop" hidden>
     <div class="modal auth-modal" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2>Your Delphi profile</h2>
+        <h2>Your D.E.L.P.H.I. profile</h2>
         <button class="icon-btn" id="btn-close-auth">✕</button>
       </div>
       <div class="modal-body">

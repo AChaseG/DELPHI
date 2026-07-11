@@ -255,7 +255,7 @@ function wireSettings() {
   el("btn-test-notif").onclick = () => {
     alertSound();
     toast("🔔 Test alert", "This is what an alert hit looks and sounds like.", true);
-    desktopNotify("Delphi test alert", "Desktop notifications are working.");
+    desktopNotify("D.E.L.P.H.I. test alert", "Desktop notifications are working.");
   };
   desktop.onchange = async () => {
     if (desktop.checked && "Notification" in window && Notification.permission !== "granted") {
@@ -462,7 +462,7 @@ async function loadFeedArticles(feed) {
         "Open the feed (✎) and use <b>Preview matches</b> while removing one filter " +
         "at a time to see which criterion is limiting it. If the feed has a query or " +
         "keywords, make sure <b>🔍 Automatically ingest worldwide coverage</b> is " +
-        "checked and re-save — Delphi only searches articles its sources publish, " +
+        "checked and re-save — D.E.L.P.H.I. only searches articles its sources publish, " +
         "and that option adds a source pulling in press coverage of your query.</div>";
       return;
     }
@@ -775,7 +775,7 @@ function renderAlertsMap(eventsByAlert) {
   for (const { alert, events } of eventsByAlert) {
     const geo = alert.criteria && alert.criteria.geo;
     if (geo) {
-      const style = { color: "#3987e5", weight: 1.5, dashArray: "5 5", fillOpacity: 0.06 };
+      const style = { color: "#d4af37", weight: 1.5, dashArray: "5 5", fillOpacity: 0.06 };
       if (geo.type === "Circle") {
         alertsMapLayer.addLayer(L.circle([geo.center[0], geo.center[1]],
           { radius: geo.radius_km * 1000, ...style }));
@@ -923,7 +923,7 @@ function connectStream() {
       const t = impTier(msg.importance);
       toast(`🔔 ${msg.alert_name}`, `${t.icon} ${t.label} — ${msg.title}`, true);
       alertSound();
-      desktopNotify(`Delphi alert: ${msg.alert_name}`, `${t.label} — ${msg.title}`);
+      desktopNotify(`D.E.L.P.H.I. alert: ${msg.alert_name}`, `${t.label} — ${msg.title}`);
       refreshAlerts();
     }
   };
