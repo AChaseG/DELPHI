@@ -362,7 +362,7 @@ def list_feeds(user_id: str = Depends(user_id_header), db: Session = Depends(get
 
 @app.post("/api/feeds", status_code=201)
 def create_feed(body: FeedIn, user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
-    _reject_invalid_query(body.criteria.query)
+    _reject_invalid_query(body.criteria)
     _ensure_coverage_source(db, body.criteria)
     max_pos = db.scalar(
         select(func.max(Feed.position)).where(Feed.user_id == user_id)
@@ -381,7 +381,7 @@ def create_feed(body: FeedIn, user_id: str = Depends(user_id_header), db: Sessio
 def update_feed(feed_id: int, body: FeedIn, user_id: str = Depends(user_id_header),
                 db: Session = Depends(get_db)):
     feed = _owned(db, Feed, feed_id, user_id)
-    _reject_invalid_query(body.criteria.query)
+    _reject_invalid_query(body.criteria)
     _ensure_coverage_source(db, body.criteria)
     feed.name = body.name
     feed.criteria = body.criteria.model_dump()
@@ -500,7 +500,7 @@ def list_alerts(user_id: str = Depends(user_id_header), db: Session = Depends(ge
 @app.post("/api/alerts", status_code=201)
 def create_alert(body: AlertIn, user_id: str = Depends(user_id_header),
                  db: Session = Depends(get_db)):
-    _reject_invalid_query(body.criteria.query)
+    _reject_invalid_query(body.criteria)
     _ensure_coverage_source(db, body.criteria)
     alert = Alert(user_id=user_id, name=body.name,
                   criteria=body.criteria.model_dump(), active=body.active)
@@ -513,7 +513,7 @@ def create_alert(body: AlertIn, user_id: str = Depends(user_id_header),
 def update_alert(alert_id: int, body: AlertIn, user_id: str = Depends(user_id_header),
                  db: Session = Depends(get_db)):
     alert = _owned(db, Alert, alert_id, user_id)
-    _reject_invalid_query(body.criteria.query)
+    _reject_invalid_query(body.criteria)
     _ensure_coverage_source(db, body.criteria)
     alert.name = body.name
     alert.criteria = body.criteria.model_dump()
@@ -656,7 +656,13 @@ def events_rebuild(db: Session = Depends(get_db)):
 @app.get("/api/events/{event_id}")
 async def event_detail(event_id: int, lang: str = Query(default=""),
                        db: Session = Depends(get_db)):
-    """One event with its full article timeline (newest first)."""
+    """One event in full: article timeline (newest first), the outlets
+    covering it, and related events (headline similarity, with a shared-
+    country fallback)."""
+    from datetime import timedelta
+
+    from .scoring import tokens_similarity
+
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(404, "Event not found")
@@ -665,6 +671,36 @@ async def event_detail(event_id: int, lang: str = Query(default=""),
         .order_by(Article.published_at.desc()).limit(100)
     ).all()
     tr = await translate.translate_articles(db, articles, lang)
+
+    sources = []
+    seen_sources = set()
+    for a in articles:
+        if a.source and a.source.id not in seen_sources:
+            seen_sources.add(a.source.id)
+            sources.append({"id": a.source.id, "name": a.source.name,
+                            "platform": a.source.platform or "news",
+                            "country": a.source.country})
+
+    def _event_brief(e: Event, why: str) -> dict:
+        return {"id": e.id, "title": e.title, "importance": e.importance,
+                "article_count": e.article_count,
+                "updated_at": e.updated_at.isoformat() + "Z", "why": why}
+
+    recent = db.scalars(select(Event).where(
+        Event.updated_at >= utcnow() - timedelta(days=14), Event.id != event_id
+    ).order_by(Event.updated_at.desc()).limit(500)).all()
+    scored = sorted(
+        ((tokens_similarity(event.cluster_tokens, e.cluster_tokens), e) for e in recent),
+        key=lambda pair: -pair[0],
+    )
+    related = [_event_brief(e, "similar story") for sim, e in scored[:5] if sim >= 0.2]
+    if len(related) < 5 and (event.countries or []):
+        have = {r["id"] for r in related}
+        same_place = [e for _, e in scored
+                      if e.id not in have and set(e.countries or []) & set(event.countries)]
+        same_place.sort(key=lambda e: -e.importance)
+        related += [_event_brief(e, "same region") for e in same_place[:5 - len(related)]]
+
     return {
         "id": event.id,
         "title": event.title,
@@ -675,6 +711,8 @@ async def event_detail(event_id: int, lang: str = Query(default=""),
         "first_seen": event.first_seen.isoformat() + "Z",
         "updated_at": event.updated_at.isoformat() + "Z",
         "articles": [_article_json(a, tr) for a in articles],
+        "sources": sources,
+        "related": related,
     }
 
 
@@ -708,43 +746,49 @@ def _owned(db: Session, model, obj_id: int, user_id: str):
     return obj
 
 
-def _google_query(criteria) -> str:
-    """Convert feed criteria into a Google News search string."""
+def _google_queries(criteria) -> list[str]:
+    """Convert feed criteria into Google News search strings — one per
+    boolean query (each runs as its own tracker), or one from keywords."""
     import re as _re
-    q = (criteria.query or "").strip() or " OR ".join(k for k in criteria.keywords if k.strip())
-    if not q:
-        return ""
-    q = normalize_quotes(q)
-    q = _re.sub(r"[()]", " ", q)
-    q = _re.sub(r"\bAND\b", " ", q, flags=_re.IGNORECASE)
-    q = _re.sub(r"\bNOT\s+", "-", q, flags=_re.IGNORECASE)
-    return _re.sub(r"\s+", " ", q).strip()[:200]
+
+    def convert(q: str) -> str:
+        q = normalize_quotes(q)
+        q = _re.sub(r"[()]", " ", q)
+        q = _re.sub(r"\bAND\b", " ", q, flags=_re.IGNORECASE)
+        q = _re.sub(r"\bNOT\s+", "-", q, flags=_re.IGNORECASE)
+        return _re.sub(r"\s+", " ", q).strip()[:200]
+
+    raw = [q for q in [criteria.query, *criteria.queries] if q and q.strip()]
+    if not raw:
+        kw = " OR ".join(k for k in criteria.keywords if k.strip())
+        raw = [kw] if kw else []
+    return [c for c in (convert(q) for q in raw[:5]) if c]
 
 
 def _ensure_coverage_source(db: Session, criteria) -> None:
-    """Create (idempotently) a Google News tracker source for the criteria's
-    query/keywords when auto_coverage is on."""
+    """Create (idempotently) Google News tracker sources for the criteria's
+    queries/keywords when auto_coverage is on."""
     if not getattr(criteria, "auto_coverage", False):
         return
-    q = _google_query(criteria)
-    if not q:
-        return
-    rss = ("https://news.google.com/rss/search?q=" + urllib.parse.quote(q)
-           + "&hl=en-US&gl=US&ceid=US:en")
-    if db.scalar(select(Source).where(Source.rss_url == rss)):
-        return
-    db.add(Source(
-        name=f"Topic: {q}", rss_url=rss, homepage="https://news.google.com",
-        country="", region="Global", language="en", scope="international",
-        categories=[], tier=2, added_by="topic-tracker",
-    ))
+    for q in _google_queries(criteria):
+        rss = ("https://news.google.com/rss/search?q=" + urllib.parse.quote(q)
+               + "&hl=en-US&gl=US&ceid=US:en")
+        if db.scalar(select(Source).where(Source.rss_url == rss)):
+            continue
+        db.add(Source(
+            name=f"Topic: {q}", rss_url=rss, homepage="https://news.google.com",
+            country="", region="Global", language="en", scope="international",
+            categories=[], tier=2, added_by="topic-tracker",
+        ))
 
 
-def _reject_invalid_query(query: str):
-    if query and query.strip():
-        err = validate_query(query)
-        if err:
-            raise HTTPException(422, f"Invalid boolean query: {err}")
+def _reject_invalid_query(criteria):
+    """Validate the legacy single query and every entry in queries[]."""
+    for q in [criteria.query, *criteria.queries]:
+        if q and q.strip():
+            err = validate_query(q)
+            if err:
+                raise HTTPException(422, f"Invalid boolean query “{q}”: {err}")
 
 
 # Unknown /api/* paths get a clear JSON 404 (registered after all real API

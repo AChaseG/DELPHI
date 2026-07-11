@@ -105,6 +105,10 @@ function wireTopbar() {
     }
     el("btn-refresh").disabled = false;
   };
+  el("btn-close-event").onclick = () => { el("event-backdrop").hidden = true; };
+  el("event-backdrop").addEventListener("mousedown", (e) => {
+    if (e.target === el("event-backdrop")) el("event-backdrop").hidden = true;
+  });
   el("btn-alerts-panel").onclick = () => { el("alerts-panel").hidden = false; renderAlertsPanel(); };
   el("btn-close-alerts").onclick = () => { el("alerts-panel").hidden = true; };
   el("btn-toggle-alerts-map").onclick = () => {
@@ -341,7 +345,9 @@ function criteriaBadges(c, sort) {
     const more = kws.length > 1 ? ` +${kws.length - 1}` : "";
     out.push(tag(`“${kws[0]}”${more}`, kws.join(", ")));
   }
-  if (c.query) out.push(tag("boolean", c.query));
+  const nq = (c.queries || []).filter(q => q && q.trim()).length + (c.query ? 1 : 0);
+  if (nq) out.push(tag(nq > 1 ? `boolean ×${nq}` : "boolean",
+                       [...(c.queries || []), c.query].filter(Boolean).join("  |  ")));
   if (c.min_importance) out.push(tag("imp≥" + c.min_importance));
   if (c.geo) out.push(tag("📍 map area"));
   if (c.hours) out.push(tag("last " + c.hours + "h"));
@@ -388,6 +394,16 @@ function eventGroup(g) {
   const wrap = document.createElement("div");
   wrap.className = "event-group";
   wrap.appendChild(articleRow(g.articles[0]));
+  const actions = document.createElement("div");
+  actions.className = "event-actions";
+  if (g.event_id) {
+    const focus = document.createElement("button");
+    focus.className = "event-focus-btn";
+    focus.textContent = "⤢ Event focus";
+    focus.title = "Summary, timeline, sources, map, and related events";
+    focus.onclick = () => openEventFocus(g.event_id);
+    actions.appendChild(focus);
+  }
   if (g.articles.length > 1) {
     const det = document.createElement("details");
     det.className = "event-timeline";
@@ -396,9 +412,119 @@ function eventGroup(g) {
     sum.textContent = `🧵 ${g.total_count} reports · ${srcs} — show timeline`;
     det.appendChild(sum);
     for (const a of g.articles.slice(1)) det.appendChild(articleRow(a));
+    wrap.appendChild(actions);
     wrap.appendChild(det);
+  } else if (actions.childElementCount) {
+    wrap.appendChild(actions);
   }
   return wrap;
+}
+
+/* ---------- event focus ---------- */
+let EVENT_MAP = null;
+
+async function openEventFocus(eventId) {
+  let d;
+  try { d = await API.eventDetail(eventId); }
+  catch (e) { toast("Could not load event", e.message); return; }
+
+  el("ev-title").textContent = (d.articles[0] && d.articles[0].title) || d.title;
+
+  const badges = el("ev-badges");
+  badges.innerHTML = "";
+  const t = impTier(d.importance);
+  const imp = document.createElement("span");
+  imp.className = "imp " + t.cls;
+  imp.textContent = `${t.icon} ${t.label} ${d.importance}`;
+  badges.appendChild(imp);
+  const tag = (txt) => {
+    const s = document.createElement("span");
+    s.className = "tag"; s.textContent = txt;
+    badges.appendChild(s);
+  };
+  tag(`🧵 ${d.article_count} report${d.article_count > 1 ? "s" : ""} · ${d.sources.length} source${d.sources.length > 1 ? "s" : ""}`);
+  for (const iso of (d.countries || []).slice(0, 5)) tag(`${flagEmoji(iso)} ${COUNTRY_NAMES.get(iso) || iso}`);
+  for (const c of (d.categories || []).slice(0, 4)) tag(c);
+  tag("first seen " + timeAgo(d.first_seen));
+  if (d.updated_at !== d.first_seen) tag("updated " + timeAgo(d.updated_at));
+
+  // The founding report's summary reads best as the event synopsis.
+  const oldestFirst = [...d.articles].reverse();
+  const synopsis = (oldestFirst.find(a => a.summary) || {}).summary || "";
+  el("ev-summary").textContent = synopsis;
+  el("ev-summary").hidden = !synopsis;
+
+  renderEventMap(d);
+
+  const tl = el("ev-timeline");
+  tl.innerHTML = "";
+  el("ev-count").textContent = `— ${d.articles.length} update${d.articles.length > 1 ? "s" : ""}, newest first`;
+  for (const a of d.articles) tl.appendChild(articleRow(a));
+
+  const src = el("ev-sources");
+  src.innerHTML = "";
+  for (const s of d.sources) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = `${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name}`;
+    src.appendChild(chip);
+  }
+
+  const rel = el("ev-related");
+  rel.innerHTML = "";
+  el("ev-related-section").hidden = !(d.related || []).length;
+  for (const r of d.related || []) {
+    const row = document.createElement("button");
+    row.className = "ev-related-row";
+    const rt = impTier(r.importance);
+    const head = document.createElement("span");
+    head.className = "imp " + rt.cls;
+    head.textContent = `${rt.icon} ${r.importance}`;
+    const title = document.createElement("span");
+    title.className = "ev-related-title";
+    title.textContent = r.title;
+    const why = document.createElement("span");
+    why.className = "ev-dim";
+    why.textContent = `${r.why} · ${r.article_count} report${r.article_count > 1 ? "s" : ""} · ${timeAgo(r.updated_at)}`;
+    row.append(head, title, why);
+    row.onclick = () => openEventFocus(r.id);
+    rel.appendChild(row);
+  }
+
+  el("event-backdrop").hidden = false;
+  el("ev-body").scrollTop = 0;
+}
+
+function renderEventMap(d) {
+  const box = el("event-map");
+  const points = [];
+  const seen = new Set();
+  for (const a of d.articles)
+    for (const p of a.places || [])
+      if (!seen.has(p.name)) { seen.add(p.name); points.push({ p, imp: a.importance }); }
+  if (typeof L === "undefined" || !points.length) {
+    box.hidden = true;
+    if (EVENT_MAP) { EVENT_MAP.remove(); EVENT_MAP = null; }
+    return;
+  }
+  box.hidden = false;
+  if (EVENT_MAP) { EVENT_MAP.remove(); EVENT_MAP = null; }
+  EVENT_MAP = L.map("event-map", { worldCopyJump: true });
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(EVENT_MAP);
+  const grp = L.featureGroup().addTo(EVENT_MAP);
+  for (const { p, imp } of points) {
+    const pt = impTier(imp);
+    grp.addLayer(L.circleMarker([p.lat, p.lon], {
+      radius: 7, color: pt.color, fillColor: pt.color, fillOpacity: 0.8, weight: 1.5,
+    }).bindPopup(p.name));
+  }
+  setTimeout(() => {
+    EVENT_MAP.invalidateSize();
+    EVENT_MAP.fitBounds(grp.getBounds().pad(0.5), { maxZoom: 6 });
+  }, 80);
 }
 
 function articleRow(a) {

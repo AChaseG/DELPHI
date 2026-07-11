@@ -319,6 +319,14 @@ button { font: inherit; }
 }
 .chip button { background: none; border: none; color: var(--ink-muted); cursor: pointer; padding: 0; }
 
+#b-queries { display: flex; flex-direction: column; gap: 6px; }
+.query-row .query-line { display: flex; gap: 6px; align-items: center; }
+.query-row input {
+  flex: 1;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
+}
+
 .query-status { font-size: 12px; min-height: 16px; }
 .query-status.ok { color: var(--good); }
 .query-status.err { color: var(--critical); }
@@ -352,6 +360,34 @@ button { font: inherit; }
 .wiz-summary-name { font-weight: 700; font-size: 14.5px; margin-bottom: 4px; }
 .wiz-summary-row { font-size: 12.5px; color: var(--ink-2); }
 .wiz-summary-row b { color: var(--ink); font-weight: 600; }
+
+/* ---------- event focus modal ---------- */
+.event-modal { width: 680px; }
+.event-modal .modal-body { max-height: 76vh; overflow-y: auto; }
+.ev-badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ev-summary { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.event-map { height: 230px; border-radius: 10px; border: 1px solid var(--border); }
+.ev-section h3 {
+  margin: 4px 0 6px; font-size: 13px; color: var(--ink-2);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.ev-dim { color: var(--ink-muted); font-weight: 400; font-size: 11.5px; }
+#ev-timeline .article { border-left: 2px solid var(--hairline); margin-left: 4px; }
+.ev-sources { display: flex; gap: 6px; flex-wrap: wrap; }
+.ev-related-row {
+  display: flex; gap: 8px; align-items: baseline; width: 100%;
+  background: none; border: none; border-bottom: 1px solid var(--hairline);
+  color: var(--ink); text-align: left; cursor: pointer;
+  padding: 8px 4px; font-size: 13px;
+}
+.ev-related-row:hover { background: var(--surface-2); }
+.ev-related-title { flex: 1; }
+
+.event-actions { padding: 0 12px 6px; }
+.event-focus-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--accent); font-size: 11.5px; padding: 0;
+}
 
 .auth-modal { width: 420px; }
 .auth-note { margin: 0; font-size: 12.5px; color: var(--ink-2); }

@@ -50,7 +50,8 @@ const Builder = {
     const { name, criteria: c, sort } = this.collect();
     const lines = [];
     const names = (c.countries || []).map(iso => COUNTRY_NAMES.get(iso) || iso);
-    if (c.query) lines.push(["Query", c.query]);
+    for (let i = 0; i < (c.queries || []).length; i++)
+      lines.push([c.queries.length > 1 ? `Query ${i + 1}` : "Query", c.queries[i]]);
     if (c.keywords.length) lines.push(["Keywords (any)", c.keywords.join(", ")]);
     if (c.exclude_keywords.length) lines.push(["Excluding", c.exclude_keywords.join(", ")]);
     if (names.length) lines.push(["Countries", names.join(", ")]);
@@ -63,7 +64,7 @@ const Builder = {
     if (c.min_importance) lines.push(["Importance", `≥ ${c.min_importance} (${impTier(c.min_importance).label}+)`]);
     if (c.hours) lines.push(["Recency", `last ${c.hours}h`]);
     if (c.source_ids.length) lines.push(["Sources", `${c.source_ids.length} selected`]);
-    if ((c.query || c.keywords.length) && c.auto_coverage)
+    if ((c.queries.length || c.keywords.length) && c.auto_coverage)
       lines.push(["Coverage", "ingesting worldwide press for this topic"]);
     const box = el("wiz-summary");
     box.innerHTML = "";
@@ -109,12 +110,17 @@ const Builder = {
       el("b-imp-tier").textContent = imp.value > 0 ? `(${impTier(+imp.value).label}+)` : "(any)";
     };
 
-    let qTimer = null;
-    el("b-query").oninput = () => {
-      clearTimeout(qTimer);
-      qTimer = setTimeout(async () => {
-        const q = el("b-query").value.trim();
-        const st = el("b-query-status");
+    el("btn-add-query").onclick = () => this._addQueryRow("");
+    // live-validate any query input (rows are dynamic — delegate; each row
+    // debounces independently so editing one row can't cancel another's check)
+    el("b-queries").addEventListener("input", (e) => {
+      const input = e.target.closest(".b-query-input");
+      if (!input) return;
+      const row = input.closest(".query-row");
+      clearTimeout(row._qTimer);
+      row._qTimer = setTimeout(async () => {
+        const st = row.querySelector(".query-status");
+        const q = input.value.trim();
         if (!q) { st.textContent = ""; st.className = "query-status"; return; }
         try {
           const r = await API.validateQuery(q);
@@ -122,7 +128,7 @@ const Builder = {
           st.className = "query-status " + (r.valid ? "ok" : "err");
         } catch (e) { /* offline */ }
       }, 350);
-    };
+    });
 
     el("btn-toggle-map").onclick = () => this.toggleMap();
     el("btn-clear-geo").onclick = () => this.setGeo(null);
@@ -150,8 +156,11 @@ const Builder = {
     this.exclude.length = 0; this.exclude.push(...(c.exclude_keywords || []));
     renderChips("b-keywords-box", this.keywords);
     renderChips("b-exclude-box", this.exclude);
-    el("b-query").value = c.query || "";
-    el("b-query-status").textContent = "";
+    const queries = [...(c.queries || [])];
+    if (c.query && !queries.includes(c.query)) queries.unshift(c.query);  // legacy
+    el("b-queries").innerHTML = "";
+    if (!queries.length) queries.push("");
+    for (const q of queries) this._addQueryRow(q);
     el("b-coverage").checked = item ? !!c.auto_coverage : true;
     el("b-importance").value = c.min_importance || 0;
     el("b-importance").dispatchEvent(new Event("input"));
@@ -173,6 +182,34 @@ const Builder = {
 
   close() { el("modal-backdrop").hidden = true; },
 
+  _addQueryRow(value) {
+    const row = document.createElement("div");
+    row.className = "query-row";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "b-query-input";
+    input.placeholder = '("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor';
+    input.value = value || "";
+    const st = document.createElement("span");
+    st.className = "query-status";
+    const rm = document.createElement("button");
+    rm.className = "icon-btn"; rm.textContent = "✕"; rm.title = "Remove this query";
+    rm.onclick = () => {
+      row.remove();
+      if (!el("b-queries").children.length) this._addQueryRow("");
+    };
+    const line = document.createElement("div");
+    line.className = "query-line";
+    line.append(input, rm);
+    row.append(line, st);
+    el("b-queries").appendChild(row);
+  },
+
+  _queryValues() {
+    return [...el("b-queries").querySelectorAll(".b-query-input")]
+      .map(i => i.value.trim()).filter(Boolean);
+  },
+
   collect() {
     const scopes = [...el("b-scopes").querySelectorAll("input:checked")].map(i => i.value);
     const platforms = [...el("b-platforms").querySelectorAll("input:checked")].map(i => i.value);
@@ -185,7 +222,8 @@ const Builder = {
       source_ids: selectedValues(el("b-sources")).map(Number),
       keywords: [...this.keywords],
       exclude_keywords: [...this.exclude],
-      query: el("b-query").value.trim(),
+      query: "",
+      queries: this._queryValues(),
       min_importance: +el("b-importance").value,
       hours: el("b-hours").value ? +el("b-hours").value : null,
       geo: this.geo,

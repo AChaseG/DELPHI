@@ -15,7 +15,8 @@ class Criteria(BaseModel):
     source_ids: list[int] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     exclude_keywords: list[str] = Field(default_factory=list)
-    query: str = ""
+    query: str = ""                                # legacy single boolean string
+    queries: list[str] = Field(default_factory=list)  # boolean strings, OR'd together
     min_importance: int = 0
     hours: float | None = None
     geo: dict | None = None

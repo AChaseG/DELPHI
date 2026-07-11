@@ -149,16 +149,17 @@
               <div class="chip-input" id="b-exclude-box"><input id="b-exclude" type="text" placeholder="opinion, horoscope…"></div>
             </label>
           </div>
-          <label class="field">
-            <span>Boolean query <em>(optional — AND / OR / NOT, quotes, parentheses; Google-style -term and | work too)</em></span>
-            <input id="b-query" type="text" placeholder='("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor'>
-            <span id="b-query-status" class="query-status"></span>
+          <div class="field">
+            <span>Boolean queries <em>(optional — AND / OR / NOT, quotes, parentheses; Google-style -term and | work too.
+              Each query runs separately; matches from all of them populate this one feed)</em></span>
+            <div id="b-queries"></div>
+            <div><button class="btn small" id="btn-add-query">+ Add another boolean query</button></div>
             <label class="check-row" style="margin-top:6px">
               <input type="checkbox" id="b-coverage" checked>
-              🔍 Automatically ingest worldwide coverage of this query/keywords
-              <em style="color:var(--ink-muted);font-style:normal">(recommended — adds a Google News source so matches aren't limited to the catalog)</em>
+              🔍 Automatically ingest worldwide coverage of these queries/keywords
+              <em style="color:var(--ink-muted);font-style:normal">(recommended — adds a Google News source per query so matches aren't limited to the catalog)</em>
             </label>
-          </label>
+          </div>
         </section>
 
         <section class="wiz-step" data-step="1" hidden>
@@ -258,6 +259,33 @@
         <button class="btn danger" id="btn-delete-item" hidden>Delete</button>
         <button class="btn btn-primary" id="btn-wiz-next">Next ›</button>
         <button class="btn btn-primary" id="btn-save-item" hidden>Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event focus modal -->
+  <div id="event-backdrop" class="modal-backdrop" hidden>
+    <div class="modal event-modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="ev-title">Event</h2>
+        <button class="icon-btn" id="btn-close-event">✕</button>
+      </div>
+      <div class="modal-body" id="ev-body">
+        <div class="ev-badges" id="ev-badges"></div>
+        <p class="ev-summary" id="ev-summary"></p>
+        <div id="event-map" class="event-map" hidden></div>
+        <div class="ev-section">
+          <h3>Timeline <span id="ev-count" class="ev-dim"></span></h3>
+          <div id="ev-timeline"></div>
+        </div>
+        <div class="ev-section">
+          <h3>Covered by</h3>
+          <div class="ev-sources" id="ev-sources"></div>
+        </div>
+        <div class="ev-section" id="ev-related-section">
+          <h3>Related events</h3>
+          <div id="ev-related"></div>
+        </div>
       </div>
     </div>
   </div>

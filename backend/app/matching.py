@@ -48,13 +48,18 @@ class CriteriaMatcher:
         self.geo = self.criteria.get("geo") or None
         self.keyword_res = [_kw_regex(k) for k in (self.criteria.get("keywords") or []) if k.strip()]
         self.exclude_res = [_kw_regex(k) for k in (self.criteria.get("exclude_keywords") or []) if k.strip()]
-        query = (self.criteria.get("query") or "").strip()
-        self.query_pred = None
-        if query:
+        # Multiple boolean strings run independently and OR together: an
+        # article matches if ANY compiles+matches (other criteria still AND).
+        query_strings = [q for q in (self.criteria.get("queries") or []) if q.strip()]
+        legacy = (self.criteria.get("query") or "").strip()
+        if legacy:
+            query_strings.append(legacy)
+        self.query_preds = []
+        for q in query_strings:
             try:
-                self.query_pred = compile_query(query)
+                self.query_preds.append(compile_query(q))
             except QueryError:
-                self.query_pred = lambda text: False  # invalid saved query matches nothing
+                self.query_preds.append(lambda text: False)  # invalid saved query matches nothing
 
         hours = self.criteria.get("hours")
         self.since: datetime | None = None
@@ -88,7 +93,7 @@ class CriteriaMatcher:
             return False
         if any(r.search(text) for r in self.exclude_res):
             return False
-        if self.query_pred and not self.query_pred(text):
+        if self.query_preds and not any(pred(text) for pred in self.query_preds):
             return False
         if self.geo and not places_match_geo(article.places or [], article.country, self.geo):
             return False
