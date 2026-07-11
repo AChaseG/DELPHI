@@ -63,6 +63,9 @@ const Builder = {
     if (c.languages.length) lines.push(["Languages", c.languages.join(", ")]);
     if (c.min_importance) lines.push(["Importance", `≥ ${c.min_importance} (${impTier(c.min_importance).label}+)`]);
     if (c.hours) lines.push(["Recency", `last ${c.hours}h`]);
+    if (c.date_from || c.date_to)
+      lines.push(["Date range", `${c.date_from || "…"} → ${c.date_to || "…"}`]);
+    if (c.hide_stale) lines.push(["Staleness", "hide events with no recent updates (threshold in Settings)"]);
     if (c.source_ids.length) lines.push(["Sources", `${c.source_ids.length} selected`]);
     if ((c.queries.length || c.keywords.length) && c.auto_coverage)
       lines.push(["Coverage", "ingesting worldwide press for this topic"]);
@@ -130,6 +133,17 @@ const Builder = {
       }, 350);
     });
 
+    el("btn-clear-dates").onclick = () => {
+      el("b-date-from").value = ""; el("b-date-to").value = "";
+    };
+    // Controls living on the Review step refresh the summary in place.
+    for (const sel of ["#b-stale", "#b-group", "#b-active", 'input[name="b-sort"]']) {
+      for (const node of document.querySelectorAll(sel)) {
+        node.addEventListener("change", () => {
+          if (this.step === this.LAST_STEP) this._renderSummary();
+        });
+      }
+    }
     el("btn-toggle-map").onclick = () => this.toggleMap();
     el("btn-clear-geo").onclick = () => this.setGeo(null);
     el("btn-preview").onclick = () => this.preview();
@@ -165,6 +179,9 @@ const Builder = {
     el("b-importance").value = c.min_importance || 0;
     el("b-importance").dispatchEvent(new Event("input"));
     el("b-hours").value = c.hours || "";
+    el("b-date-from").value = c.date_from || "";
+    el("b-date-to").value = c.date_to || "";
+    el("b-stale").checked = !!c.hide_stale;
     el("alert-only-fields").hidden = mode !== "alert";
     el("feed-only-fields").hidden = mode !== "feed";
     el("b-group").checked = item ? !!item.group_events : false;
@@ -230,6 +247,9 @@ const Builder = {
       queries: this._queryValues(),
       min_importance: +el("b-importance").value,
       hours: el("b-hours").value ? +el("b-hours").value : null,
+      date_from: el("b-date-from").value || "",
+      date_to: el("b-date-to").value || "",
+      hide_stale: el("b-stale").checked,
       geo: this.geo,
       auto_coverage: el("b-coverage").checked,
     };

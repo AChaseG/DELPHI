@@ -66,6 +66,18 @@ class CriteriaMatcher:
         if hours:
             self.since = utcnow() - timedelta(hours=float(hours))
 
+        # Explicit date range (inclusive calendar days, UTC)
+        self.date_from: datetime | None = None
+        self.date_to: datetime | None = None
+        try:
+            if self.criteria.get("date_from"):
+                self.date_from = datetime.fromisoformat(self.criteria["date_from"][:10])
+            if self.criteria.get("date_to"):
+                self.date_to = (datetime.fromisoformat(self.criteria["date_to"][:10])
+                                + timedelta(days=1))  # end of that day
+        except ValueError:
+            pass  # malformed dates: ignore the bound rather than match nothing
+
     def matches(self, article: Article, source: Source | None = None) -> bool:
         source = source or article.source
         # Full recall: criteria see the fetched article body, not just the
@@ -73,6 +85,10 @@ class CriteriaMatcher:
         text = f"{article.title}\n{article.summary}\n{article.content or ''}"
 
         if self.since and article.published_at and article.published_at < self.since:
+            return False
+        if self.date_from and article.published_at and article.published_at < self.date_from:
+            return False
+        if self.date_to and article.published_at and article.published_at >= self.date_to:
             return False
         if article.importance < self.min_importance:
             return False
@@ -115,6 +131,10 @@ def query_articles(
     stmt = select(Article).options(joinedload(Article.source))
     if matcher.since:
         stmt = stmt.where(Article.published_at >= matcher.since)
+    if matcher.date_from:
+        stmt = stmt.where(Article.published_at >= matcher.date_from)
+    if matcher.date_to:
+        stmt = stmt.where(Article.published_at < matcher.date_to)
     if matcher.min_importance:
         stmt = stmt.where(Article.importance >= matcher.min_importance)
     if matcher.source_ids:

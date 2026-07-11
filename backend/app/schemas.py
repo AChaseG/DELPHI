@@ -19,6 +19,12 @@ class Criteria(BaseModel):
     queries: list[str] = Field(default_factory=list)  # boolean strings, OR'd together
     min_importance: int = 0
     hours: float | None = None
+    date_from: str = ""   # ISO date (YYYY-MM-DD), inclusive
+    date_to: str = ""     # ISO date (YYYY-MM-DD), inclusive
+    # Hide events that haven't been updated within the user's staleness
+    # threshold (set in Settings). Display-only: clustering still attaches
+    # new similar articles to hidden events, which then resurface.
+    hide_stale: bool = False
     geo: dict | None = None
     # When true, saving the feed/alert also ensures a Google News tracker
     # source exists for the query/keywords, so worldwide press coverage of

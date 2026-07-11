@@ -252,7 +252,13 @@ function wireSettings() {
 
   const theme = el("set-theme"), compact = el("set-compact"),
         timefmt = el("set-timefmt"), pos = el("set-toast-pos"),
-        vol = el("set-volume"), desktop = el("set-desktop");
+        vol = el("set-volume"), desktop = el("set-desktop"),
+        stale = el("set-stale");
+  stale.value = String(Settings.get("stale_hours"));
+  stale.onchange = async () => {
+    Settings.set("stale_hours", +stale.value);
+    await renderBoard();  // re-filter visible feeds immediately
+  };
   theme.value = Settings.get("theme");
   compact.checked = !!Settings.get("compact");
   timefmt.value = Settings.get("timefmt");
@@ -500,6 +506,9 @@ function criteriaBadges(c, sort) {
   if (c.min_importance) out.push(tag("imp≥" + c.min_importance));
   if (c.geo) out.push(tag("📍 map area"));
   if (c.hours) out.push(tag("last " + c.hours + "h"));
+  if (c.date_from || c.date_to)
+    out.push(tag(`📅 ${c.date_from || "…"}→${c.date_to || "…"}`));
+  if (c.hide_stale) out.push(tag("🕰 auto-hide", "Events with no recent updates are hidden (threshold in Settings)"));
   if (sort === "importance") out.push(tag("by importance"));
   return out;
 }

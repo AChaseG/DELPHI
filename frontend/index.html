@@ -71,6 +71,20 @@
         </select>
       </label>
 
+      <h3 class="set-h">Feeds</h3>
+      <label class="set-row"><span>Hide events with no updates for
+          <em>(applies to feeds with 🕰 “Hide events with no recent updates” enabled;
+          hidden events return the moment a new report arrives)</em></span>
+        <select id="set-stale">
+          <option value="0">Never hide</option>
+          <option value="6">6 hours</option>
+          <option value="12">12 hours</option>
+          <option value="24">1 day</option>
+          <option value="48">2 days</option>
+          <option value="72">3 days</option>
+        </select>
+      </label>
+
       <h3 class="set-h">Notifications</h3>
       <label class="set-row"><span>Toast position</span>
         <select id="set-toast-pos">
@@ -178,6 +192,12 @@
              outlet chips); alert hit lists link straight to articles for speed. Once
              viewed, the event dims everywhere it appears (hover to read at full
              strength). Views are remembered on your account, on every device.</p>
+          <p><b>Staleness:</b> a feed can enable 🕰 "Hide events with no recent updates"
+             (wizard, Review step); the threshold is yours, in ⚙ Settings. Hiding is
+             display-only — clustering keeps attaching new similar reports to hidden
+             events, so an event that gets an update reappears immediately with its
+             complete timeline. Feeds can also be pinned to an explicit <b>date
+             range</b> in the wizard's Refine step.</p>
         </details>
 
         <details>
@@ -467,6 +487,14 @@
               </select>
             </div>
           </div>
+          <div class="field">
+            <span>Date range <em>(optional — inclusive; overrides nothing, combines with the recency window)</em></span>
+            <div class="check-row">
+              <label>from <input type="date" id="b-date-from"></label>
+              <label>to <input type="date" id="b-date-to"></label>
+              <button class="btn small" id="btn-clear-dates" type="button">Clear</button>
+            </div>
+          </div>
           <label class="field">
             <span>Minimum importance: <strong id="b-imp-val">0</strong> <em id="b-imp-tier"></em>
               <em> — how much the story matters to the international community (source reach, breaking signals, cross-outlet corroboration)</em></span>
@@ -493,6 +521,10 @@
           <div class="field" id="feed-only-fields">
             <label class="check-row"><input type="checkbox" id="b-group">
               🧵 Group similar articles into events (clusters cross-source coverage of the same story)</label>
+            <label class="check-row"><input type="checkbox" id="b-stale">
+              🕰 Hide events with no recent updates
+              <em style="color:var(--ink-muted);font-style:normal">(threshold set in ⚙ Settings; a hidden
+              event reappears with its full timeline the moment a new report arrives)</em></label>
           </div>
           <div class="field" id="alert-only-fields" hidden>
             <label class="check-row"><input type="checkbox" id="b-active" checked> Alert active (fires live on new matching articles)</label>

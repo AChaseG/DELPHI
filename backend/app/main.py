@@ -107,6 +107,20 @@ def user_id_header(authorization: str = Header(default=""),
     return f"acct:{uid}"
 
 
+def _drop_stale(articles: list[Article], criteria: dict, stale_hours: float) -> list[Article]:
+    """When the feed opted into hide_stale, drop articles whose event has had
+    no update within the user's staleness threshold. Display-only: clustering
+    still attaches new reports to hidden events, which then resurface with
+    their full timeline (guaranteed while the threshold stays within the 72h
+    clustering window)."""
+    if not (criteria or {}).get("hide_stale") or not stale_hours:
+        return articles
+    from datetime import timedelta
+    cutoff = utcnow() - timedelta(hours=stale_hours)
+    return [a for a in articles
+            if a.event_id is None or (a.event and a.event.updated_at >= cutoff)]
+
+
 def _viewed_events(db: Session, user_id: str, articles: list[Article]) -> set[int]:
     """Event ids among these articles that the user has opened in Event Focus."""
     event_ids = {a.event_id for a in articles if a.event_id is not None}
@@ -440,11 +454,14 @@ async def search_articles(
     sort: str = Query(default="newest"),
     limit: int = Query(default=50, le=200),
     lang: str = Query(default=""),
+    stale: float = Query(default=0),
     user_id: str = Depends(user_id_header),
     db: Session = Depends(get_db),
 ):
     """Ad-hoc search with a criteria object (used for feed preview and search bar)."""
-    articles = query_articles(db, body.get("criteria", body), sort=sort, limit=limit)
+    criteria = body.get("criteria", body)
+    articles = query_articles(db, criteria, sort=sort, limit=limit)
+    articles = _drop_stale(articles, criteria, stale)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
     return [_article_json(a, tr, viewed) for a in articles]
@@ -524,9 +541,11 @@ def delete_feed(feed_id: int, user_id: str = Depends(user_id_header),
 @app.get("/api/feeds/{feed_id}/articles")
 async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
                         lang: str = Query(default=""),
+                        stale: float = Query(default=0),
                         user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     feed = _owned(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
+    articles = _drop_stale(articles, feed.criteria, stale)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
     return [_article_json(a, tr, viewed) for a in articles]
@@ -574,9 +593,11 @@ async def _grouped_response(db: Session, articles: list[Article], lang: str, lim
 @app.get("/api/feeds/{feed_id}/events")
 async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
                       lang: str = Query(default=""),
+                      stale: float = Query(default=0),
                       user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     feed = _owned(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=200)
+    articles = _drop_stale(articles, feed.criteria, stale)
     return await _grouped_response(db, articles, lang, limit, user_id)
 
 
@@ -586,11 +607,14 @@ async def search_grouped(
     sort: str = Query(default="newest"),
     limit: int = Query(default=30, le=100),
     lang: str = Query(default=""),
+    stale: float = Query(default=0),
     user_id: str = Depends(user_id_header),
     db: Session = Depends(get_db),
 ):
     """Ad-hoc criteria search clustered into events (used by Home columns)."""
-    articles = query_articles(db, body.get("criteria", body), sort=sort, limit=200)
+    criteria = body.get("criteria", body)
+    articles = query_articles(db, criteria, sort=sort, limit=200)
+    articles = _drop_stale(articles, criteria, stale)
     return await _grouped_response(db, articles, lang, limit, user_id)
 
 

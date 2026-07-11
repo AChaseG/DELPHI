@@ -132,10 +132,18 @@ def cluster_tokens(title: str) -> str:
 
 
 def tokens_similarity(a: str, b: str) -> float:
+    """Headline-token similarity: the max of Jaccard and containment.
+
+    Containment (overlap / size of the smaller set) matters for follow-up
+    coverage: "Japan earthquake update: aftershocks continue" shares its
+    anchor tokens with the original event but adds new vocabulary, which
+    Jaccard alone punishes — and story updates would wrongly found new events.
+    """
     sa, sb = set(a.split()), set(b.split())
     if not sa or not sb:
         return 0.0
-    return len(sa & sb) / len(sa | sb)
+    inter = len(sa & sb)
+    return max(inter / len(sa | sb), inter / min(len(sa), len(sb)))
 
 
 def score_importance(
