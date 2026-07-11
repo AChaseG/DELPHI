@@ -15,7 +15,9 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from . import ingest, translate
+import re as _username_re
+
+from . import auth, ingest, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_demo_articles, seed_sources
 from .clustering import assign_events, rebuild_events
@@ -23,7 +25,7 @@ from .database import Base, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer
 from .matching import query_articles
-from .models import Alert, AlertEvent, Article, Event, Feed, Source, Translation, utcnow
+from .models import Alert, AlertEvent, Article, Event, Feed, Source, Translation, User, utcnow
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
 from .scoring import STANDARD_CATEGORIES, classify_categories
 
@@ -71,7 +73,20 @@ app.add_middleware(
 )
 
 
-def user_id_header(x_user_id: str = Header(default="default")) -> str:
+def user_id_header(authorization: str = Header(default=""),
+                   x_user_id: str = Header(default="default")) -> str:
+    """Resolve the caller's identity key.
+
+    A valid Bearer token wins and yields "acct:<id>" (registered account,
+    portable across browsers). Otherwise the anonymous per-browser id from
+    X-User-Id applies. An invalid/expired token is a hard 401 rather than a
+    silent fall-through to a different identity.
+    """
+    if authorization.startswith("Bearer "):
+        uid = auth.parse_token(authorization[7:].strip())
+        if uid is None:
+            raise HTTPException(401, "Invalid or expired session — sign in again")
+        return f"acct:{uid}"
     return (x_user_id or "default")[:64]
 
 
@@ -140,6 +155,65 @@ def meta(db: Session = Depends(get_db)):
         },
         "ingest": ingest.status,
     }
+
+
+# ---------- accounts ----------
+
+_USERNAME_RE = _username_re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
+
+
+@app.post("/api/auth/register", status_code=201)
+def register(body: dict, db: Session = Depends(get_db)):
+    username = (body.get("username") or "").strip().lower()
+    password = body.get("password") or ""
+    if not _USERNAME_RE.match(username):
+        raise HTTPException(422, "Username must be 3-32 characters: letters, digits, _ . -")
+    if len(password) < 8:
+        raise HTTPException(422, "Password must be at least 8 characters")
+    if db.scalar(select(User).where(User.username == username)):
+        raise HTTPException(409, "That username is taken")
+    user = User(username=username, password_hash=auth.hash_password(password))
+    db.add(user)
+    db.commit()
+    return {"token": auth.make_token(user.id), "username": username, "user_key": f"acct:{user.id}"}
+
+
+@app.post("/api/auth/login")
+def login(body: dict, db: Session = Depends(get_db)):
+    username = (body.get("username") or "").strip().lower()
+    user = db.scalar(select(User).where(User.username == username))
+    if not user or not auth.verify_password(body.get("password") or "", user.password_hash):
+        raise HTTPException(401, "Wrong username or password")
+    return {"token": auth.make_token(user.id), "username": username, "user_key": f"acct:{user.id}"}
+
+
+@app.get("/api/auth/me")
+def me(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    if user_id.startswith("acct:"):
+        user = db.get(User, int(user_id.split(":", 1)[1]))
+        return {"user_key": user_id, "username": user.username if user else None}
+    return {"user_key": user_id, "username": None}
+
+
+@app.post("/api/auth/claim")
+def claim_anonymous_profile(user_id: str = Depends(user_id_header),
+                            x_user_id: str = Header(default=""),
+                            db: Session = Depends(get_db)):
+    """Move this browser's anonymous feeds/alerts into the signed-in account."""
+    if not user_id.startswith("acct:"):
+        raise HTTPException(401, "Sign in first")
+    anon = (x_user_id or "").strip()[:64]
+    if not anon or anon.startswith("acct:"):
+        raise HTTPException(422, "No anonymous profile to claim")
+    moved = {"feeds": 0, "alerts": 0}
+    for feed in db.scalars(select(Feed).where(Feed.user_id == anon)):
+        feed.user_id = user_id
+        moved["feeds"] += 1
+    for alert in db.scalars(select(Alert).where(Alert.user_id == anon)):
+        alert.user_id = user_id
+        moved["alerts"] += 1
+    db.commit()
+    return moved
 
 
 # ---------- sources ----------

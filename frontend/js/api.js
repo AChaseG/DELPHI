@@ -9,15 +9,37 @@ const USER_ID = (() => {
   return id;
 })();
 
+/* Account session (optional): a signed-in user's token scopes feeds/alerts
+   to their account instead of the anonymous browser profile. */
+const Session = {
+  token: () => localStorage.getItem("gnd_token") || "",
+  username: () => localStorage.getItem("gnd_username") || "",
+  userKey: () => localStorage.getItem("gnd_user_key") || USER_ID,
+  set(token, username, userKey) {
+    localStorage.setItem("gnd_token", token);
+    localStorage.setItem("gnd_username", username);
+    localStorage.setItem("gnd_user_key", userKey);
+  },
+  clear() {
+    localStorage.removeItem("gnd_token");
+    localStorage.removeItem("gnd_username");
+    localStorage.removeItem("gnd_user_key");
+  },
+};
+
 async function api(path, options = {}) {
-  const resp = await fetch(path, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      "X-User-Id": USER_ID,
-      ...(options.headers || {}),
-    },
-  });
+  const headers = {
+    "Content-Type": "application/json",
+    "X-User-Id": USER_ID,
+    ...(options.headers || {}),
+  };
+  if (Session.token()) headers["Authorization"] = "Bearer " + Session.token();
+  const resp = await fetch(path, { ...options, headers });
+  if (resp.status === 401 && Session.token()) {
+    Session.clear();  // expired session: fall back to the anonymous profile
+    location.reload();
+    return new Promise(() => {});
+  }
   if (!resp.ok) {
     let detail = resp.statusText;
     try { detail = (await resp.json()).detail || detail; } catch (e) { /* not json */ }
@@ -68,4 +90,10 @@ const API = {
   validateQuery: (query) => api("/api/query/validate", { method: "POST", body: JSON.stringify({ query }) }),
   runIngest: () => api("/api/ingest/run", { method: "POST" }),
   purgeDemo: () => api("/api/demo/purge", { method: "POST" }),
+
+  register: (username, password) =>
+    api("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password }) }),
+  login: (username, password) =>
+    api("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+  claim: () => api("/api/auth/claim", { method: "POST" }),
 };

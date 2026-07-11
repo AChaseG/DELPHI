@@ -44,6 +44,7 @@ function wireTopbar() {
     await Promise.all([refreshFeeds(), refreshAlerts()]);
   };
 
+  wireAuth();
   el("btn-new-feed").onclick = () => Builder.open("feed");
   el("btn-empty-new-feed").onclick = () => Builder.open("feed");
   el("btn-new-alert").onclick = () => Builder.open("alert");
@@ -136,6 +137,50 @@ function wireTopbar() {
       toast("Source added", `${name} — refresh ⟳ to pull it for the first time.`);
     } catch (e) { toast("Could not add source", e.message); }
   };
+}
+
+function wireAuth() {
+  const refreshProfileBtn = () => {
+    el("btn-profile").textContent = Session.username() ? `👤 ${Session.username()}` : "👤 Sign in";
+  };
+  refreshProfileBtn();
+
+  el("btn-profile").onclick = () => {
+    if (Session.username()) {
+      if (confirm(`Signed in as ${Session.username()}. Sign out?\n(This browser then shows its anonymous profile again.)`)) {
+        Session.clear();
+        location.reload();
+      }
+    } else {
+      el("auth-status").textContent = "";
+      el("auth-backdrop").hidden = false;
+      el("auth-username").focus();
+    }
+  };
+  el("btn-close-auth").onclick = () => { el("auth-backdrop").hidden = true; };
+
+  const finish = async (r) => {
+    const hadAnonFeeds = FEEDS.length > 0 || ALERTS.length > 0;
+    Session.set(r.token, r.username, r.user_key);
+    if (hadAnonFeeds &&
+        confirm("Bring this browser's existing feeds and alerts into your account?")) {
+      await API.claim();
+    }
+    location.reload();
+  };
+  const authCall = async (fn) => {
+    const st = el("auth-status");
+    st.className = "query-status err";
+    try {
+      const r = await fn(el("auth-username").value.trim(), el("auth-password").value);
+      await finish(r);
+    } catch (e) { st.textContent = e.message; }
+  };
+  el("btn-login").onclick = () => authCall(API.login);
+  el("btn-register").onclick = () => authCall(API.register);
+  el("auth-password").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") el("btn-login").click();
+  });
 }
 
 async function reloadSources() {
@@ -611,7 +656,7 @@ function connectStream() {
         renderStats(await API.meta());
         await Promise.all(FEEDS.map(loadFeedArticles));
       }, 1500);
-    } else if (msg.type === "alert" && msg.user_id === USER_ID) {
+    } else if (msg.type === "alert" && msg.user_id === Session.userKey()) {
       const t = impTier(msg.importance);
       toast(`🔔 ${msg.alert_name}`, `${t.icon} ${t.label} — ${msg.title}`, true);
       refreshAlerts();

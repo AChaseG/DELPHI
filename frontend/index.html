@@ -25,8 +25,34 @@
       <button id="btn-sources" class="btn" title="Manage sources">Sources</button>
       <button id="btn-refresh" class="btn" title="Poll all sources now">⟳</button>
       <button id="btn-alerts-panel" class="btn bell" title="Alerts">🔔<span id="bell-count" class="bell-count" hidden>0</span></button>
+      <button id="btn-profile" class="btn" title="Your feeds and alerts are private to your profile">👤 Sign in</button>
     </div>
   </header>
+
+  <!-- Account modal -->
+  <div id="auth-backdrop" class="modal-backdrop" hidden>
+    <div class="modal auth-modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Your Delphi profile</h2>
+        <button class="icon-btn" id="btn-close-auth">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="auth-note">Feeds and alerts are private per user. Sign in to keep yours
+           under a name you can use from any browser or device. Without an account, this
+           browser keeps its own anonymous profile.</p>
+        <label class="field"><span>Username</span>
+          <input id="auth-username" type="text" autocomplete="username"></label>
+        <label class="field"><span>Password (min 8 characters)</span>
+          <input id="auth-password" type="password" autocomplete="current-password"></label>
+        <span id="auth-status" class="query-status"></span>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="btn-register">Create account</button>
+        <span class="spacer"></span>
+        <button class="btn btn-primary" id="btn-login">Sign in</button>
+      </div>
+    </div>
+  </div>
 
   <main id="board" class="board"></main>
 
