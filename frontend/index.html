@@ -23,15 +23,73 @@
     </div>
     <div class="topbar-actions">
       <input id="global-search" type="search" placeholder="Search all news… (supports AND OR NOT)" autocomplete="off">
-      <select id="lang-select" title="Reading language — articles in other languages are translated automatically"></select>
       <button id="btn-new-feed" class="btn btn-primary">+ Feed</button>
       <button id="btn-new-alert" class="btn">+ Alert</button>
       <button id="btn-sources" class="btn" title="Manage sources">Sources</button>
       <button id="btn-refresh" class="btn" title="Poll all sources now">⟳</button>
       <button id="btn-alerts-panel" class="btn bell" title="Alerts">🔔<span id="bell-count" class="bell-count" hidden>0</span></button>
+      <button id="btn-settings" class="btn" title="Settings">⚙</button>
       <button id="btn-profile" class="btn" title="Your feeds and alerts are private to your profile">👤 Sign in</button>
     </div>
   </header>
+
+  <!-- Settings side panel -->
+  <aside id="settings-panel" class="side-panel" hidden>
+    <div class="side-panel-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="btn-close-settings">✕</button>
+    </div>
+    <div class="settings-body">
+      <h3 class="set-h">Appearance</h3>
+      <label class="set-row"><span>Theme</span>
+        <select id="set-theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="system">Match system</option>
+        </select>
+      </label>
+      <label class="set-row"><span>Compact mode <em>(hide summaries & thumbnails)</em></span>
+        <input type="checkbox" id="set-compact">
+      </label>
+
+      <h3 class="set-h">Language</h3>
+      <label class="set-row"><span>Reading language <em>(articles in other languages are translated automatically)</em></span>
+        <select id="lang-select"></select>
+      </label>
+
+      <h3 class="set-h">Date & time</h3>
+      <label class="set-row"><span>Timestamp format</span>
+        <select id="set-timefmt">
+          <option value="relative">Relative — “2h ago”</option>
+          <option value="local">Local time — “Jul 11, 08:36 PM”</option>
+          <option value="utc">UTC — “Jul 11 20:36Z”</option>
+          <option value="dtg">Date-time group — “112036Z JUL 26”</option>
+        </select>
+      </label>
+
+      <h3 class="set-h">Notifications</h3>
+      <label class="set-row"><span>Toast position</span>
+        <select id="set-toast-pos">
+          <option value="br">Bottom right</option>
+          <option value="bl">Bottom left</option>
+          <option value="tr">Top right</option>
+          <option value="tl">Top left</option>
+        </select>
+      </label>
+      <label class="set-row"><span>Alert sound volume: <strong id="set-vol-val"></strong></span>
+        <input type="range" id="set-volume" min="0" max="100" step="5">
+      </label>
+      <div class="set-row">
+        <span></span>
+        <button class="btn small" id="btn-test-notif">🔔 Test notification</button>
+      </div>
+      <label class="set-row"><span>Desktop notifications <em>(alert pop-ups while this tab is in the background)</em></span>
+        <input type="checkbox" id="set-desktop">
+      </label>
+      <p class="set-note">Settings are saved on this device. Your feeds, alerts, and account
+         work from any device; display preferences are per browser.</p>
+    </div>
+  </aside>
 
   <!-- Account modal -->
   <div id="auth-backdrop" class="modal-backdrop" hidden>
@@ -290,7 +348,7 @@
     </div>
   </div>
 
-  <div id="toasts" class="toasts"></div>
+  <div id="toasts" class="toasts pos-br"></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="vendor/leaflet-draw/leaflet.draw.js"></script>

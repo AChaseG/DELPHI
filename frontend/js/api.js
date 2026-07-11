@@ -9,6 +9,28 @@ const USER_ID = (() => {
   return id;
 })();
 
+/* Display & notification preferences, persisted per browser. */
+const Settings = {
+  defaults: {
+    theme: "dark",        // dark | light | system
+    timefmt: "relative",  // relative | local | utc | dtg
+    toast_pos: "br",      // br | bl | tr | tl
+    volume: 40,           // 0-100 alert sound volume (0 = silent)
+    desktop_notif: false, // browser notifications when tab is hidden
+    compact: false,       // hide summaries/thumbnails
+  },
+  _load() {
+    try { return { ...this.defaults, ...(JSON.parse(localStorage.getItem("gnd_settings")) || {}) }; }
+    catch { return { ...this.defaults }; }
+  },
+  get(key) { return this._load()[key]; },
+  set(key, value) {
+    const s = this._load();
+    s[key] = value;
+    localStorage.setItem("gnd_settings", JSON.stringify(s));
+  },
+};
+
 /* Account session (optional): a signed-in user's token scopes feeds/alerts
    to their account instead of the anonymous browser profile. */
 const Session = {

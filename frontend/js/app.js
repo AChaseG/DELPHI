@@ -88,6 +88,8 @@ function wireTopbar() {
   };
 
   wireAuth();
+  wireSettings();
+  applySettings();
   el("btn-new-feed").onclick = () => Builder.open("feed");
   el("btn-empty-new-feed").onclick = () => Builder.open("feed");
   el("btn-new-alert").onclick = () => Builder.open("alert");
@@ -183,6 +185,87 @@ function wireTopbar() {
       await reloadSources();
       toast("Source added", `${name} — refresh ⟳ to pull it for the first time.`);
     } catch (e) { toast("Could not add source", e.message); }
+  };
+}
+
+/* ---------- settings ---------- */
+function applySettings() {
+  const theme = Settings.get("theme");
+  const resolved = theme === "system"
+    ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+    : theme;
+  document.documentElement.dataset.theme = resolved;
+  document.body.classList.toggle("compact", !!Settings.get("compact"));
+  el("toasts").className = "toasts pos-" + (Settings.get("toast_pos") || "br");
+}
+
+let _audioCtx = null;
+function alertSound() {
+  const vol = +Settings.get("volume");
+  if (!vol) return;
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const now = _audioCtx.currentTime;
+    for (const [freq, at] of [[880, 0], [1175, 0.12]]) {  // two-tone chirp
+      const osc = _audioCtx.createOscillator();
+      const gain = _audioCtx.createGain();
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.25 * (vol / 100), now + at);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + at + 0.15);
+      osc.connect(gain).connect(_audioCtx.destination);
+      osc.start(now + at); osc.stop(now + at + 0.16);
+    }
+  } catch (e) { /* audio not available */ }
+}
+
+function desktopNotify(title, body) {
+  if (!Settings.get("desktop_notif") || !("Notification" in window)) return;
+  if (Notification.permission === "granted" && document.hidden) {
+    try { new Notification(title, { body, icon: undefined }); } catch (e) { /* ignore */ }
+  }
+}
+
+function wireSettings() {
+  el("btn-settings").onclick = () => { el("settings-panel").hidden = false; };
+  el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
+
+  const theme = el("set-theme"), compact = el("set-compact"),
+        timefmt = el("set-timefmt"), pos = el("set-toast-pos"),
+        vol = el("set-volume"), desktop = el("set-desktop");
+  theme.value = Settings.get("theme");
+  compact.checked = !!Settings.get("compact");
+  timefmt.value = Settings.get("timefmt");
+  pos.value = Settings.get("toast_pos");
+  vol.value = Settings.get("volume");
+  el("set-vol-val").textContent = vol.value + (vol.value === "0" ? " (off)" : "");
+  desktop.checked = !!Settings.get("desktop_notif");
+
+  theme.onchange = () => { Settings.set("theme", theme.value); applySettings(); };
+  compact.onchange = () => { Settings.set("compact", compact.checked); applySettings(); };
+  timefmt.onchange = async () => {
+    Settings.set("timefmt", timefmt.value);
+    await renderBoard();          // re-render timestamps everywhere
+    if (!el("alerts-panel").hidden) renderAlertsPanel();
+  };
+  pos.onchange = () => { Settings.set("toast_pos", pos.value); applySettings(); };
+  vol.oninput = () => {
+    Settings.set("volume", +vol.value);
+    el("set-vol-val").textContent = vol.value + (vol.value === "0" ? " (off)" : "");
+  };
+  el("btn-test-notif").onclick = () => {
+    alertSound();
+    toast("🔔 Test alert", "This is what an alert hit looks and sounds like.", true);
+    desktopNotify("Delphi test alert", "Desktop notifications are working.");
+  };
+  desktop.onchange = async () => {
+    if (desktop.checked && "Notification" in window && Notification.permission !== "granted") {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        desktop.checked = false;
+        toast("Desktop notifications blocked", "Allow notifications for this site in your browser settings.");
+      }
+    }
+    Settings.set("desktop_notif", desktop.checked);
   };
 }
 
@@ -839,6 +922,8 @@ function connectStream() {
     } else if (msg.type === "alert" && msg.user_id === Session.userKey()) {
       const t = impTier(msg.importance);
       toast(`🔔 ${msg.alert_name}`, `${t.icon} ${t.label} — ${msg.title}`, true);
+      alertSound();
+      desktopNotify(`Delphi alert: ${msg.alert_name}`, `${t.label} — ${msg.title}`);
       refreshAlerts();
     }
   };

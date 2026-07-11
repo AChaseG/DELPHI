@@ -80,6 +80,11 @@ feeds**.
   once. Providers: the free Google endpoint (default, fine for personal use) or
   a self-hosted LibreTranslate server (`NEWS_TRANSLATE_PROVIDER=libretranslate`,
   `NEWS_LIBRETRANSLATE_URL=…`), or `off`.
+- **Settings (⚙).** Per-device preferences: dark/light/system theme, compact
+  mode, reading language, timestamp format (relative, local, UTC, or military
+  date-time group “112036Z JUL 26”), toast position, alert sound volume with a
+  test button, and desktop notifications for alert hits while the tab is in
+  the background.
 - **Draw on a map.** In the feed/alert builder, draw a polygon, rectangle, or
   circle on a world map (Leaflet + Leaflet.draw). Only news geolocated inside
   that area (via its tagged places, falling back to the country centroid) will

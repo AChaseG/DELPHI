@@ -374,7 +374,21 @@ function flagEmoji(iso2) {
 
 function timeAgo(iso) {
   if (!iso) return "";
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  const d = new Date(iso);
+  const fmt = (typeof Settings !== "undefined" && Settings.get("timefmt")) || "relative";
+  const pad = (n) => String(n).padStart(2, "0");
+  if (fmt === "local") {
+    return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  if (fmt === "utc") {
+    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${MON[d.getUTCMonth()]} ${d.getUTCDate()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}Z`;
+  }
+  if (fmt === "dtg") {  // military date-time group: 112036Z JUL 26
+    const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    return `${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}Z ${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`;
+  }
+  const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
   if (s < 60) return "just now";
   if (s < 3600) return Math.floor(s / 60) + "m ago";
   if (s < 86400) return Math.floor(s / 3600) + "h ago";
