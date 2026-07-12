@@ -31,6 +31,9 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     password_hash: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # When the account last opened the app (None until the first load) —
+    # drives the first-visit FAQ and the what's-new-while-away popup.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
 
 class Source(Base):

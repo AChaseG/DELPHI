@@ -118,6 +118,9 @@ const API = {
   runIngest: () => api("/api/ingest/run", { method: "POST" }),
   purgeDemo: () => api("/api/demo/purge", { method: "POST" }),
 
+  hello: () => api("/api/session/hello", { method: "POST" }),
+  changelog: () => api("/api/changelog"),
+
   register: (username, email, password) =>
     api("/api/auth/register", { method: "POST", body: JSON.stringify({ username, email, password }) }),
   login: (username, password) =>

@@ -1,0 +1,88 @@
+"""User-facing release notes, newest first.
+
+Each entry summarizes what shipped on one calendar date. /api/session/hello
+compares entry dates against the account's last_seen_at to build the
+"what's new while you were away" popup, so keep `date` in ISO YYYY-MM-DD and
+add a new entry (or extend today's) whenever user-visible behavior changes.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+CHANGELOG: list[dict] = [
+    {
+        "date": "2026-07-12",
+        "title": "One creation flow — and guided starts",
+        "items": [
+            "The + Feed and + Alert buttons merged into a single + Create button: "
+            "a 📋 Feed / 🔔 Alert toggle inside the wizard picks what you're making.",
+            "Convert any existing feed into an alert (or alert into a feed) by "
+            "flipping that toggle while editing — every criterion carries over.",
+            "The FAQ & tutorial now opens automatically on your first visit, and "
+            "again if you've been away a week or more.",
+            "This What's-new popup recaps everything that shipped while you were "
+            "away, grouped by date. Reopen it any time from ⚙ Settings → Help.",
+        ],
+    },
+    {
+        "date": "2026-07-11",
+        "title": "Accounts, Event Focus everywhere, and a Greek revival",
+        "items": [
+            "Accounts are now required: register with an email, verify it, and "
+            "recover access with password reset — your feeds and alerts are private.",
+            "Selecting any story opens Event Focus — synopsis, map, cross-source "
+            "timeline, and related events — even for single-source stories; viewed "
+            "events dim so you can see what you've triaged.",
+            "Feeds match against full article content, not just headlines, and can "
+            "carry multiple boolean queries (Google-style syntax welcome) plus an "
+            "optional guided query builder.",
+            "New feed powers: date ranges, auto-hiding of stale events (threshold "
+            "in Settings), automatic worldwide coverage of your queries, and a "
+            "guided four-step creation wizard.",
+            "Home (curated columns) vs 📋 My feeds views; the board scrolls "
+            "laterally so no feed ever hides below another.",
+            "D.E.L.P.H.I. rebrand: green & gold theme, the official logo, Greek "
+            "columns and meander frieze, plus a Settings panel (time formats "
+            "including military DTG, language, notifications) and this FAQ.",
+        ],
+    },
+    {
+        "date": "2026-07-10",
+        "title": "Alerts you can see, sources you can shape",
+        "items": [
+            "Alert hits now plot on a map alongside your geofences, with article "
+            "thumbnails in the hit list.",
+            "Social media ingestion (Reddit, Bluesky, Mastodon, YouTube) with a "
+            "platform filter in the wizard, and full manual source management — "
+            "add, edit, or retire any source.",
+            "Feed headers show compact criteria badges (first country + how many "
+            "more) so long selections never crowd the title.",
+        ],
+    },
+    {
+        "date": "2026-07-08",
+        "title": "Ingest reliability",
+        "items": [
+            "Fixed a failure where two sources syndicating the same article URL "
+            "could roll back an entire ingest cycle — cycles now dedupe globally "
+            "and commit per source.",
+        ],
+    },
+    {
+        "date": "2026-07-07",
+        "title": "Delphi is born",
+        "items": [
+            "The system is named Delphi, with event clustering (cross-source "
+            "stories grouped into events) and automatic translation into your "
+            "preferred reading language.",
+            "One-click launch in GitHub Codespaces and Docker/Fly.io configs for "
+            "24/7 hosting.",
+        ],
+    },
+]
+
+
+def updates_since(seen: datetime) -> list[dict]:
+    """Entries shipped after the calendar day the user was last seen."""
+    return [e for e in CHANGELOG
+            if datetime.fromisoformat(e["date"]).date() > seen.date()]

@@ -41,6 +41,7 @@ async function boot() {
   renderStats();
   await Promise.all([refreshFeeds(), refreshAlerts()]);
   connectStream();
+  runOnboarding();
   // First run on an empty database: pull the catalog once in the background.
   if (META.stats.total_articles === 0) {
     toast("Fetching news", "First run — polling all sources. This can take a minute…");
@@ -243,6 +244,60 @@ function desktopNotify(title, body) {
   }
 }
 
+/* ---------- onboarding: first-visit FAQ + what's-new-while-away popup ----- */
+
+let FAQ_AFTER_UPDATES = false;  // chain: close What's-new → open the FAQ
+
+function showUpdates(entries, note = "") {
+  const box = el("updates-body");
+  box.innerHTML = "";
+  for (const entry of entries) {   // newest first; one block per date
+    const block = document.createElement("div");
+    block.className = "update-entry";
+    const date = document.createElement("div");
+    date.className = "update-date";
+    date.textContent = new Date(entry.date + "T00:00:00").toLocaleDateString([],
+      { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    const title = document.createElement("h3");
+    title.className = "update-title";
+    title.textContent = entry.title;
+    const ul = document.createElement("ul");
+    for (const item of entry.items) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      ul.appendChild(li);
+    }
+    block.append(date, title, ul);
+    box.appendChild(block);
+  }
+  el("updates-note").textContent = note;
+  el("updates-backdrop").hidden = false;
+}
+
+function closeUpdates() {
+  el("updates-backdrop").hidden = true;
+  if (FAQ_AFTER_UPDATES) {
+    FAQ_AFTER_UPDATES = false;
+    el("faq-backdrop").hidden = false;
+  }
+}
+
+async function runOnboarding() {
+  // One call per app load: the server compares "now" with when this account
+  // last opened Delphi, and hands back what to show.
+  let h;
+  try { h = await API.hello(); } catch (e) { return; }
+  if (h.updates && h.updates.length) {
+    const days = Math.floor(h.away_days || 0);
+    showUpdates(h.updates, days >= 1
+      ? `Shipped during the ${days} day${days === 1 ? "" : "s"} you were away.`
+      : "Shipped since your last visit.");
+    FAQ_AFTER_UPDATES = !!h.faq_due;   // FAQ follows once this is dismissed
+  } else if (h.faq_due) {
+    el("faq-backdrop").hidden = false; // first visit, or a week+ away
+  }
+}
+
 function wireSettings() {
   el("btn-settings").onclick = () => { el("settings-panel").hidden = false; };
   el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
@@ -250,6 +305,15 @@ function wireSettings() {
   el("btn-close-faq").onclick = () => { el("faq-backdrop").hidden = true; };
   el("faq-backdrop").addEventListener("mousedown", (e) => {
     if (e.target === el("faq-backdrop")) el("faq-backdrop").hidden = true;
+  });
+  el("btn-whats-new").onclick = async () => {
+    try { showUpdates(await API.changelog(), "The full release history, newest first."); }
+    catch (e) { toast("Unavailable", e.message); }
+  };
+  el("btn-close-updates").onclick = closeUpdates;
+  el("btn-updates-ok").onclick = closeUpdates;
+  el("updates-backdrop").addEventListener("mousedown", (e) => {
+    if (e.target === el("updates-backdrop")) closeUpdates();
   });
 
   const theme = el("set-theme"), compact = el("set-compact"),

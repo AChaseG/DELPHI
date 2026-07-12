@@ -108,6 +108,10 @@
         <span>New here, or wondering how something works?</span>
         <button class="btn small" id="btn-open-faq">❓ FAQ &amp; tutorial</button>
       </div>
+      <div class="set-row">
+        <span>See everything that has shipped, by date</span>
+        <button class="btn small" id="btn-whats-new">🆕 What's new</button>
+      </div>
       <p class="set-note">Settings are saved on this device. Your feeds, alerts, and account
          work from any device; display preferences are per browser.</p>
     </div>
@@ -262,6 +266,17 @@
         </details>
 
         <details>
+          <summary>🆕 Staying current — automatic FAQ and the What's-new popup</summary>
+          <p>This FAQ opens by itself on your <b>first visit</b>, and again whenever you
+             return after <b>a week or more away</b> — a quick refresher costs nothing.</p>
+          <p>If anything shipped while you were gone, a <b>🆕 What's new</b> popup lists
+             every update you missed, <b>grouped by date</b> (miss three updates, see all
+             three). Delphi tracks this per account from when you last opened the app,
+             so it works across devices.</p>
+          <p>Both are always available on demand in <b>⚙ Settings → Help</b>.</p>
+        </details>
+
+        <details>
           <summary>🛠 Troubleshooting</summary>
           <p><b>A feed is empty:</b> open it (✎) and use <b>Preview matches</b> while
              removing one filter at a time — the culprit is usually an over-tight
@@ -275,6 +290,22 @@
           <p><b>Stat tile shows …/N:</b> the first poll since startup hasn't finished.</p>
         </details>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- What's-new modal: updates shipped since the account was last seen -->
+  <div id="updates-backdrop" class="modal-backdrop" hidden>
+    <div class="modal faq-modal updates-modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="updates-title">🆕 What's new</h2>
+        <button class="icon-btn" id="btn-close-updates">✕</button>
+      </div>
+      <div class="modal-body faq-body" id="updates-body"></div>
+      <div class="modal-foot">
+        <span id="updates-note" class="preview-count"></span>
+        <span class="spacer"></span>
+        <button class="btn btn-primary" id="btn-updates-ok">Got it</button>
       </div>
     </div>
   </div>

@@ -20,6 +20,7 @@ import re as _username_re
 from . import auth, ingest, mailer, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_demo_articles, seed_sources
+from .changelog import CHANGELOG, updates_since
 from .clustering import assign_events, rebuild_events
 from .database import Base, engine, get_db
 from .events import broadcaster
@@ -43,7 +44,8 @@ def _ensure_schema():
         "feeds": {"group_events": "BOOLEAN DEFAULT 0"},
         "sources": {"platform": "VARCHAR(20) DEFAULT 'news'"},
         "users": {"email": "VARCHAR(200) DEFAULT ''",
-                  "email_verified": "BOOLEAN DEFAULT 0"},
+                  "email_verified": "BOOLEAN DEFAULT 0",
+                  "last_seen_at": "DATETIME"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -335,6 +337,36 @@ def claim_anonymous_profile(user_id: str = Depends(user_id_header),
         moved["alerts"] += 1
     db.commit()
     return moved
+
+
+# ---------- session onboarding ----------
+
+@app.post("/api/session/hello")
+def session_hello(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    """Called once per app load. Records when the account was last seen and
+    tells the client what onboarding to show: the FAQ on the very first visit
+    (or after a week or more away), and a what's-new digest of changelog
+    entries that shipped while the user was gone, grouped by date."""
+    user = db.get(User, int(user_id.split(":", 1)[1]))
+    if user is None:
+        raise HTTPException(401, "Account no longer exists")
+    prev = user.last_seen_at
+    now = utcnow()
+    user.last_seen_at = now
+    db.commit()
+    away_days = None if prev is None else (now - prev).total_seconds() / 86400
+    return {
+        "first_visit": prev is None,
+        "away_days": away_days,
+        "faq_due": prev is None or away_days >= 7,
+        "updates": [] if prev is None else updates_since(prev),
+    }
+
+
+@app.get("/api/changelog")
+def full_changelog():
+    """Every release-notes entry, newest first (Settings → What's new)."""
+    return CHANGELOG
 
 
 # ---------- sources ----------
