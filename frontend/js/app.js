@@ -136,7 +136,7 @@ function wireTopbar() {
     localStorage.setItem("gnd_alerts_map", alertsMapWanted() ? "0" : "1");
     renderAlertsPanel();
   };
-  el("btn-sources").onclick = () => { el("sources-panel").hidden = false; renderSourcesPanel(); };
+  el("btn-sources").onclick = () => { el("sources-panel").hidden = false; reloadSources(); };
   el("btn-close-sources").onclick = () => { el("sources-panel").hidden = true; };
 
   el("global-search").addEventListener("keydown", async (e) => {
@@ -979,7 +979,7 @@ async function renderSourcesPanel() {
   for (const s of SOURCES) {
     const row = document.createElement("div");
     row.className = "source-row";
-    const ok = s.last_status === "ok";
+    const ok = (s.last_status || "").startsWith("ok");
     const status = document.createElement("span");
     status.className = ok ? "s-status-ok" : (s.last_status ? "s-status-bad" : "");
     status.title = s.last_status || "not yet polled";
@@ -987,12 +987,27 @@ async function renderSourcesPanel() {
     const name = document.createElement("span");
     name.className = "s-name";
     name.textContent = `${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name}`;
-    name.title = s.rss_url;
+    name.title = s.rss_url + (s.repaired_from ? `\nAuto-repaired — original URL: ${s.repaired_from}` : "");
     const meta = document.createElement("span");
     meta.className = "s-meta";
-    meta.textContent = `${s.scope} · ${s.language}${s.added_by !== "catalog" ? " · " + s.added_by : ""}`;
+    meta.textContent = `${s.scope} · ${s.language}${s.added_by !== "catalog" ? " · " + s.added_by : ""}`
+      + (s.repaired_from ? " · 🔧 repaired" : "");
+    const tools = [];
+    if (!ok && s.last_status) {
+      tools.push(toolBtn("🔧", "Attempt automatic repair (re-check the URL, rediscover the feed)", async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true; btn.textContent = "⏳";
+        try {
+          const r = await API.repairSource(s.id);
+          if (!r.repaired) toast("Could not repair", r.detail || r.status);
+          else if (r.changed) toast("Source repaired", `Feed switched to ${r.rss_url} — ${r.new_articles} article(s) pulled.`);
+          else toast("Source recovered", "The existing feed URL works again.");
+        } catch (err) { toast("Repair failed", err.message); }
+        await reloadSources();
+      }));
+    }
     row.append(
-      status, name, meta,
+      status, name, meta, ...tools,
       toolBtn("✎", "Edit source", () => row.replaceWith(sourceEditor(s))),
       toolBtn(s.enabled ? "⏸" : "▶", s.enabled ? "Disable" : "Enable", async () => {
         await API.patchSource(s.id, { enabled: !s.enabled });

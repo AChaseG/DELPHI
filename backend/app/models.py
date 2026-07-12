@@ -55,6 +55,11 @@ class Source(Base):
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_status: Mapped[str] = mapped_column(String(200), default="")
     last_article_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Self-repair bookkeeping: failures in a row decide when to attempt a fix,
+    # repaired_from preserves the original URL after an automatic switch.
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    repaired_from: Mapped[str] = mapped_column(String(500), default="")
+    last_repair_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     articles = relationship("Article", back_populates="source", cascade="all, delete-orphan")
 

@@ -63,3 +63,11 @@ graceful message instead; test map drawing only with real network.
 - Elements hidden via the `hidden` attribute need the `[hidden]{display:none!important}`
   rule in styles.css — several containers set their own `display`.
 - Alert evaluation happens only inside ingest cycles, not on demo seed.
+- **Source self-repair rewrites rss_url**: after 2 consecutive 403/404/not-a-feed
+  cycles, ingest hunts for a replacement feed (homepage autodiscovery → common
+  paths → Google News site: fallback) and switches the source. If a test needs
+  URLs to stay put, set NEWS_AUTO_REPAIR=0 or disable the sources. Statuses
+  starting "ok" (incl. "ok (auto-repaired)") count as healthy.
+- Registering a user on an empty DB auto-triggers a first catalog ingest that
+  holds the cycle lock — /api/ingest/run returns 409 meanwhile; poll/kick until
+  your stub source's last_status is set instead of assuming one run sufficed.

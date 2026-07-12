@@ -89,6 +89,7 @@ const API = {
   addSource: (body) => api("/api/sources", { method: "POST", body: JSON.stringify(body) }),
   patchSource: (id, body) => api(`/api/sources/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteSource: (id) => api(`/api/sources/${id}`, { method: "DELETE" }),
+  repairSource: (id) => api(`/api/sources/${id}/repair`, { method: "POST" }),
   trackTopic: (query) => api("/api/sources/topic-tracker", { method: "POST", body: JSON.stringify({ query }) }),
   trackSocial: (query) => api("/api/sources/social-tracker", { method: "POST", body: JSON.stringify({ query }) }),
 

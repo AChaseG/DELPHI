@@ -284,9 +284,16 @@
              ticked, then hit ⟳ and give it a cycle or two.</p>
           <p><b>⟳ says a poll is already running:</b> the scheduled 5-minute cycle is
              mid-flight; results land when it finishes.</p>
-          <p><b>A source shows a red dot:</b> hover it in Sources for the exact error.
-             404 = moved/dead URL (edit it in place), 429 = rate-limited (backs off
-             automatically), "not a feed" = the URL returns a web page, not RSS.</p>
+          <p><b>A source shows a red dot:</b> hover it in Sources for the exact error,
+             and note that Delphi tries to fix these itself. After two failed polls with
+             a permanent-looking error (403/404, "not a feed", parse errors), it hunts
+             for the outlet's real feed — homepage autodiscovery, common feed paths,
+             then a Google News feed scoped to the outlet's domain as a last resort —
+             validates the candidate, and switches over (marked "🔧 repaired"; the
+             original URL is kept in the tooltip). Press 🔧 on any failing source to
+             force an attempt right now; 429 just means rate-limited and backs off on
+             its own. If repair finds nothing, the outlet is likely gone — edit the URL
+             in place or delete the source.</p>
           <p><b>Stat tile shows …/N:</b> the first poll since startup hasn't finished.</p>
         </details>
 

@@ -12,8 +12,13 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-07-12",
-        "title": "One creation flow — and guided starts",
+        "title": "Self-healing sources, one creation flow, guided starts",
         "items": [
+            "Broken sources now repair themselves: after repeated 403/404/"
+            "not-a-feed errors, Delphi rediscovers the outlet's real feed "
+            "(homepage autodiscovery, common paths, Google News fallback), "
+            "validates it, and switches over — original URL kept for reference. "
+            "A 🔧 button in Sources forces an attempt on demand.",
             "The + Feed and + Alert buttons merged into a single + Create button: "
             "a 📋 Feed / 🔔 Alert toggle inside the wizard picks what you're making.",
             "Convert any existing feed into an alert (or alert into a feed) by "

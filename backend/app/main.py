@@ -5,6 +5,8 @@ import asyncio
 import logging
 import os
 import urllib.parse
+
+import httpx
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,7 +19,7 @@ from sqlalchemy.orm import Session
 
 import re as _username_re
 
-from . import auth, ingest, mailer, translate
+from . import auth, ingest, mailer, repair, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_demo_articles, seed_sources
 from .changelog import CHANGELOG, updates_since
@@ -42,7 +44,10 @@ def _ensure_schema():
     wanted = {
         "articles": {"event_id": "INTEGER", "content": "TEXT DEFAULT ''"},
         "feeds": {"group_events": "BOOLEAN DEFAULT 0"},
-        "sources": {"platform": "VARCHAR(20) DEFAULT 'news'"},
+        "sources": {"platform": "VARCHAR(20) DEFAULT 'news'",
+                    "consecutive_failures": "INTEGER DEFAULT 0",
+                    "repaired_from": "VARCHAR(500) DEFAULT ''",
+                    "last_repair_at": "DATETIME"},
         "users": {"email": "VARCHAR(200) DEFAULT ''",
                   "email_verified": "BOOLEAN DEFAULT 0",
                   "last_seen_at": "DATETIME"},
@@ -176,7 +181,8 @@ def meta(db: Session = Depends(get_db)):
         )
     ) or 0
     sources_ok = db.scalar(
-        select(func.count(Source.id)).where(Source.enabled.is_(True), Source.last_status == "ok")
+        select(func.count(Source.id)).where(Source.enabled.is_(True),
+                                            Source.last_status.startswith("ok"))
     ) or 0
     sources_total = db.scalar(select(func.count(Source.id)).where(Source.enabled.is_(True))) or 0
     return {
@@ -382,6 +388,8 @@ def list_sources(db: Session = Depends(get_db)):
         "enabled": s.enabled, "added_by": s.added_by,
         "last_fetched_at": s.last_fetched_at.isoformat() + "Z" if s.last_fetched_at else None,
         "last_status": s.last_status, "last_article_count": s.last_article_count,
+        "consecutive_failures": s.consecutive_failures or 0,
+        "repaired_from": s.repaired_from or "",
     } for s in sources]
 
 
@@ -476,6 +484,31 @@ def delete_source(source_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Source not found")
     db.delete(source)
     db.commit()
+
+
+@app.post("/api/sources/{source_id}/repair")
+async def repair_source(source_id: int, db: Session = Depends(get_db)):
+    """Manual self-repair (the 🔧 button): re-check the current URL first —
+    a source that merely had a bad day is marked healthy without changes —
+    then hunt for a working replacement feed and ingest it immediately."""
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    old_url = source.rss_url
+    async with httpx.AsyncClient(timeout=repair.REPAIR_TIMEOUT, follow_redirects=True) as client:
+        fixed, entries = await repair.attempt_repair(client, db, source, verify_current=True)
+    if not fixed:
+        db.commit()  # persist the attempt timestamp
+        return {"repaired": False, "changed": False, "status": source.last_status,
+                "detail": "No working feed found — the outlet may be gone. Edit the URL or delete the source."}
+    new = ingest.process_entries(db, source, entries, ingest._recent_clusters(db), set())
+    source.last_article_count = len(new)
+    db.commit()
+    assign_events(db, new)
+    db.commit()
+    return {"repaired": True, "changed": source.rss_url != old_url,
+            "rss_url": source.rss_url, "repaired_from": source.repaired_from,
+            "status": source.last_status, "new_articles": len(new)}
 
 
 # ---------- articles / search ----------

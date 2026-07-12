@@ -19,6 +19,7 @@ import feedparser
 import httpx
 from sqlalchemy import select
 
+from . import repair
 from .clustering import assign_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -113,6 +114,9 @@ async def fetch_source(client: httpx.AsyncClient, source: Source) -> tuple[Sourc
         if parsed.bozo and not parsed.entries:
             return source, [], f"parse error: {parsed.get('bozo_exception', 'unknown')}"[:200]
         return source, parsed.entries, "ok"
+    except httpx.HTTPStatusError as exc:  # clean "error: 404 Not Found" statuses
+        r = exc.response
+        return source, [], f"error: {r.status_code} {r.reason_phrase}"[:200]
     except Exception as exc:  # network errors must never kill the cycle
         return source, [], f"error: {type(exc).__name__}: {exc}"[:200]
 
@@ -288,7 +292,9 @@ async def _run_ingest_cycle_locked() -> dict:
             source.last_fetched_at = utcnow()
             source.last_status = fetch_status
             if fetch_status != "ok":
+                source.consecutive_failures = (source.consecutive_failures or 0) + 1
                 continue
+            source.consecutive_failures = 0
             # Commit per source so one bad feed can't roll back the whole cycle.
             try:
                 new = process_entries(db, source, entries, recent, seen_urls)
@@ -301,6 +307,27 @@ async def _run_ingest_cycle_locked() -> dict:
                 source.last_status = f"error: processing: {type(exc).__name__}: {exc}"[:200]
                 log.exception("processing failed for source %s", source.name)
         db.commit()  # persist statuses; article ids are assigned for clustering/alerts
+
+        # Self-repair: sources stuck on permanent-looking errors (403/404/
+        # not-a-feed/parse) get their feed URL rediscovered — and, when a
+        # replacement validates, are ingested in this same cycle.
+        repaired = 0
+        due = [s for s in sources if repair.due_for_repair(s)][:repair.REPAIR_MAX_PER_CYCLE]
+        if due:
+            async with httpx.AsyncClient(timeout=repair.REPAIR_TIMEOUT, follow_redirects=True) as client:
+                for source in due:
+                    try:
+                        fixed, entries = await repair.attempt_repair(client, db, source)
+                        if fixed:
+                            new = process_entries(db, source, entries, recent, seen_urls)
+                            source.last_article_count = len(new)
+                            ok_sources += 1
+                            repaired += 1
+                            all_new.extend(new)
+                        db.commit()  # per source: also persists last_repair_at on misses
+                    except Exception:
+                        db.rollback()
+                        log.exception("repair failed for source %s", source.name)
 
         # Pull article bodies BEFORE alert evaluation so alerts see full text.
         content_fetched = 0
@@ -317,6 +344,7 @@ async def _run_ingest_cycle_locked() -> dict:
             "last_new_events": new_events,
             "last_content_fetched": content_fetched,
             "last_new_articles": len(all_new),
+            "last_repaired": repaired,
             "sources_ok": ok_sources,
             "sources_total": len(sources),
             "cycles": status.get("cycles", 0) + 1,
@@ -327,10 +355,11 @@ async def _run_ingest_cycle_locked() -> dict:
             broadcaster.publish({"type": "articles", "count": len(all_new)})
         for hit in hits:
             broadcaster.publish({"type": "alert", **hit})
-        log.info("ingest cycle: %d/%d sources ok, %d new articles, %d alert hits",
-                 ok_sources, len(sources), len(all_new), len(hits))
+        log.info("ingest cycle: %d/%d sources ok, %d new articles, %d alert hits, %d repaired",
+                 ok_sources, len(sources), len(all_new), len(hits), repaired)
         return {"new_articles": len(all_new), "new_events": new_events,
                 "alert_hits": len(hits), "content_fetched": content_fetched,
+                "repaired": repaired,
                 "sources_ok": ok_sources, "sources_total": len(sources)}
     finally:
         db.close()
