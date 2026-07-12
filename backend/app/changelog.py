@@ -16,6 +16,12 @@ CHANGELOG: list[dict] = [
         "date": "2026-07-12",
         "title": "Self-healing sources, one creation flow, guided starts",
         "items": [
+            "Pantheons — organizations inside Delphi. Create one from the new "
+            "🏛 panel, invite accounts (or make it public so anyone can join), "
+            "and share feeds and alerts with the whole group: every Pantheon "
+            "gets its own board beside Home and My feeds, shared alerts fire "
+            "for all members, and owner/admin roles plus who-can-invite / "
+            "who-can-share settings control access.",
             "Boolean searching leveled up: alongside AND (spaces work too), "
             "OR, NOT/-term, \"exact phrases\", and (grouping), searches now "
             "support strik* wildcards (? = one character) and NEAR/n "

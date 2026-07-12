@@ -29,7 +29,8 @@ from .database import Base, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer
 from .matching import query_articles
-from .models import (Alert, AlertEvent, Article, Event, Feed, Source, Translation,
+from .models import (Alert, AlertEvent, Article, Event, Feed, Pantheon,
+                     PantheonInvite, PantheonMember, Source, Translation,
                      User, ViewedEvent, utcnow)
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
 from .scoring import STANDARD_CATEGORIES, classify_categories
@@ -44,7 +45,11 @@ def _ensure_schema():
     """Additive migrations for databases created by earlier versions."""
     wanted = {
         "articles": {"event_id": "INTEGER", "content": "TEXT DEFAULT ''"},
-        "feeds": {"group_events": "BOOLEAN DEFAULT 0"},
+        "feeds": {"group_events": "BOOLEAN DEFAULT 0",
+                  "pantheon_id": "INTEGER",
+                  "shared_by": "VARCHAR(32) DEFAULT ''"},
+        "alerts": {"pantheon_id": "INTEGER",
+                   "shared_by": "VARCHAR(32) DEFAULT ''"},
         "sources": {"platform": "VARCHAR(20) DEFAULT 'news'",
                     "consecutive_failures": "INTEGER DEFAULT 0",
                     "repaired_from": "VARCHAR(500) DEFAULT ''",
@@ -578,7 +583,8 @@ def query_validate(body: QueryValidateIn):
 @app.get("/api/feeds")
 def list_feeds(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     feeds = db.scalars(
-        select(Feed).where(Feed.user_id == user_id).order_by(Feed.position, Feed.id)
+        select(Feed).where(Feed.user_id == user_id, Feed.pantheon_id.is_(None))
+        .order_by(Feed.position, Feed.id)
     ).all()
     return [{
         "id": f.id, "name": f.name, "criteria": f.criteria, "sort": f.sort,
@@ -606,7 +612,7 @@ def create_feed(body: FeedIn, user_id: str = Depends(user_id_header), db: Sessio
 @app.put("/api/feeds/{feed_id}")
 def update_feed(feed_id: int, body: FeedIn, user_id: str = Depends(user_id_header),
                 db: Session = Depends(get_db)):
-    feed = _owned(db, Feed, feed_id, user_id)
+    feed = _shared_item_for_edit(db, Feed, feed_id, user_id)
     _reject_invalid_query(body.criteria)
     _ensure_coverage_source(db, body.criteria)
     feed.name = body.name
@@ -622,7 +628,8 @@ def update_feed(feed_id: int, body: FeedIn, user_id: str = Depends(user_id_heade
 def reorder_feeds(body: dict, user_id: str = Depends(user_id_header),
                   db: Session = Depends(get_db)):
     order: list[int] = body.get("order", [])
-    feeds = {f.id: f for f in db.scalars(select(Feed).where(Feed.user_id == user_id))}
+    feeds = {f.id: f for f in db.scalars(select(Feed).where(
+        Feed.user_id == user_id, Feed.pantheon_id.is_(None)))}
     for pos, fid in enumerate(order):
         if fid in feeds:
             feeds[fid].position = pos
@@ -633,7 +640,7 @@ def reorder_feeds(body: dict, user_id: str = Depends(user_id_header),
 @app.delete("/api/feeds/{feed_id}", status_code=204)
 def delete_feed(feed_id: int, user_id: str = Depends(user_id_header),
                 db: Session = Depends(get_db)):
-    feed = _owned(db, Feed, feed_id, user_id)
+    feed = _shared_item_for_edit(db, Feed, feed_id, user_id)
     db.delete(feed)
     db.commit()
 
@@ -643,7 +650,7 @@ async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
                         lang: str = Query(default=""),
                         stale: float = Query(default=0),
                         user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
-    feed = _owned(db, Feed, feed_id, user_id)
+    feed = _shared_item_for_read(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
     articles = _drop_stale(articles, feed.criteria, stale)
     tr = await translate.translate_articles(db, articles, lang)
@@ -695,7 +702,7 @@ async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
                       lang: str = Query(default=""),
                       stale: float = Query(default=0),
                       user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
-    feed = _owned(db, Feed, feed_id, user_id)
+    feed = _shared_item_for_read(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=200)
     articles = _drop_stale(articles, feed.criteria, stale)
     return await _grouped_response(db, articles, lang, limit, user_id)
@@ -735,21 +742,39 @@ def mark_event_viewed(event_id: int, user_id: str = Depends(user_id_header),
 
 @app.get("/api/alerts")
 def list_alerts(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
-    alerts = db.scalars(
-        select(Alert).where(Alert.user_id == user_id).order_by(Alert.id)
+    """The caller's own alerts plus every alert shared with their Pantheons."""
+    own = db.scalars(
+        select(Alert).where(Alert.user_id == user_id, Alert.pantheon_id.is_(None))
+        .order_by(Alert.id)
     ).all()
+    my_pantheons = {m.pantheon_id: m for m in db.scalars(
+        select(PantheonMember).where(PantheonMember.user_id == _acct_id(user_id)))}
+    shared = db.scalars(
+        select(Alert).where(Alert.pantheon_id.in_(my_pantheons.keys())).order_by(Alert.id)
+    ).all() if my_pantheons else []
+    names = {p.id: p.name for p in db.scalars(
+        select(Pantheon).where(Pantheon.id.in_(my_pantheons.keys())))} if my_pantheons else {}
     out = []
-    for a in alerts:
+    for a in [*own, *shared]:
         unseen = db.scalar(
             select(func.count(AlertEvent.id)).where(
                 AlertEvent.alert_id == a.id, AlertEvent.seen.is_(False)
             )
         ) or 0
-        out.append({
+        row = {
             "id": a.id, "name": a.name, "criteria": a.criteria, "active": a.active,
             "last_triggered_at": a.last_triggered_at.isoformat() + "Z" if a.last_triggered_at else None,
             "unseen": unseen,
-        })
+        }
+        if a.pantheon_id is not None:
+            member = my_pantheons[a.pantheon_id]
+            row.update({
+                "pantheon_id": a.pantheon_id,
+                "pantheon_name": names.get(a.pantheon_id, ""),
+                "shared_by": a.shared_by,
+                "can_edit": a.user_id == user_id or member.role in ("owner", "admin"),
+            })
+        out.append(row)
     return out
 
 
@@ -768,7 +793,7 @@ def create_alert(body: AlertIn, user_id: str = Depends(user_id_header),
 @app.put("/api/alerts/{alert_id}")
 def update_alert(alert_id: int, body: AlertIn, user_id: str = Depends(user_id_header),
                  db: Session = Depends(get_db)):
-    alert = _owned(db, Alert, alert_id, user_id)
+    alert = _shared_item_for_edit(db, Alert, alert_id, user_id)
     _reject_invalid_query(body.criteria)
     _ensure_coverage_source(db, body.criteria)
     alert.name = body.name
@@ -781,7 +806,7 @@ def update_alert(alert_id: int, body: AlertIn, user_id: str = Depends(user_id_he
 @app.delete("/api/alerts/{alert_id}", status_code=204)
 def delete_alert(alert_id: int, user_id: str = Depends(user_id_header),
                  db: Session = Depends(get_db)):
-    alert = _owned(db, Alert, alert_id, user_id)
+    alert = _shared_item_for_edit(db, Alert, alert_id, user_id)
     db.delete(alert)
     db.commit()
 
@@ -790,7 +815,7 @@ def delete_alert(alert_id: int, user_id: str = Depends(user_id_header),
 async def alert_events(alert_id: int, limit: int = Query(default=50, le=200),
                        lang: str = Query(default=""),
                        user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
-    _owned(db, Alert, alert_id, user_id)
+    _shared_item_for_read(db, Alert, alert_id, user_id)
     events = db.scalars(
         select(AlertEvent).where(AlertEvent.alert_id == alert_id)
         .order_by(AlertEvent.created_at.desc()).limit(limit)
@@ -811,12 +836,344 @@ async def alert_events(alert_id: int, limit: int = Query(default=50, le=200),
 @app.post("/api/alerts/{alert_id}/mark-seen")
 def mark_alert_seen(alert_id: int, user_id: str = Depends(user_id_header),
                     db: Session = Depends(get_db)):
-    _owned(db, Alert, alert_id, user_id)
+    _shared_item_for_read(db, Alert, alert_id, user_id)
     for e in db.scalars(select(AlertEvent).where(
             AlertEvent.alert_id == alert_id, AlertEvent.seen.is_(False))):
         e.seen = True
     db.commit()
     return {"ok": True}
+
+
+# ---------- pantheons (organizations) ----------
+
+_DEFAULT_PANTHEON_SETTINGS = {"who_can_invite": "members", "who_can_share": "members"}
+
+
+def _pantheon_json(db: Session, p: Pantheon, member: PantheonMember | None) -> dict:
+    member_count = db.scalar(select(func.count(PantheonMember.id)).where(
+        PantheonMember.pantheon_id == p.id)) or 0
+    feed_count = db.scalar(select(func.count(Feed.id)).where(Feed.pantheon_id == p.id)) or 0
+    alert_count = db.scalar(select(func.count(Alert.id)).where(Alert.pantheon_id == p.id)) or 0
+    owner = db.get(User, p.owner_id)
+    out = {
+        "id": p.id, "name": p.name, "description": p.description,
+        "visibility": p.visibility, "owner_name": owner.username if owner else "",
+        "member_count": member_count, "feed_count": feed_count, "alert_count": alert_count,
+        "role": member.role if member else None,
+    }
+    if member:  # settings are members-only information
+        out["settings"] = {**_DEFAULT_PANTHEON_SETTINGS, **(p.settings or {})}
+    return out
+
+
+@app.get("/api/pantheons")
+def list_pantheons(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    """The caller's Pantheons and their pending invitations."""
+    uid = _acct_id(user_id)
+    memberships = db.scalars(select(PantheonMember).where(
+        PantheonMember.user_id == uid)).all()
+    mine = []
+    for m in memberships:
+        p = db.get(Pantheon, m.pantheon_id)
+        if p:
+            mine.append(_pantheon_json(db, p, m))
+    invites = []
+    for inv in db.scalars(select(PantheonInvite).where(PantheonInvite.user_id == uid)):
+        p = db.get(Pantheon, inv.pantheon_id)
+        by = db.get(User, inv.invited_by)
+        if p:
+            invites.append({"id": inv.id, "pantheon_id": p.id, "name": p.name,
+                            "invited_by": by.username if by else "?",
+                            "member_count": db.scalar(select(func.count(PantheonMember.id))
+                                                      .where(PantheonMember.pantheon_id == p.id)) or 0})
+    return {"mine": sorted(mine, key=lambda x: x["name"].lower()), "invites": invites}
+
+
+@app.post("/api/pantheons", status_code=201)
+def create_pantheon(body: dict, user_id: str = Depends(user_id_header),
+                    db: Session = Depends(get_db)):
+    name = (body.get("name") or "").strip()
+    if not 2 <= len(name) <= 80:
+        raise HTTPException(422, "A Pantheon name needs 2-80 characters")
+    visibility = body.get("visibility", "private")
+    if visibility not in ("private", "public"):
+        raise HTTPException(422, "Visibility must be private or public")
+    uid = _acct_id(user_id)
+    p = Pantheon(name=name, description=(body.get("description") or "").strip()[:500],
+                 visibility=visibility, owner_id=uid,
+                 settings=dict(_DEFAULT_PANTHEON_SETTINGS))
+    db.add(p)
+    db.flush()
+    member = PantheonMember(pantheon_id=p.id, user_id=uid, role="owner")
+    db.add(member)
+    db.commit()
+    return _pantheon_json(db, p, member)
+
+
+@app.get("/api/pantheons/public")
+def public_pantheons(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    """Directory of public Pantheons anyone may join."""
+    uid = _acct_id(user_id)
+    joined = set(db.scalars(select(PantheonMember.pantheon_id).where(
+        PantheonMember.user_id == uid)))
+    out = []
+    for p in db.scalars(select(Pantheon).where(Pantheon.visibility == "public")
+                        .order_by(Pantheon.name).limit(200)):
+        row = _pantheon_json(db, p, None)
+        row["joined"] = p.id in joined
+        out.append(row)
+    return out
+
+
+@app.get("/api/pantheons/{pantheon_id}")
+def pantheon_detail(pantheon_id: int, user_id: str = Depends(user_id_header),
+                    db: Session = Depends(get_db)):
+    pantheon, member = _require_membership(db, pantheon_id, user_id)
+    out = _pantheon_json(db, pantheon, member)
+    out["members"] = [{
+        "user_id": m.user_id,
+        "username": (u.username if (u := db.get(User, m.user_id)) else "?"),
+        "role": m.role,
+    } for m in db.scalars(select(PantheonMember).where(
+        PantheonMember.pantheon_id == pantheon_id).order_by(PantheonMember.joined_at))]
+    if member.role in ("owner", "admin"):
+        out["pending_invites"] = [
+            (u.username if (u := db.get(User, inv.user_id)) else "?")
+            for inv in db.scalars(select(PantheonInvite).where(
+                PantheonInvite.pantheon_id == pantheon_id))
+        ]
+    return out
+
+
+@app.patch("/api/pantheons/{pantheon_id}")
+def update_pantheon(pantheon_id: int, body: dict,
+                    user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    pantheon, member = _require_membership(db, pantheon_id, user_id)
+    if member.role not in ("owner", "admin"):
+        raise HTTPException(403, "Only the owner or an admin can change Pantheon settings")
+    if "name" in body:
+        name = (body["name"] or "").strip()
+        if not 2 <= len(name) <= 80:
+            raise HTTPException(422, "A Pantheon name needs 2-80 characters")
+        pantheon.name = name
+    if "description" in body:
+        pantheon.description = (body["description"] or "").strip()[:500]
+    if "visibility" in body:
+        if body["visibility"] not in ("private", "public"):
+            raise HTTPException(422, "Visibility must be private or public")
+        pantheon.visibility = body["visibility"]
+    if "settings" in body and isinstance(body["settings"], dict):
+        merged = {**_DEFAULT_PANTHEON_SETTINGS, **(pantheon.settings or {})}
+        for key in ("who_can_invite", "who_can_share"):
+            if key in body["settings"]:
+                if body["settings"][key] not in ("members", "admins"):
+                    raise HTTPException(422, f"{key} must be members or admins")
+                merged[key] = body["settings"][key]
+        pantheon.settings = merged
+    db.commit()
+    return _pantheon_json(db, pantheon, member)
+
+
+@app.delete("/api/pantheons/{pantheon_id}", status_code=204)
+def delete_pantheon(pantheon_id: int, user_id: str = Depends(user_id_header),
+                    db: Session = Depends(get_db)):
+    pantheon, member = _require_membership(db, pantheon_id, user_id)
+    if member.role != "owner":
+        raise HTTPException(403, "Only the owner can delete a Pantheon")
+    for alert in db.scalars(select(Alert).where(Alert.pantheon_id == pantheon_id)):
+        db.delete(alert)  # cascades its AlertEvents
+    db.execute(sa_delete(Feed).where(Feed.pantheon_id == pantheon_id))
+    db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == pantheon_id))
+    db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == pantheon_id))
+    db.delete(pantheon)
+    db.commit()
+
+
+@app.post("/api/pantheons/{pantheon_id}/invite")
+def invite_to_pantheon(pantheon_id: int, body: dict,
+                       user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    pantheon, member = _require_membership(db, pantheon_id, user_id)
+    if not _pantheon_allows(pantheon, member, "invite"):
+        raise HTTPException(403, "This Pantheon lets only admins send invitations")
+    handle = (body.get("user") or "").strip()
+    if not handle:
+        raise HTTPException(422, "Give a username or email address to invite")
+    target = db.scalar(select(User).where(or_(
+        func.lower(User.username) == handle.lower(),
+        func.lower(User.email) == handle.lower())))
+    if not target:
+        raise HTTPException(404, f"No account named {handle!r}")
+    if target.id == _acct_id(user_id):
+        raise HTTPException(422, "You are already here")
+    if db.scalar(select(PantheonMember).where(
+            PantheonMember.pantheon_id == pantheon_id, PantheonMember.user_id == target.id)):
+        raise HTTPException(409, f"{target.username} is already a member")
+    if db.scalar(select(PantheonInvite).where(
+            PantheonInvite.pantheon_id == pantheon_id, PantheonInvite.user_id == target.id)):
+        raise HTTPException(409, f"{target.username} already has a pending invitation")
+    db.add(PantheonInvite(pantheon_id=pantheon_id, user_id=target.id,
+                          invited_by=_acct_id(user_id)))
+    db.commit()
+    return {"ok": True, "username": target.username}
+
+
+@app.post("/api/pantheons/invites/{invite_id}/accept")
+def accept_invite(invite_id: int, user_id: str = Depends(user_id_header),
+                  db: Session = Depends(get_db)):
+    inv = db.get(PantheonInvite, invite_id)
+    if not inv or inv.user_id != _acct_id(user_id):
+        raise HTTPException(404, "Invitation not found")
+    pid = inv.pantheon_id
+    db.add(PantheonMember(pantheon_id=pid, user_id=inv.user_id, role="member"))
+    db.delete(inv)
+    db.commit()
+    return {"ok": True, "pantheon_id": pid}
+
+
+@app.post("/api/pantheons/invites/{invite_id}/decline")
+def decline_invite(invite_id: int, user_id: str = Depends(user_id_header),
+                   db: Session = Depends(get_db)):
+    inv = db.get(PantheonInvite, invite_id)
+    if not inv or inv.user_id != _acct_id(user_id):
+        raise HTTPException(404, "Invitation not found")
+    db.delete(inv)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/pantheons/{pantheon_id}/join")
+def join_pantheon(pantheon_id: int, user_id: str = Depends(user_id_header),
+                  db: Session = Depends(get_db)):
+    pantheon = db.get(Pantheon, pantheon_id)
+    if not pantheon:
+        raise HTTPException(404, "Pantheon not found")
+    if pantheon.visibility != "public":
+        raise HTTPException(403, "This Pantheon is private — you need an invitation")
+    uid = _acct_id(user_id)
+    if _membership(db, pantheon_id, user_id):
+        raise HTTPException(409, "Already a member")
+    db.execute(sa_delete(PantheonInvite).where(  # a pending invite is now moot
+        PantheonInvite.pantheon_id == pantheon_id, PantheonInvite.user_id == uid))
+    db.add(PantheonMember(pantheon_id=pantheon_id, user_id=uid, role="member"))
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/pantheons/{pantheon_id}/leave")
+def leave_pantheon(pantheon_id: int, user_id: str = Depends(user_id_header),
+                   db: Session = Depends(get_db)):
+    _, member = _require_membership(db, pantheon_id, user_id)
+    if member.role == "owner":
+        raise HTTPException(422, "The owner cannot leave — delete the Pantheon "
+                                 "or promote another owner first")
+    db.delete(member)
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/pantheons/{pantheon_id}/members/{member_uid}", status_code=204)
+def remove_member(pantheon_id: int, member_uid: int,
+                  user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    _, actor = _require_membership(db, pantheon_id, user_id)
+    if actor.role not in ("owner", "admin"):
+        raise HTTPException(403, "Only the owner or an admin can remove members")
+    target = db.scalar(select(PantheonMember).where(
+        PantheonMember.pantheon_id == pantheon_id, PantheonMember.user_id == member_uid))
+    if not target:
+        raise HTTPException(404, "Member not found")
+    if target.role == "owner":
+        raise HTTPException(403, "The owner cannot be removed")
+    if target.role == "admin" and actor.role != "owner":
+        raise HTTPException(403, "Only the owner can remove an admin")
+    db.delete(target)
+    db.commit()
+
+
+@app.post("/api/pantheons/{pantheon_id}/members/{member_uid}/role")
+def set_member_role(pantheon_id: int, member_uid: int, body: dict,
+                    user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    pantheon, actor = _require_membership(db, pantheon_id, user_id)
+    if actor.role != "owner":
+        raise HTTPException(403, "Only the owner can change roles")
+    role = body.get("role")
+    target = db.scalar(select(PantheonMember).where(
+        PantheonMember.pantheon_id == pantheon_id, PantheonMember.user_id == member_uid))
+    if not target:
+        raise HTTPException(404, "Member not found")
+    if role == "owner":
+        # ownership transfer: the current owner steps down to admin
+        actor.role = "admin"
+        target.role = "owner"
+        pantheon.owner_id = target.user_id
+    elif role in ("admin", "member"):
+        if target.role == "owner":
+            raise HTTPException(403, "Transfer ownership by promoting someone to owner")
+        target.role = role
+    else:
+        raise HTTPException(422, "Role must be owner, admin, or member")
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/pantheons/{pantheon_id}/feeds")
+def pantheon_feeds(pantheon_id: int, user_id: str = Depends(user_id_header),
+                   db: Session = Depends(get_db)):
+    _, member = _require_membership(db, pantheon_id, user_id)
+    feeds = db.scalars(select(Feed).where(Feed.pantheon_id == pantheon_id)
+                       .order_by(Feed.position, Feed.id)).all()
+    return [{
+        "id": f.id, "name": f.name, "criteria": f.criteria, "sort": f.sort,
+        "position": f.position, "width": f.width, "group_events": f.group_events,
+        "pantheon_id": pantheon_id, "shared_by": f.shared_by,
+        "can_edit": f.user_id == user_id or member.role in ("owner", "admin"),
+    } for f in feeds]
+
+
+def _share_copy(db, item, model, pantheon_id: int, user_id: str):
+    """Common guts of sharing a feed/alert into a Pantheon."""
+    pantheon, member = _require_membership(db, pantheon_id, user_id)
+    if not _pantheon_allows(pantheon, member, "share"):
+        raise HTTPException(403, "This Pantheon lets only admins share items")
+    me = db.get(User, _acct_id(user_id))
+    existing = db.scalar(select(model).where(
+        model.pantheon_id == pantheon_id, model.name == item.name,
+        model.user_id == user_id))
+    if existing:
+        raise HTTPException(409, f"You already shared “{item.name}” with this Pantheon")
+    return member, (me.username if me else "")
+
+
+@app.post("/api/feeds/{feed_id}/share", status_code=201)
+def share_feed(feed_id: int, body: dict, user_id: str = Depends(user_id_header),
+               db: Session = Depends(get_db)):
+    feed = _owned(db, Feed, feed_id, user_id)
+    if feed.pantheon_id is not None:
+        raise HTTPException(422, "This feed is already a shared copy")
+    pantheon_id = int(body.get("pantheon_id") or 0)
+    _, username = _share_copy(db, feed, Feed, pantheon_id, user_id)
+    max_pos = db.scalar(select(func.max(Feed.position)).where(Feed.pantheon_id == pantheon_id))
+    copy = Feed(user_id=user_id, pantheon_id=pantheon_id, shared_by=username,
+                name=feed.name, criteria=dict(feed.criteria), sort=feed.sort,
+                group_events=feed.group_events, width=1,
+                position=(max_pos + 1) if max_pos is not None else 0)
+    db.add(copy)
+    db.commit()
+    return {"id": copy.id}
+
+
+@app.post("/api/alerts/{alert_id}/share", status_code=201)
+def share_alert(alert_id: int, body: dict, user_id: str = Depends(user_id_header),
+                db: Session = Depends(get_db)):
+    alert = _owned(db, Alert, alert_id, user_id)
+    if alert.pantheon_id is not None:
+        raise HTTPException(422, "This alert is already a shared copy")
+    pantheon_id = int(body.get("pantheon_id") or 0)
+    _, username = _share_copy(db, alert, Alert, pantheon_id, user_id)
+    copy = Alert(user_id=user_id, pantheon_id=pantheon_id, shared_by=username,
+                 name=alert.name, criteria=dict(alert.criteria), active=True)
+    db.add(copy)
+    db.commit()
+    return {"id": copy.id}
 
 
 # ---------- ingest control & live stream ----------
@@ -1018,6 +1375,71 @@ def _owned(db: Session, model, obj_id: int, user_id: str):
     obj = db.get(model, obj_id)
     if not obj or obj.user_id != user_id:
         raise HTTPException(404, f"{model.__name__} not found")
+    return obj
+
+
+def _acct_id(user_id: str) -> int:
+    return int(user_id.split(":", 1)[1])
+
+
+def _membership(db: Session, pantheon_id: int, user_id: str) -> PantheonMember | None:
+    return db.scalar(select(PantheonMember).where(
+        PantheonMember.pantheon_id == pantheon_id,
+        PantheonMember.user_id == _acct_id(user_id)))
+
+
+def _require_membership(db: Session, pantheon_id: int, user_id: str):
+    pantheon = db.get(Pantheon, pantheon_id)
+    if not pantheon:
+        raise HTTPException(404, "Pantheon not found")
+    member = _membership(db, pantheon_id, user_id)
+    if not member:
+        raise HTTPException(403, "You are not a member of this Pantheon")
+    return pantheon, member
+
+
+def _pantheon_allows(pantheon: Pantheon, member: PantheonMember, action: str) -> bool:
+    """Settings-gated actions ("invite", "share"): owner/admins always may;
+    plain members only when the Pantheon's setting says "members"."""
+    if member.role in ("owner", "admin"):
+        return True
+    return (pantheon.settings or {}).get(f"who_can_{action}", "members") == "members"
+
+
+def _can_manage_shared(db: Session, item, user_id: str) -> bool:
+    """Edit/delete rights on a Pantheon-shared feed/alert: its sharer, or a
+    Pantheon owner/admin."""
+    if item.user_id == user_id:
+        return True
+    member = _membership(db, item.pantheon_id, user_id)
+    return bool(member and member.role in ("owner", "admin"))
+
+
+def _shared_item_for_read(db: Session, model, obj_id: int, user_id: str):
+    """A feed/alert the caller may VIEW: their own, or shared with a Pantheon
+    they belong to."""
+    obj = db.get(model, obj_id)
+    if not obj:
+        raise HTTPException(404, f"{model.__name__} not found")
+    if obj.pantheon_id is None:
+        if obj.user_id != user_id:
+            raise HTTPException(404, f"{model.__name__} not found")
+    elif not _membership(db, obj.pantheon_id, user_id):
+        raise HTTPException(403, "Not a member of this Pantheon")
+    return obj
+
+
+def _shared_item_for_edit(db: Session, model, obj_id: int, user_id: str):
+    """A feed/alert the caller may CHANGE: their own, or a Pantheon item they
+    shared themselves / administer."""
+    obj = db.get(model, obj_id)
+    if not obj:
+        raise HTTPException(404, f"{model.__name__} not found")
+    if obj.pantheon_id is None:
+        if obj.user_id != user_id:
+            raise HTTPException(404, f"{model.__name__} not found")
+    elif not _can_manage_shared(db, obj, user_id):
+        raise HTTPException(403, "Only the sharer or a Pantheon admin can change this")
     return obj
 
 

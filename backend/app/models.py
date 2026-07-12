@@ -144,11 +144,53 @@ class Translation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Pantheon(Base):
+    """An organization: members share feeds, alerts, and a common board."""
+    __tablename__ = "pantheons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(String(500), default="")
+    visibility: Mapped[str] = mapped_column(String(10), default="private")  # private | public
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # Access limits, editable by owner/admins:
+    #   who_can_invite: "members" | "admins"    who_can_share: "members" | "admins"
+    settings: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PantheonMember(Base):
+    __tablename__ = "pantheon_members"
+    __table_args__ = (UniqueConstraint("pantheon_id", "user_id", name="uq_pantheon_member"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pantheon_id: Mapped[int] = mapped_column(ForeignKey("pantheons.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(10), default="member")  # owner | admin | member
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PantheonInvite(Base):
+    __tablename__ = "pantheon_invites"
+    __table_args__ = (UniqueConstraint("pantheon_id", "user_id", name="uq_pantheon_invite"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pantheon_id: Mapped[int] = mapped_column(ForeignKey("pantheons.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)  # invitee
+    invited_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Feed(Base):
     __tablename__ = "feeds"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True, default="default")
+    # Set when this feed lives on a Pantheon's shared board instead of a
+    # personal one; shared_by holds the sharer's username for attribution.
+    pantheon_id: Mapped[int | None] = mapped_column(ForeignKey("pantheons.id"),
+                                                    nullable=True, index=True, default=None)
+    shared_by: Mapped[str] = mapped_column(String(32), default="")
     name: Mapped[str] = mapped_column(String(200))
     # criteria keys (all optional): countries[], scopes[], categories[], languages[],
     # source_ids[], keywords[], exclude_keywords[], query (boolean string),
@@ -166,6 +208,9 @@ class Alert(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True, default="default")
+    pantheon_id: Mapped[int | None] = mapped_column(ForeignKey("pantheons.id"),
+                                                    nullable=True, index=True, default=None)
+    shared_by: Mapped[str] = mapped_column(String(32), default="")
     name: Mapped[str] = mapped_column(String(200))
     criteria: Mapped[dict] = mapped_column(JSON, default=dict)  # same shape as Feed.criteria
     active: Mapped[bool] = mapped_column(Boolean, default=True)

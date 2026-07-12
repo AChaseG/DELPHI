@@ -73,6 +73,10 @@ graceful message instead; test map drawing only with real network.
   paths → Google News site: fallback) and switches the source. If a test needs
   URLs to stay put, set NEWS_AUTO_REPAIR=0 or disable the sources. Statuses
   starting "ok" (incl. "ok (auto-repaired)") count as healthy.
+- Pantheons (organizations): feeds/alerts with `pantheon_id` set are shared
+  copies — excluded from /api/feeds and included in every member's /api/alerts.
+  Access: members read, sharer + owner/admin edit; /api/pantheons/public must
+  stay declared before /api/pantheons/{id} (route order).
 - Registering a user on an empty DB auto-triggers a first catalog ingest that
   holds the cycle lock — /api/ingest/run returns 409 meanwhile; poll/kick until
   your stub source's last_status is set instead of assuming one run sufficed.

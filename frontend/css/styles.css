@@ -450,6 +450,38 @@ button { font: inherit; }
 .wiz-summary-row { font-size: 12.5px; color: var(--ink-2); }
 .wiz-summary-row b { color: var(--ink); font-weight: 600; }
 
+/* ---------- pantheons ---------- */
+.pn-create { display: flex; flex-direction: column; gap: 8px; margin-bottom: 6px; }
+.pn-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--hairline);
+}
+.pn-row input[type="text"] { flex: 1; min-width: 0; }
+.pn-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pn-card {
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 4px 10px; margin-bottom: 8px; background: var(--surface-2);
+}
+.pn-card .pn-row:last-child { border-bottom: none; }
+.pn-detail { padding: 2px 0 8px; }
+.pn-detail select { max-width: 200px; }
+.view-switch .view-pantheon { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pop-menu {
+  position: fixed; z-index: 1200;
+  display: flex; flex-direction: column; min-width: 180px;
+  background: var(--surface-2); border: 1px solid var(--gold-soft);
+  border-radius: 7px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  padding: 4px; gap: 2px;
+}
+.pop-menu button {
+  background: none; border: none; color: var(--ink);
+  text-align: left; padding: 7px 10px; cursor: pointer;
+  border-radius: 5px; font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pop-menu button:hover { background: var(--accent-strong); color: var(--accent-ink); }
+
 /* ---------- Boolean search builder ---------- */
 .qb-legend { margin: 0 0 4px; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
 .qb-legend li { font-size: 12px; color: var(--ink-2); }

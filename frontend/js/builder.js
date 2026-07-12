@@ -203,6 +203,8 @@ const Builder = {
     el("b-group").checked = !!(item && item.group_events);
     // Feeds have no `active`; default true so a feed→alert conversion fires.
     el("b-active").checked = item && item.active !== undefined ? !!item.active : true;
+    // Pantheon-shared copies can be edited but not converted feed↔alert.
+    el("builder-mode").hidden = !!(item && item.pantheon_id);
     this.setMode(mode);
     const sort = (item && item.sort) || "newest";
     for (const r of document.querySelectorAll('input[name="b-sort"]')) r.checked = r.value === sort;

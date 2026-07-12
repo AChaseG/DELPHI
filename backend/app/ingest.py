@@ -242,6 +242,7 @@ def evaluate_alerts(db, new_articles: list[Article]) -> list[dict]:
                     "alert_id": alert.id,
                     "alert_name": alert.name,
                     "user_id": alert.user_id,
+                    "pantheon_id": alert.pantheon_id,
                     "article_id": article.id,
                     "title": article.title,
                     "url": article.url,

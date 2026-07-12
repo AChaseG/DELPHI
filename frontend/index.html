@@ -29,6 +29,7 @@
       <input id="global-search" type="search" placeholder="Search all news… (supports AND OR NOT)" autocomplete="off">
       <button id="btn-create" class="btn btn-primary" title="Create a feed or an alert — pick which with the toggle inside">+ Create</button>
       <button id="btn-sources" class="btn" title="Manage sources">Sources</button>
+      <button id="btn-pantheons" class="btn bell" title="Pantheons — organizations that share feeds and alerts">🏛<span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
       <button id="btn-refresh" class="btn" title="Poll all sources now">⟳</button>
       <button id="btn-alerts-panel" class="btn bell" title="Alerts">🔔<span id="bell-count" class="bell-count" hidden>0</span></button>
       <button id="btn-settings" class="btn" title="Settings">⚙</button>
@@ -279,9 +280,31 @@
         </details>
 
         <details>
+          <summary>🏛 Pantheons — organizations that share feeds and alerts</summary>
+          <p>A <b>Pantheon</b> is a group: create one from the 🏛 panel, name it, and
+             invite other accounts by username or email (invitees accept from their own
+             🏛 panel). Every Pantheon gets <b>its own board</b> in the view switcher,
+             right beside 🏠 Home and 📋 My feeds.</p>
+          <p><b>Sharing:</b> press 🏛 on any of your feeds (in 📋 My feeds) or alerts
+             (🔔 panel) and pick a Pantheon — a shared copy appears on that Pantheon's
+             board for every member, tagged with who shared it. Your personal original
+             stays yours. Shared alerts fire live for <em>all</em> members, and the
+             alert history (including mark-as-seen) is shared triage. Any member can 📌
+             a shared feed to copy it back into their own board.</p>
+          <p><b>Visibility & access limits:</b> a Pantheon is 🔒 <b>private</b>
+             (invitation only) or 🌐 <b>public</b> (listed in the panel's directory,
+             anyone can join). Owner and admins can also restrict <em>who can
+             invite</em> and <em>who can share</em> to admins only. Roles: 👑 owner
+             (settings, roles, delete, ownership transfer), 🛡 admins (invite, manage
+             members, edit/remove anything shared), 👤 members. Editing or removing a
+             shared item is limited to whoever shared it plus owner/admins.</p>
+        </details>
+
+        <details>
           <summary>🔐 Accounts, privacy, and what's shared</summary>
           <p><b>Private to your account:</b> feeds, alerts and their history, viewed-event
-             dimming. Sign in with username or email from any device.</p>
+             dimming — unless you deliberately share them with a Pantheon. Sign in with
+             username or email from any device.</p>
           <p><b>Shared by everyone on this server:</b> the article database and the source
              catalog — one ingestion pipeline feeds all users, and any user can add or
              edit sources. Display preferences (theme, timestamps, sound) stay on the
@@ -453,6 +476,36 @@
         🧹 Remove demo data</button>
     </div>
     <div id="sources-list"></div>
+  </aside>
+
+  <!-- Pantheons side panel -->
+  <aside id="pantheons-panel" class="side-panel" hidden>
+    <div class="side-panel-head">
+      <h2>🏛 Pantheons</h2>
+      <button class="icon-btn" id="btn-close-pantheons">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="set-note">A Pantheon is an organization: create one, invite other accounts,
+         and share feeds and alerts with everyone in it. Each Pantheon gets its own board
+         beside 🏠 Home and 📋 My feeds.</p>
+      <h3 class="set-h">Create a Pantheon</h3>
+      <div class="pn-create">
+        <input id="pn-name" type="text" maxlength="80" placeholder="Name — e.g. Aegean Watch Desk">
+        <select id="pn-visibility">
+          <option value="private">🔒 Private — invitation only</option>
+          <option value="public">🌐 Public — anyone can join</option>
+        </select>
+        <button class="btn btn-primary" id="btn-create-pantheon">Create</button>
+      </div>
+      <div id="pn-invites-section" hidden>
+        <h3 class="set-h">Invitations</h3>
+        <div id="pn-invites"></div>
+      </div>
+      <h3 class="set-h">My Pantheons</h3>
+      <div id="pn-mine"></div>
+      <h3 class="set-h">Public Pantheons</h3>
+      <div id="pn-public"></div>
+    </div>
   </aside>
 
   <!-- Feed / Alert builder modal -->
