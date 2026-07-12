@@ -27,11 +27,14 @@ async function boot() {
   [META, SOURCES] = await Promise.all([API.meta(), API.sources()]);
   COUNTRY_NAMES = new Map(META.countries.map(c => [c.iso2, c.name]));
   Builder.init(META, SOURCES);
-  Builder.onSaved = async (mode) => {
-    if (mode === "alert") await refreshAlerts();
-    else {
+  Builder.onSaved = async (mode, converted = false) => {
+    // A conversion changes both lists: one side gains, the other loses.
+    if (mode === "alert" || converted) await refreshAlerts();
+    if (mode === "feed") {
       FEEDS = await API.feeds();
       setView("mine");  // show the user what they just created/edited
+    } else if (converted) {
+      await refreshFeeds();  // feed became an alert: drop its column
     }
   };
   wireTopbar();
@@ -106,9 +109,8 @@ function wireTopbar() {
   wireAuth();
   wireSettings();
   applySettings();
-  el("btn-new-feed").onclick = () => Builder.open("feed");
+  el("btn-create").onclick = () => Builder.open("feed");
   el("btn-empty-new-feed").onclick = () => Builder.open("feed");
-  el("btn-new-alert").onclick = () => Builder.open("alert");
   el("btn-starter-pack").onclick = starterPack;
   el("btn-refresh").onclick = async () => {
     el("btn-refresh").disabled = true;
@@ -814,7 +816,7 @@ async function renderAlertsPanel() {
   box.innerHTML = "";
   if (!ALERTS.length) {
     el("alerts-map").hidden = true;
-    box.innerHTML = '<div class="feed-empty">No alerts yet. Create one with “+ Alert” — ' +
+    box.innerHTML = '<div class="feed-empty">No alerts yet. Press “+ Create” and flip the toggle to 🔔 Alert — ' +
       "you'll get a live notification whenever a new article matches its criteria " +
       "(keywords, boolean query, countries, importance, or a drawn map area).</div>";
     return;

@@ -372,6 +372,8 @@ button { font: inherit; }
 }
 .modal-head { border-bottom: 3px double var(--gold-soft); }
 .modal-head h2 { margin: 0; font-size: 16px; flex: 1; }
+.modal-head .mode-switch { flex: none; }
+.modal-head .mode-switch button { padding: 5px 12px; font-size: 12px; }
 .modal-foot { border-top: 1px solid var(--hairline); }
 .modal-foot .spacer { flex: 1; }
 .modal-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }

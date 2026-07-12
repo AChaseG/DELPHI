@@ -1,6 +1,7 @@
 /* Feed & alert builder modal, including the draw-on-map geofence editor. */
 const Builder = {
-  mode: "feed",        // "feed" | "alert"
+  mode: "feed",        // "feed" | "alert" — what Save will produce
+  originalMode: "feed",// what `editing` currently is; differing = conversion
   editing: null,       // existing feed/alert object when editing
   keywords: [],
   exclude: [],
@@ -94,6 +95,10 @@ const Builder = {
     if (this._wired) return;
     this._wired = true;
     el("btn-close-builder").onclick = () => this.close();
+    el("builder-mode").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-mode]");
+      if (b) this.setMode(b.dataset.mode);
+    });
     el("btn-wiz-back").onclick = () => this.showStep(this.step - 1);
     el("btn-wiz-next").onclick = () => this.showStep(this.step + 1);
     el("wiz-nav").addEventListener("click", (e) => {
@@ -151,12 +156,25 @@ const Builder = {
     el("btn-delete-item").onclick = () => this.remove();
   },
 
-  open(mode, item = null) {
+  /* Flip what Save produces. Editing an item and picking the other mode turns
+     the save into a conversion (feed → alert or alert → feed). */
+  setMode(mode) {
     this.mode = mode;
+    for (const b of el("builder-mode").querySelectorAll("button"))
+      b.classList.toggle("active", b.dataset.mode === mode);
+    el("alert-only-fields").hidden = mode !== "alert";
+    el("feed-only-fields").hidden = mode !== "feed";
+    const noun = mode === "alert" ? "alert" : "feed";
+    el("builder-title").textContent = !this.editing ? `New ${noun}`
+      : mode === this.originalMode ? `Edit ${noun}`
+      : `Convert to ${noun}`;
+    if (this.step === this.LAST_STEP) this._renderSummary();
+  },
+
+  open(mode, item = null) {
     this.editing = item;
+    this.originalMode = mode;
     const c = (item && item.criteria) || {};
-    el("builder-title").textContent =
-      (item ? "Edit " : "New ") + (mode === "alert" ? "alert" : "feed");
     el("b-name").value = item ? item.name : "";
     selectValues(el("b-countries"), c.countries || []);
     selectValues(el("b-categories"), c.categories || []);
@@ -182,10 +200,10 @@ const Builder = {
     el("b-date-from").value = c.date_from || "";
     el("b-date-to").value = c.date_to || "";
     el("b-stale").checked = !!c.hide_stale;
-    el("alert-only-fields").hidden = mode !== "alert";
-    el("feed-only-fields").hidden = mode !== "feed";
-    el("b-group").checked = item ? !!item.group_events : false;
-    el("b-active").checked = item ? !!item.active : true;
+    el("b-group").checked = !!(item && item.group_events);
+    // Feeds have no `active`; default true so a feed→alert conversion fires.
+    el("b-active").checked = item && item.active !== undefined ? !!item.active : true;
+    this.setMode(mode);
     const sort = (item && item.sort) || "newest";
     for (const r of document.querySelectorAll('input[name="b-sort"]')) r.checked = r.value === sort;
     el("btn-delete-item").hidden = !item;
@@ -270,20 +288,31 @@ const Builder = {
 
   async save() {
     const body = this.collect();
+    // Converting = editing an item while the toggle points at the other kind.
+    // Criteria are shared between feeds and alerts, so the new item is created
+    // first (with everything carried over) and the old one deleted only after
+    // that succeeds — a failure never loses the original.
+    const converting = this.editing && this.mode !== this.originalMode;
     try {
       if (this.mode === "alert") {
         body.active = el("b-active").checked;
         delete body.sort;
-        if (this.editing) await API.updateAlert(this.editing.id, body);
+        if (converting) {
+          await API.createAlert(body);
+          await API.deleteFeed(this.editing.id);
+        } else if (this.editing) await API.updateAlert(this.editing.id, body);
         else await API.createAlert(body);
       } else {
-        body.width = this.editing ? this.editing.width || 1 : 1;
+        body.width = this.editing && !converting ? this.editing.width || 1 : 1;
         body.group_events = el("b-group").checked;
-        if (this.editing) await API.updateFeed(this.editing.id, body);
+        if (converting) {
+          await API.createFeed(body);
+          await API.deleteAlert(this.editing.id);
+        } else if (this.editing) await API.updateFeed(this.editing.id, body);
         else await API.createFeed(body);
       }
       this.close();
-      if (this.onSaved) this.onSaved(this.mode);
+      if (this.onSaved) this.onSaved(this.mode, converting);
     } catch (e) {
       alert("Could not save: " + e.message);
     }
@@ -291,11 +320,12 @@ const Builder = {
 
   async remove() {
     if (!this.editing) return;
-    if (!confirm(`Delete this ${this.mode}?`)) return;
-    if (this.mode === "alert") await API.deleteAlert(this.editing.id);
+    // Delete targets what the item IS, regardless of where the toggle sits.
+    if (!confirm(`Delete this ${this.originalMode}?`)) return;
+    if (this.originalMode === "alert") await API.deleteAlert(this.editing.id);
     else await API.deleteFeed(this.editing.id);
     this.close();
-    if (this.onSaved) this.onSaved(this.mode);
+    if (this.onSaved) this.onSaved(this.originalMode);
   },
 
   /* ----- map / geofence ----- */

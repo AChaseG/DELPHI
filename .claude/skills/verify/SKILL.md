@@ -46,7 +46,9 @@ fires a `min_importance: 80` alert.
 
 Playwright + `/opt/pw-browsers/chromium-*/chrome-linux/chrome`. Open `/`,
 a fresh browser profile shows the empty state → click **Add starter feeds** →
-expect 4 feed columns with `.article` rows. `#btn-new-feed` opens the builder;
+expect 4 feed columns with `.article` rows. `#btn-create` opens the builder
+(the `#builder-mode` toggle picks feed vs alert, and flips an existing item
+into a conversion);
 typing in `#b-query` shows live validation in `#b-query-status`.
 Leaflet comes from unpkg CDN — blocked in sandboxes, so the map button shows a
 graceful message instead; test map drawing only with real network.

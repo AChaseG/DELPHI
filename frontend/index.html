@@ -27,8 +27,7 @@
     </div>
     <div class="topbar-actions">
       <input id="global-search" type="search" placeholder="Search all news… (supports AND OR NOT)" autocomplete="off">
-      <button id="btn-new-feed" class="btn btn-primary">+ Feed</button>
-      <button id="btn-new-alert" class="btn">+ Alert</button>
+      <button id="btn-create" class="btn btn-primary" title="Create a feed or an alert — pick which with the toggle inside">+ Create</button>
       <button id="btn-sources" class="btn" title="Manage sources">Sources</button>
       <button id="btn-refresh" class="btn" title="Poll all sources now">⟳</button>
       <button id="btn-alerts-panel" class="btn bell" title="Alerts">🔔<span id="bell-count" class="bell-count" hidden>0</span></button>
@@ -135,12 +134,14 @@
               and related events. Every story is an event, even single-source ones.
               Viewed events dim so you can see what you've already triaged.</li>
             <li>Press <b>📌</b> on a Home column to copy it into <b>📋 My feeds</b>, or
-              <b>+ Feed</b> to build your own with the four-step wizard: Topic
+              <b>+ Create</b> to build your own with the four-step wizard: Topic
               (keywords/boolean queries), Where (countries or a shape drawn on the map),
               Refine (categories, platforms, importance…), Review (summary + live match
               count).</li>
-            <li>Create a <b>🔔 Alert</b> the same way for anything you must know about
-              the moment it happens.</li>
+            <li>The <b>📋 Feed / 🔔 Alert toggle</b> at the top of the wizard decides
+              what you're making: a feed is a column you read, an alert notifies you
+              live. Create an alert for anything you must know about the moment it
+              happens.</li>
             <li>Add sources or track new topics in <b>Sources</b>; tune appearance,
               language, timestamps, and notifications in <b>⚙ Settings</b>.</li>
           </ol>
@@ -159,6 +160,10 @@
              and stored in the alert's history with a map of where hits happened.</p>
           <p>Rule of thumb: broad topics you check on your schedule → feed. Narrow,
              time-critical triggers ("anything Critical inside this drawn box") → alert.</p>
+          <p><b>Convert any time.</b> Both are built in the same wizard — pick with the
+             📋 Feed / 🔔 Alert toggle at the top. Open an existing feed or alert with
+             ✎ and flip that toggle to turn one into the other; every criterion carries
+             over, and Save completes the conversion.</p>
         </details>
 
         <details>
@@ -391,6 +396,11 @@
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h2 id="builder-title">New feed</h2>
+        <div class="view-switch mode-switch" id="builder-mode" role="tablist"
+             title="A feed is a column you read; an alert notifies you live. Flip it any time — even on an existing item, to convert it.">
+          <button data-mode="feed" class="active">📋 Feed</button>
+          <button data-mode="alert">🔔 Alert</button>
+        </div>
         <nav class="wiz-nav" id="wiz-nav">
           <button data-step="0">1 · Topic</button>
           <button data-step="1">2 · Where</button>
