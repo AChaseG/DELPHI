@@ -1,7 +1,11 @@
 /* Thin API client. An account is required to use the system, so every request
    is authenticated with the signed-in account's bearer token. */
 
-/* Display & notification preferences, persisted per browser. */
+/* Display & notification preferences. localStorage is the fast local copy;
+   the account's server-side copy is authoritative so settings follow the
+   user across browsers, devices, and origin changes (each Codespace URL is
+   a fresh origin with empty localStorage — settings must not live only
+   there). Boot adopts the account copy; every change writes through. */
 const Settings = {
   defaults: {
     theme: "dark",        // dark | light | system
@@ -21,6 +25,26 @@ const Settings = {
     const s = this._load();
     s[key] = value;
     localStorage.setItem("gnd_settings", JSON.stringify(s));
+    this._push();
+  },
+  /* Merge the account's saved copy over this device's (server wins; local
+     fills gaps). The reading language rides along in the same payload. */
+  adopt(remote) {
+    if (!remote || typeof remote !== "object") return;
+    const { lang, ...prefs } = remote;
+    localStorage.setItem("gnd_settings", JSON.stringify({ ...this._load(), ...prefs }));
+    if (typeof lang === "string") localStorage.setItem("gnd_lang", lang);
+  },
+  _pushTimer: null,
+  _push() {  // debounced write-through; losing one save to a crash is fine
+    clearTimeout(this._pushTimer);
+    this._pushTimer = setTimeout(() => {
+      if (!Session.token()) return;
+      api("/api/session/settings", {
+        method: "PUT",
+        body: JSON.stringify({ settings: { ...this._load(), lang: getLang() } }),
+      }).catch(() => { /* offline — the local copy still applies */ });
+    }, 800);
   },
 };
 
@@ -70,7 +94,10 @@ function getLang() {
   if (stored !== null) return stored;
   return (navigator.language || "en").slice(0, 2).toLowerCase();
 }
-function setLang(lang) { localStorage.setItem("gnd_lang", lang); }
+function setLang(lang) {
+  localStorage.setItem("gnd_lang", lang);
+  Settings._push();  // the reading language syncs with the account too
+}
 const langQS = () => (getLang() ? `&lang=${encodeURIComponent(getLang())}` : "");
 const staleQS = () => `&stale=${Settings.get("stale_hours") || 0}`;
 
@@ -129,6 +156,7 @@ const API = {
 
   hello: () => api("/api/session/hello", { method: "POST" }),
   checkUpdates: () => api("/api/session/check-updates", { method: "POST" }),
+  getSettings: () => api("/api/session/settings"),
   changelog: () => api("/api/changelog"),
 
   register: (username, email, password) =>

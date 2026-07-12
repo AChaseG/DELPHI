@@ -25,6 +25,11 @@ CHANGELOG: list[dict] = [
             "hourly, quiet ones less often) with per-host pacing, replacing the "
             "big serialized cycle that had grown slow and skipped sources at "
             "this catalog size.",
+            "Settings now follow your account: theme, time format, volume, "
+            "notifications, staleness threshold, and reading language are "
+            "saved server-side and applied wherever you sign in — previously "
+            "they lived only in one browser and were lost when the app's URL "
+            "changed (new Codespace, new domain) or on another device.",
             "Performance pass: the database no longer blocks readers during "
             "ingestion (WAL), boards skip loading full article bodies unless a "
             "search actually needs them, dashboard stats got an index, and "

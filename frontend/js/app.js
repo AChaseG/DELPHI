@@ -26,6 +26,10 @@ async function boot() {
     document.querySelector(".topbar").hidden = true;
     return;
   }
+  // Adopt the account's saved preferences FIRST: everything below (theme,
+  // language picker, staleness, settings panel) initializes from Settings,
+  // and this device's localStorage may be empty (new browser / new origin).
+  try { Settings.adopt((await API.getSettings()).settings); } catch (e) { /* offline */ }
   [META, SOURCES] = await Promise.all([API.meta(), API.sources()]);
   COUNTRY_NAMES = new Map(META.countries.map(c => [c.iso2, c.name]));
   Builder.init(META, SOURCES);

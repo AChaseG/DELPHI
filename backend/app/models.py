@@ -37,6 +37,10 @@ class User(Base):
     # JSON list of changelog-entry fingerprints already shown to this account,
     # so live sessions get a What's-new popup the moment an update ships.
     changelog_seen: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # JSON blob of display/notification preferences (theme, time format,
+    # volume, reading language, …) so settings follow the account across
+    # browsers, devices, and origin changes — not just this one localStorage.
+    settings: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
 
 class Source(Base):

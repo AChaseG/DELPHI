@@ -58,7 +58,8 @@ def _ensure_schema():
         "users": {"email": "VARCHAR(200) DEFAULT ''",
                   "email_verified": "BOOLEAN DEFAULT 0",
                   "last_seen_at": "DATETIME",
-                  "changelog_seen": "TEXT"},
+                  "changelog_seen": "TEXT",
+                  "settings": "TEXT"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -434,6 +435,38 @@ def session_check_updates(user_id: str = Depends(user_id_header),
 def full_changelog():
     """Every release-notes entry, newest first (Settings → What's new)."""
     return CHANGELOG
+
+
+@app.get("/api/session/settings")
+def get_user_settings(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    """The account's saved display/notification preferences (may be empty)."""
+    user = db.get(User, _acct_id(user_id))
+    if user is None:
+        raise HTTPException(401, "Account no longer exists")
+    try:
+        return {"settings": json.loads(user.settings) if user.settings else {}}
+    except ValueError:
+        return {"settings": {}}
+
+
+@app.put("/api/session/settings")
+def save_user_settings(body: dict, user_id: str = Depends(user_id_header),
+                       db: Session = Depends(get_db)):
+    """Persist preferences on the account so they follow the user across
+    browsers, devices, and URL changes (Codespaces mint a new origin — and a
+    new empty localStorage — every time)."""
+    user = db.get(User, _acct_id(user_id))
+    if user is None:
+        raise HTTPException(401, "Account no longer exists")
+    settings = body.get("settings")
+    if not isinstance(settings, dict):
+        raise HTTPException(422, "settings must be an object")
+    raw = json.dumps(settings)
+    if len(raw) > 4096:
+        raise HTTPException(422, "Settings payload too large")
+    user.settings = raw
+    db.commit()
+    return {"ok": True}
 
 
 # ---------- sources ----------
