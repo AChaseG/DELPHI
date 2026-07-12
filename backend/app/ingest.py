@@ -11,13 +11,14 @@ import calendar
 import logging
 import os
 import re
+import time
 from collections import Counter
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 import feedparser
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, exists, select
 
 from . import discovery, repair
 from .clustering import assign_events
@@ -25,7 +26,8 @@ from .content import fetch_article_text
 from .database import SessionLocal
 from .events import broadcaster
 from .matching import CriteriaMatcher
-from .models import Alert, AlertEvent, Article, Source, utcnow
+from .models import (Alert, AlertEvent, Article, Event, Source, Translation,
+                     ViewedEvent, utcnow)
 from .geo import extract_places
 from .scoring import classify_categories, cluster_tokens, score_importance, tokens_similarity
 
@@ -48,6 +50,12 @@ CITY_INTERVAL = int(os.environ.get("NEWS_CITY_INTERVAL", "5400"))  # city local 
 CITY_IDLE_BACKOFF_MAX = int(os.environ.get("NEWS_CITY_IDLE_BACKOFF_MAX", "4"))  # ×2^n cap
 GOOGLE_GAP = float(os.environ.get("NEWS_GOOGLE_GAP", "2.0"))       # min gap between google hits
 SHARED_HOST_GAP = float(os.environ.get("NEWS_SHARED_HOST_GAP", "1.0"))  # other multi-feed hosts
+
+# Article retention: with ~500+ sources the table grows without bound and
+# every board query slows over time. Articles older than this are pruned
+# (with their translations and alert-history rows); 0 disables pruning.
+RETENTION_DAYS = float(os.environ.get("NEWS_RETENTION_DAYS", "30"))
+PRUNE_EVERY_SECONDS = 6 * 3600
 USER_AGENT = "Delphi/1.0 (+RSS reader; respects robots and publisher feeds)"
 # Some CDNs 403 any unknown agent while happily serving browsers the same
 # public syndication feed; retry once with a browser UA before giving up.
@@ -480,11 +488,43 @@ async def run_ingest_cycle() -> dict:
             db.close()
 
 
+def prune_old_articles(db) -> dict:
+    """Retention: drop articles older than RETENTION_DAYS along with their
+    translations and alert-history rows, then events that no longer have any
+    articles (and their per-user viewed markers). Keeps the working set — and
+    every board/search scan — bounded as ingestion runs forever."""
+    if RETENTION_DAYS <= 0:
+        return {"articles": 0, "events": 0}
+    cutoff = utcnow() - timedelta(days=RETENTION_DAYS)
+    old_ids = db.scalars(select(Article.id).where(Article.published_at < cutoff)).all()
+    for i in range(0, len(old_ids), 500):
+        chunk = old_ids[i:i + 500]
+        db.execute(sa_delete(Translation).where(Translation.article_id.in_(chunk)))
+        db.execute(sa_delete(AlertEvent).where(AlertEvent.article_id.in_(chunk)))
+        db.execute(sa_delete(Article).where(Article.id.in_(chunk)))
+    if old_ids:
+        db.commit()
+    orphan_ids = db.scalars(select(Event.id).where(
+        Event.updated_at < cutoff,
+        ~exists().where(Article.event_id == Event.id))).all()
+    for i in range(0, len(orphan_ids), 500):
+        chunk = orphan_ids[i:i + 500]
+        db.execute(sa_delete(ViewedEvent).where(ViewedEvent.event_id.in_(chunk)))
+        db.execute(sa_delete(Event).where(Event.id.in_(chunk)))
+    if orphan_ids:
+        db.commit()
+    return {"articles": len(old_ids), "events": len(orphan_ids)}
+
+
+_next_prune_at: float = 0.0  # monotonic deadline for the next retention pass
+
+
 async def ingest_loop():
     """Continuous rolling poll: every tick, fetch whichever sources are due
     (news wires first, then a bounded slice of city feeds), paced per host so
     Google gets a steady drip rather than a burst. Each source refreshes on its
     own interval; nothing starves and no single tick runs long."""
+    global _next_prune_at
     status["running"] = True
     while True:
         try:
@@ -497,6 +537,12 @@ async def ingest_loop():
                              + [s for s in due if _is_city(s)][:CITY_PER_TICK])
                     if batch:
                         await _ingest_batch(db, batch)
+                    if RETENTION_DAYS > 0 and time.monotonic() >= _next_prune_at:
+                        _next_prune_at = time.monotonic() + PRUNE_EVERY_SECONDS
+                        pruned = prune_old_articles(db)
+                        if pruned["articles"] or pruned["events"]:
+                            log.info("retention: pruned %d articles, %d empty events",
+                                     pruned["articles"], pruned["events"])
                 finally:
                     db.close()
         except Exception as exc:

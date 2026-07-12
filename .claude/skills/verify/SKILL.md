@@ -14,7 +14,11 @@ NEWS_DISABLE_INGEST=1 .venv/bin/uvicorn backend.app.main:app --port 8123 &
 
 `NEWS_DISABLE_INGEST=1` keeps the background poller off so cycles are driven
 explicitly with `POST /api/ingest/run`. DB is `backend/data/news.db` (gitignored);
-delete it for a clean slate. Catalog sources are seeded on startup.
+delete it for a clean slate — SQLite runs in WAL mode, so clean up `news.db*`
+(the `-wal`/`-shm` sidecars too). Catalog sources are seeded on startup.
+Retention pruning (NEWS_RETENTION_DAYS, default 30) deletes old articles during
+loop ticks; `query_articles` defers loading `content` unless criteria have
+text predicates — tests asserting loaded columns must `db.expire_all()` first.
 
 ## Drive the API surface
 

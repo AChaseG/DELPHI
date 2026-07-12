@@ -1503,6 +1503,10 @@ function sourceEditor(s) {
 
 /* ---------- live stream ---------- */
 let refreshTimer = null;
+// The rolling poller broadcasts every ~15s; without throttles every open tab
+// would refetch /api/meta and reload every visible column on each tick.
+let lastStatsRefresh = 0;   // stat tiles: at most once a minute
+let lastBoardRefresh = 0;   // board columns: at most every 30s (auto-refresh)
 let STREAM_CONNECTED_ONCE = false;
 
 function connectStream() {
@@ -1518,14 +1522,21 @@ function connectStream() {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
     if (msg.type === "cycle") {
-      API.meta().then(renderStats).catch(() => {});
+      if (Date.now() - lastStatsRefresh > 60000) {
+        lastStatsRefresh = Date.now();
+        API.meta().then(renderStats).catch(() => {});
+      }
     } else if (msg.type === "articles") {
       clearTimeout(refreshTimer);
+      // Coalesce bursts: reload soon after quiet, but never more than once
+      // per 30s while ticks keep producing articles.
+      const wait = Math.max(1500, 30000 - (Date.now() - lastBoardRefresh));
       refreshTimer = setTimeout(async () => {
+        lastBoardRefresh = lastStatsRefresh = Date.now();
         renderStats(await API.meta());
         const visible = VIEW === "home" ? DELPHI_FEEDS : FEEDS;
         await Promise.all(visible.map(loadFeedArticles));
-      }, 1500);
+      }, wait);
     } else if (msg.type === "alert" && (msg.user_id === Session.userKey()
                || (msg.pantheon_id && PANTHEONS.some(p => p.id === msg.pantheon_id)))) {
       const t = impTier(msg.importance);

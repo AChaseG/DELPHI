@@ -85,6 +85,7 @@ paced into a steady drip instead of a burst. Knobs:
 | `NEWS_POLL_BATCH` | `80` | Max news wires fetched per tick. |
 | `NEWS_CITY_PER_TICK` | `20` | Max city feeds fetched per tick (bounds the Google drip). |
 | `NEWS_GOOGLE_GAP` | `2.0` | Min seconds between requests to news.google.com. |
+| `NEWS_RETENTION_DAYS` | `30` | Prune articles (and their translations/alert history) older than this; `0` keeps everything forever. |
 | `NEWS_SEED_CITIES` | `1` | Seed ~500 city local-news sources on first run (`0` to skip). |
 | `NEWS_AUTO_DISCOVER` | `1` | Auto-add local outlets found in coverage (`0` to disable). |
 | `NEWS_AUTO_REPAIR` | `1` | Auto-fix broken source feeds (`0` to disable). |

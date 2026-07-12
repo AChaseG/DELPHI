@@ -270,6 +270,9 @@
              disable any auto-discovered source you don't want.</p>
           <p>For matching, each new article's page is fetched once and reduced to text,
              so criteria see the whole story, not just the headline.</p>
+          <p><b>Retention:</b> articles are kept for 30 days by default, then pruned to
+             keep the system fast (self-hosting: <code>NEWS_RETENTION_DAYS</code>, 0 =
+             keep forever). Date-range feeds can only reach back as far as retention.</p>
         </details>
 
         <details>

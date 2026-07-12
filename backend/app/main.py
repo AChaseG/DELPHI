@@ -66,6 +66,10 @@ def _ensure_schema():
             for name, ddl in columns.items():
                 if name not in existing:
                     conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+        # Indexes create_all won't add to pre-existing tables (dashboard stats
+        # filter on fetched_at every refresh).
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_articles_fetched_at ON articles (fetched_at)")
 
 
 @asynccontextmanager
@@ -205,7 +209,7 @@ def meta(db: Session = Depends(get_db)):
             {"iso2": c["iso2"], "name": c["name"]}
             for c in sorted(gaz["countries"], key=lambda c: c["name"])
         ],
-        "languages": sorted({s.language for s in db.scalars(select(Source)).all()} | {"en"}),
+        "languages": sorted(set(db.scalars(select(func.distinct(Source.language)))) | {"en"}),
         "ui_languages": translate.UI_LANGUAGES,
         "translation": {"provider": translate.PROVIDER, "enabled": translate.enabled()},
         "stats": {
@@ -780,13 +784,17 @@ def list_alerts(user_id: str = Depends(user_id_header), db: Session = Depends(ge
     ).all() if my_pantheons else []
     names = {p.id: p.name for p in db.scalars(
         select(Pantheon).where(Pantheon.id.in_(my_pantheons.keys())))} if my_pantheons else {}
+    everything = [*own, *shared]
+    # One grouped count instead of a query per alert (the bell refreshes often).
+    unseen_by_alert: dict[int, int] = dict(db.execute(
+        select(AlertEvent.alert_id, func.count(AlertEvent.id))
+        .where(AlertEvent.alert_id.in_([a.id for a in everything]),
+               AlertEvent.seen.is_(False))
+        .group_by(AlertEvent.alert_id)
+    ).all()) if everything else {}
     out = []
-    for a in [*own, *shared]:
-        unseen = db.scalar(
-            select(func.count(AlertEvent.id)).where(
-                AlertEvent.alert_id == a.id, AlertEvent.seen.is_(False)
-            )
-        ) or 0
+    for a in everything:
+        unseen = unseen_by_alert.get(a.id, 0)
         row = {
             "id": a.id, "name": a.name, "criteria": a.criteria, "active": a.active,
             "last_triggered_at": a.last_triggered_at.isoformat() + "Z" if a.last_triggered_at else None,

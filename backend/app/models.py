@@ -109,7 +109,7 @@ class Article(Base):
     content: Mapped[str] = mapped_column(Text, default="")  # fetched article body text
     image_url: Mapped[str] = mapped_column(String(1000), default="")
     published_at: Mapped[datetime] = mapped_column(DateTime, index=True, default=utcnow)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     language: Mapped[str] = mapped_column(String(8), default="en")
     country: Mapped[str] = mapped_column(String(2), default="", index=True)
     categories: Mapped[list] = mapped_column(JSON, default=list)

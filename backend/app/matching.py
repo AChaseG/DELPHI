@@ -21,7 +21,7 @@ import re
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, defer, joinedload
 
 from .boolean_query import QueryError, compile_query
 from .geo import places_match_geo
@@ -66,6 +66,10 @@ class CriteriaMatcher:
         if hours:
             self.since = utcnow() - timedelta(hours=float(hours))
 
+        # Text (title+summary+body) is only assembled when some predicate
+        # reads it, so callers can skip loading article bodies otherwise.
+        self.needs_text = bool(self.keyword_res or self.exclude_res or self.query_preds)
+
         # Explicit date range (inclusive calendar days, UTC)
         self.date_from: datetime | None = None
         self.date_to: datetime | None = None
@@ -81,8 +85,10 @@ class CriteriaMatcher:
     def matches(self, article: Article, source: Source | None = None) -> bool:
         source = source or article.source
         # Full recall: criteria see the fetched article body, not just the
-        # headline and feed summary.
-        text = f"{article.title}\n{article.summary}\n{article.content or ''}"
+        # headline and feed summary. Assembled only when a predicate needs it —
+        # touching .content would otherwise force-load a deferred column.
+        text = (f"{article.title}\n{article.summary}\n{article.content or ''}"
+                if self.needs_text else "")
 
         if self.since and article.published_at and article.published_at < self.since:
             return False
@@ -129,6 +135,10 @@ def query_articles(
     matcher = CriteriaMatcher(criteria)
 
     stmt = select(Article).options(joinedload(Article.source))
+    # Article bodies run to ~20 KB each and this scans up to `scan_cap` rows —
+    # only pay to load them when some predicate actually reads the text.
+    if not matcher.needs_text:
+        stmt = stmt.options(defer(Article.content))
     if matcher.since:
         stmt = stmt.where(Article.published_at >= matcher.since)
     if matcher.date_from:

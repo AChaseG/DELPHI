@@ -25,6 +25,11 @@ CHANGELOG: list[dict] = [
             "hourly, quiet ones less often) with per-host pacing, replacing the "
             "big serialized cycle that had grown slow and skipped sources at "
             "this catalog size.",
+            "Performance pass: the database no longer blocks readers during "
+            "ingestion (WAL), boards skip loading full article bodies unless a "
+            "search actually needs them, dashboard stats got an index, and "
+            "articles older than 30 days are pruned automatically "
+            "(NEWS_RETENTION_DAYS) so the system stays fast as it runs forever.",
             "Security hardening: Pantheon names and server messages are now "
             "rendered as inert text (no cross-account script injection), "
             "emailed verification/reset links use a fixed origin instead of a "
