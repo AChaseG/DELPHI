@@ -583,7 +583,7 @@ function criteriaBadges(c, sort) {
     out.push(tag(`“${kws[0]}”${more}`, kws.join(", ")));
   }
   const nq = (c.queries || []).filter(q => q && q.trim()).length + (c.query ? 1 : 0);
-  if (nq) out.push(tag(nq > 1 ? `boolean ×${nq}` : "boolean",
+  if (nq) out.push(tag(nq > 1 ? `Boolean ×${nq}` : "Boolean",
                        [...(c.queries || []), c.query].filter(Boolean).join("  |  ")));
   if (c.min_importance) out.push(tag("imp≥" + c.min_importance));
   if (c.geo) out.push(tag("📍 map area"));
@@ -898,7 +898,7 @@ async function renderAlertsPanel() {
     el("alerts-map").hidden = true;
     box.innerHTML = '<div class="feed-empty">No alerts yet. Press “+ Create” and flip the toggle to 🔔 Alert — ' +
       "you'll get a live notification whenever a new article matches its criteria " +
-      "(keywords, boolean query, countries, importance, or a drawn map area).</div>";
+      "(keywords, Boolean search, countries, importance, or a drawn map area).</div>";
     return;
   }
   const eventsByAlert = await Promise.all(

@@ -52,7 +52,7 @@ const Builder = {
     const lines = [];
     const names = (c.countries || []).map(iso => COUNTRY_NAMES.get(iso) || iso);
     for (let i = 0; i < (c.queries || []).length; i++)
-      lines.push([c.queries.length > 1 ? `Query ${i + 1}` : "Query", c.queries[i]]);
+      lines.push([c.queries.length > 1 ? `Search ${i + 1}` : "Search", c.queries[i]]);
     if (c.keywords.length) lines.push(["Keywords (any)", c.keywords.join(", ")]);
     if (c.exclude_keywords.length) lines.push(["Excluding", c.exclude_keywords.join(", ")]);
     if (names.length) lines.push(["Countries", names.join(", ")]);
@@ -229,10 +229,10 @@ const Builder = {
     st.className = "query-status";
     const wand = document.createElement("button");
     wand.className = "btn small"; wand.textContent = "🪄 build";
-    wand.title = "Build this query step by step (no syntax needed)";
+    wand.title = "Build this Boolean search step by step (no syntax needed)";
     wand.onclick = () => QueryBuilder.open(input);
     const rm = document.createElement("button");
-    rm.className = "icon-btn"; rm.textContent = "✕"; rm.title = "Remove this query";
+    rm.className = "icon-btn"; rm.textContent = "✕"; rm.title = "Remove this search";
     rm.onclick = () => {
       row.remove();
       if (!el("b-queries").children.length) this._addQueryRow("");
@@ -412,9 +412,10 @@ const Builder = {
   },
 };
 
-/* Guided boolean-query builder: every operator type from boxes —
-   AND (between rows), OR (within a row), exact phrases (multi-word terms),
-   NEAR/n proximity pairs, NOT terms, and * / ? wildcards typed anywhere. */
+/* Guided Boolean search builder: every operator type from boxes —
+   AND (between rows; spaces work too), OR (within a row), exact phrases
+   (multi-word terms), NEAR/n proximity pairs, NOT terms, and * / ?
+   wildcards typed anywhere. */
 const QueryBuilder = {
   target: null,
   groups: [],      // array of term-arrays; OR within a group, AND between groups

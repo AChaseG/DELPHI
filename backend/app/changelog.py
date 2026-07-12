@@ -16,11 +16,13 @@ CHANGELOG: list[dict] = [
         "date": "2026-07-12",
         "title": "Self-healing sources, one creation flow, guided starts",
         "items": [
-            "Boolean queries gained two operator types: wildcards (strik* — "
-            "strike/strikes/striking; ? for one character) and NEAR/n "
-            "proximity (earthquake NEAR/5 tokyo). The 🪄 query builder now "
-            "covers every operator: OR rows, AND requirements, proximity "
-            "pairs, NOT terms, phrases, and wildcards typed anywhere.",
+            "Boolean searching leveled up: alongside AND (spaces work too), "
+            "OR, NOT/-term, \"exact phrases\", and (grouping), searches now "
+            "support strik* wildcards (? = one character) and NEAR/n "
+            "proximity (earthquake NEAR/5 tokyo). The 🪄 wizard covers every "
+            "operator from boxes — requirement rows that narrow, OR terms "
+            "that broaden, proximity pairs, exclusions — with a built-in "
+            "operator guide and live match count.",
             "The source catalog now grows itself: when Google News coverage "
             "names an outlet Delphi doesn't have, its own feed is discovered, "
             "validated, and added automatically (tagged auto-discovered in "

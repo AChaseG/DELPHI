@@ -139,7 +139,7 @@
               Viewed events dim so you can see what you've already triaged.</li>
             <li>Press <b>📌</b> on a Home column to copy it into <b>📋 My feeds</b>, or
               <b>+ Create</b> to build your own with the four-step wizard: Topic
-              (keywords/boolean queries), Where (countries or a shape drawn on the map),
+              (keywords/Boolean searches), Where (countries or a shape drawn on the map),
               Refine (categories, platforms, importance…), Review (summary + live match
               count).</li>
             <li>The <b>📋 Feed / 🔔 Alert toggle</b> at the top of the wizard decides
@@ -153,7 +153,7 @@
 
         <details>
           <summary>📋 Feeds vs 🔔 Alerts — what's the difference?</summary>
-          <p>Both use the <em>same criteria</em> (keywords, boolean queries, countries,
+          <p>Both use the <em>same criteria</em> (keywords, Boolean searches, countries,
              categories, map areas, importance…). The difference is posture:</p>
           <p><b>A feed is a place you look.</b> It's a column on your board that always
              shows the current matching articles, sorted and optionally grouped into
@@ -210,12 +210,20 @@
         </details>
 
         <details>
-          <summary>🔍 Boolean queries — syntax and the builder</summary>
-          <p>Queries match the article's headline, summary, <em>and fetched body text</em>.
-             Syntax: <code>AND</code>, <code>OR</code>, <code>NOT</code>, parentheses,
-             <code>"exact phrases"</code>. Google-style also works: <code>-term</code>
-             for NOT, <code>|</code> for OR, smart quotes are cleaned up.</p>
-          <p><code>("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor</code></p>
+          <summary>🔍 Boolean searching — operators and the builder</summary>
+          <p>Boolean searching uses operators to define relationships between keywords —
+             requiring all terms, allowing any synonymous terms, or excluding unwanted
+             concepts — instantly narrowing or broadening results. Searches match the
+             article's headline, summary, <em>and fetched body text</em>.</p>
+          <ul>
+            <li><code>AND</code> (or just spaces) — <b>narrows</b>: all terms must be present.</li>
+            <li><code>OR</code> (or <code>|</code>) — <b>broadens</b>: results may feature any of the terms.</li>
+            <li><code>NOT</code> (or <code>-term</code>) — <b>excludes</b> words to remove irrelevant results.</li>
+            <li><code>"quotation marks"</code> — exact phrase, in the exact order.</li>
+            <li><code>( parentheses )</code> — group terms to control the search logic.</li>
+          </ul>
+          <p><code>("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor</code>
+             — smart quotes pasted from elsewhere are cleaned up automatically.</p>
           <p>Two more operator types: <b>wildcards</b> — <code>strik*</code> matches
              strike/strikes/striking, <code>organi?ation</code> matches one character
              (both work inside phrases; at least two literal characters required) — and
@@ -223,10 +231,10 @@
              terms sit at most 5 words apart in either order (<code>NEAR</code> alone
              means NEAR/10; chains like <code>a NEAR/3 b NEAR/3 c</code> check each
              adjacent pair).</p>
-          <p>A feed can hold <b>several queries</b> — each runs separately, all fill the
-             same feed. Prefer boxes over syntax? Click <b>🪄 build</b> next to any query
-             row: "must include at least one from each row", proximity pairs, excluded
-             terms — every operator type, no syntax needed, with a live match count.</p>
+          <p>A feed can hold <b>several searches</b> — each runs separately, all fill the
+             same feed. Prefer boxes over syntax? Click <b>🪄 build</b> next to any search
+             row: requirement rows, proximity pairs, excluded terms — every operator type,
+             no syntax needed, with a live match count.</p>
         </details>
 
         <details>
@@ -393,7 +401,7 @@
   <div id="empty-state" class="empty-state" hidden>
     <h2>Your dashboard is empty</h2>
     <p>Create a feed to start monitoring news — filter by country, category, keywords,
-       boolean queries, importance, or an area you draw on the map.
+       Boolean searches, importance, or an area you draw on the map.
        Or flip to <b>🏠 Home</b> for Delphi's curated overview and 📌 any column there
        to make it yours.</p>
     <button class="btn btn-primary" id="btn-empty-new-feed">Create your first feed</button>
@@ -469,7 +477,7 @@
 
         <section class="wiz-step" data-step="0">
           <p class="wiz-guide">What should this watch for? A name plus keywords is enough —
-             the boolean query is optional power. Everything can stay empty to match all news.</p>
+             the Boolean search is optional power. Everything can stay empty to match all news.</p>
           <label class="field">
             <span>Name</span>
             <input id="b-name" type="text" placeholder="e.g. East Africa security">
@@ -485,11 +493,12 @@
             </label>
           </div>
           <div class="field">
-            <span>Boolean queries <em>(optional — AND / OR / NOT, quotes, parentheses, strik* wildcards,
-              NEAR/5 proximity; Google-style -term and | work too.
-              Each query runs separately; matches from all of them populate this one feed)</em></span>
+            <span>Boolean searches <em>(optional — AND or spaces narrow, OR broadens, NOT or -term
+              excludes, "quotes" match exact phrases, parentheses group; plus strik* wildcards and
+              NEAR/5 proximity. Each search runs separately; matches from all of them populate this
+              one feed)</em></span>
             <div id="b-queries"></div>
-            <div><button class="btn small" id="btn-add-query">+ Add another boolean query</button></div>
+            <div><button class="btn small" id="btn-add-query">+ Add another Boolean search</button></div>
             <label class="check-row" style="margin-top:6px">
               <input type="checkbox" id="b-coverage" checked>
               🔍 Automatically ingest worldwide coverage of these queries/keywords
@@ -611,21 +620,29 @@
     </div>
   </div>
 
-  <!-- Boolean query builder -->
+  <!-- Boolean search builder -->
   <div id="qb-backdrop" class="modal-backdrop" hidden>
     <div class="modal qb-modal" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2>🪄 Build a boolean query</h2>
+        <h2>🪄 Build a Boolean search</h2>
         <button class="icon-btn" id="btn-close-qb">✕</button>
       </div>
       <div class="modal-body">
-        <p class="wiz-guide">Fill the boxes — the query writes itself. An article matches when it
-           contains <b>at least one term from every “must include” row</b>, satisfies every
-           <b>proximity pair</b>, and has <b>none</b> of the excluded terms. Multi-word terms
-           become exact phrases, and <b>*</b> works anywhere as a wildcard
-           (strik* = strike, strikes, striking; ? = exactly one letter).</p>
+        <p class="wiz-guide">Boolean searching uses operators to define relationships between
+           keywords — requiring all terms, allowing any synonymous terms, or excluding unwanted
+           concepts — to narrow or broaden your results. Fill the boxes and the search writes
+           itself:</p>
+        <ul class="qb-legend">
+          <li><b>AND</b> <em>(or just spaces)</em> — narrows: every term must be present</li>
+          <li><b>OR</b> — broadens: results may feature any of the terms</li>
+          <li><b>NOT</b> <em>(or -term)</em> — excludes words to remove irrelevant results</li>
+          <li><b>"quotation marks"</b> — exact phrase in the exact order (multi-word terms are quoted for you)</li>
+          <li><b>( parentheses )</b> — group terms to control the logic (added around each OR row for you)</li>
+          <li><b>strik*</b> / <b>organi?ation</b> — wildcards: any word ending / exactly one character</li>
+          <li><b>NEAR/5</b> — proximity: terms at most 5 words apart</li>
+        </ul>
         <div class="field">
-          <span>Must include — at least one from each row</span>
+          <span>Must include — every row is required (AND); any term within a row counts (OR)</span>
           <div id="qb-groups"></div>
           <div><button class="btn small" id="btn-qb-add-group">+ AND another requirement</button></div>
         </div>
@@ -635,11 +652,11 @@
           <div><button class="btn small" id="btn-qb-add-near">+ Add a proximity requirement</button></div>
         </div>
         <div class="field">
-          <span>Must NOT include any of these</span>
+          <span>Must NOT include any of these <em>(NOT — excludes)</em></span>
           <div id="qb-not"></div>
         </div>
         <div class="field">
-          <span>Generated query</span>
+          <span>Generated search</span>
           <code id="qb-preview" class="qb-preview">—</code>
           <span id="qb-status" class="query-status"></span>
         </div>
@@ -647,7 +664,7 @@
       <div class="modal-foot">
         <span class="spacer"></span>
         <button class="btn" id="btn-qb-cancel">Cancel</button>
-        <button class="btn btn-primary" id="btn-qb-insert">Use this query</button>
+        <button class="btn btn-primary" id="btn-qb-insert">Use this search</button>
       </div>
     </div>
   </div>
