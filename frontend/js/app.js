@@ -42,6 +42,7 @@ async function boot() {
   await Promise.all([refreshFeeds(), refreshAlerts()]);
   connectStream();
   runOnboarding();
+  setInterval(checkForUpdates, UPDATE_POLL_MS);
   // First run on an empty database: pull the catalog once in the background.
   if (META.stats.total_articles === 0) {
     toast("Fetching news", "First run — polling all sources. This can take a minute…");
@@ -282,6 +283,19 @@ function closeUpdates() {
     FAQ_AFTER_UPDATES = false;
     el("faq-backdrop").hidden = false;
   }
+}
+
+/* Live what's-new: open sessions learn about updates without a re-login.
+   Checked on a timer and immediately after the event stream reconnects —
+   a redeploy severs the stream, so reconnection is the "update just
+   shipped" signal. */
+const UPDATE_POLL_MS = 5 * 60 * 1000;
+
+async function checkForUpdates() {
+  let r;
+  try { r = await API.checkUpdates(); } catch (e) { return; }
+  if (r.updates && r.updates.length)
+    showUpdates(r.updates, "Just shipped — new since you loaded this session.");
 }
 
 async function runOnboarding() {
@@ -1083,9 +1097,17 @@ function sourceEditor(s) {
 
 /* ---------- live stream ---------- */
 let refreshTimer = null;
+let STREAM_CONNECTED_ONCE = false;
+
 function connectStream() {
   // EventSource cannot send headers; the token rides as a query parameter.
   const es = new EventSource("/api/stream?token=" + encodeURIComponent(Session.token()));
+  es.onopen = () => {
+    // A reconnect usually means the server restarted — i.e. an update may
+    // have just been deployed. (Boot-time onboarding covers the first open.)
+    if (STREAM_CONNECTED_ONCE) checkForUpdates();
+    STREAM_CONNECTED_ONCE = true;
+  };
   es.onmessage = (e) => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }

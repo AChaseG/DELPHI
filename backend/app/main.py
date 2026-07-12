@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import urllib.parse
@@ -22,7 +23,7 @@ import re as _username_re
 from . import auth, ingest, mailer, repair, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_demo_articles, seed_sources
-from .changelog import CHANGELOG, updates_since
+from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
 from .clustering import assign_events, rebuild_events
 from .database import Base, engine, get_db
 from .events import broadcaster
@@ -50,7 +51,8 @@ def _ensure_schema():
                     "last_repair_at": "DATETIME"},
         "users": {"email": "VARCHAR(200) DEFAULT ''",
                   "email_verified": "BOOLEAN DEFAULT 0",
-                  "last_seen_at": "DATETIME"},
+                  "last_seen_at": "DATETIME",
+                  "changelog_seen": "TEXT"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -347,6 +349,21 @@ def claim_anonymous_profile(user_id: str = Depends(user_id_header),
 
 # ---------- session onboarding ----------
 
+def _pending_updates(user: User) -> list[dict]:
+    """Changelog entries this account hasn't been shown yet, via per-entry
+    fingerprints. Accounts predating fingerprint tracking fall back to the
+    date-based comparison once; brand-new accounts see nothing (everything is
+    new to them anyway). Caller must persist the returned marker."""
+    if user.changelog_seen is not None:
+        try:
+            return unseen_entries(json.loads(user.changelog_seen))
+        except ValueError:
+            return []
+    if user.last_seen_at is not None:
+        return updates_since(user.last_seen_at)
+    return []
+
+
 @app.post("/api/session/hello")
 def session_hello(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     """Called once per app load. Records when the account was last seen and
@@ -358,15 +375,33 @@ def session_hello(user_id: str = Depends(user_id_header), db: Session = Depends(
         raise HTTPException(401, "Account no longer exists")
     prev = user.last_seen_at
     now = utcnow()
+    updates = _pending_updates(user)
     user.last_seen_at = now
+    user.changelog_seen = json.dumps(fingerprints())
     db.commit()
     away_days = None if prev is None else (now - prev).total_seconds() / 86400
     return {
         "first_visit": prev is None,
         "away_days": away_days,
         "faq_due": prev is None or away_days >= 7,
-        "updates": [] if prev is None else updates_since(prev),
+        "updates": updates,
     }
+
+
+@app.post("/api/session/check-updates")
+def session_check_updates(user_id: str = Depends(user_id_header),
+                          db: Session = Depends(get_db)):
+    """Polled by open sessions (and on stream reconnect after a redeploy):
+    returns changelog entries that shipped since this account last saw the
+    What's-new popup, so updates surface live without a fresh sign-in."""
+    user = db.get(User, int(user_id.split(":", 1)[1]))
+    if user is None:
+        raise HTTPException(401, "Account no longer exists")
+    updates = _pending_updates(user) if user.changelog_seen is not None else []
+    user.last_seen_at = utcnow()  # an open session counts as presence
+    user.changelog_seen = json.dumps(fingerprints())
+    db.commit()
+    return {"updates": updates}
 
 
 @app.get("/api/changelog")

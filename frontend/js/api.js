@@ -120,6 +120,7 @@ const API = {
   purgeDemo: () => api("/api/demo/purge", { method: "POST" }),
 
   hello: () => api("/api/session/hello", { method: "POST" }),
+  checkUpdates: () => api("/api/session/check-updates", { method: "POST" }),
   changelog: () => api("/api/changelog"),
 
   register: (username, email, password) =>

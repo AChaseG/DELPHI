@@ -7,6 +7,8 @@ add a new entry (or extend today's) whenever user-visible behavior changes.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 
 CHANGELOG: list[dict] = [
@@ -30,7 +32,9 @@ CHANGELOG: list[dict] = [
             "The FAQ & tutorial now opens automatically on your first visit, and "
             "again if you've been away a week or more.",
             "This What's-new popup recaps everything that shipped while you were "
-            "away, grouped by date. Reopen it any time from ⚙ Settings → Help.",
+            "away, grouped by date — and appears live in sessions that are "
+            "already open, within minutes of an update landing. Reopen it any "
+            "time from ⚙ Settings → Help.",
         ],
     },
     {
@@ -92,6 +96,25 @@ CHANGELOG: list[dict] = [
 
 
 def updates_since(seen: datetime) -> list[dict]:
-    """Entries shipped after the calendar day the user was last seen."""
+    """Entries shipped after the calendar day the user was last seen.
+    Legacy fallback for accounts that predate fingerprint tracking."""
     return [e for e in CHANGELOG
             if datetime.fromisoformat(e["date"]).date() > seen.date()]
+
+
+def _fingerprint(entry: dict) -> str:
+    """Stable id for one entry's exact content — extending today's entry with
+    a new item changes its fingerprint, so live sessions get told about it."""
+    payload = json.dumps([entry["date"], entry["title"], entry["items"]],
+                         ensure_ascii=False)
+    return entry["date"] + ":" + hashlib.sha1(payload.encode()).hexdigest()[:10]
+
+
+def fingerprints() -> list[str]:
+    return [_fingerprint(e) for e in CHANGELOG]
+
+
+def unseen_entries(seen: list[str]) -> list[dict]:
+    """Entries (new or changed) whose fingerprint the user hasn't seen yet."""
+    seen_set = set(seen)
+    return [e for e in CHANGELOG if _fingerprint(e) not in seen_set]

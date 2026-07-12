@@ -34,6 +34,9 @@ class User(Base):
     # When the account last opened the app (None until the first load) —
     # drives the first-visit FAQ and the what's-new-while-away popup.
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    # JSON list of changelog-entry fingerprints already shown to this account,
+    # so live sessions get a What's-new popup the moment an update ships.
+    changelog_seen: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
 
 class Source(Base):
