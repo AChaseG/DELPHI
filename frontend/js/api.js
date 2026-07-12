@@ -1,13 +1,5 @@
-/* Thin API client. Each browser gets a persistent anonymous user id so
-   feeds/alerts are per-user. */
-const USER_ID = (() => {
-  let id = localStorage.getItem("gnd_user_id");
-  if (!id) {
-    id = "u-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem("gnd_user_id", id);
-  }
-  return id;
-})();
+/* Thin API client. An account is required to use the system, so every request
+   is authenticated with the signed-in account's bearer token. */
 
 /* Display & notification preferences, persisted per browser. */
 const Settings = {
@@ -32,12 +24,12 @@ const Settings = {
   },
 };
 
-/* Account session (optional): a signed-in user's token scopes feeds/alerts
-   to their account instead of the anonymous browser profile. */
+/* Account session: the signed-in user's token scopes feeds/alerts to their
+   account and authenticates every request. */
 const Session = {
   token: () => localStorage.getItem("gnd_token") || "",
   username: () => localStorage.getItem("gnd_username") || "",
-  userKey: () => localStorage.getItem("gnd_user_key") || USER_ID,
+  userKey: () => localStorage.getItem("gnd_user_key") || "",
   set(token, username, userKey) {
     localStorage.setItem("gnd_token", token);
     localStorage.setItem("gnd_username", username);
@@ -53,13 +45,12 @@ const Session = {
 async function api(path, options = {}) {
   const headers = {
     "Content-Type": "application/json",
-    "X-User-Id": USER_ID,
     ...(options.headers || {}),
   };
   if (Session.token()) headers["Authorization"] = "Bearer " + Session.token();
   const resp = await fetch(path, { ...options, headers });
   if (resp.status === 401 && Session.token()) {
-    Session.clear();  // expired session: fall back to the anonymous profile
+    Session.clear();  // expired session: return to the sign-in gate
     location.reload();
     return new Promise(() => {});
   }
@@ -144,7 +135,6 @@ const API = {
     api("/api/auth/register", { method: "POST", body: JSON.stringify({ username, email, password }) }),
   login: (username, password) =>
     api("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
-  claim: () => api("/api/auth/claim", { method: "POST" }),
   verifyEmail: (token) => api("/api/auth/verify?token=" + encodeURIComponent(token)),
   resendVerification: (username) =>
     api("/api/auth/resend-verification", { method: "POST", body: JSON.stringify({ username }) }),

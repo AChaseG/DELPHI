@@ -16,6 +16,11 @@ CHANGELOG: list[dict] = [
         "date": "2026-07-12",
         "title": "Self-healing sources, one creation flow, guided starts",
         "items": [
+            "Security hardening: Pantheon names and server messages are now "
+            "rendered as inert text (no cross-account script injection), "
+            "emailed verification/reset links use a fixed origin instead of a "
+            "spoofable Host header (set NEWS_PUBLIC_URL when behind a proxy), "
+            "and sign-in / password-reset endpoints are rate-limited.",
             "Pantheons — organizations inside Delphi. Create one from the new "
             "🏛 panel, invite accounts (or make it public so anyone can join), "
             "and share feeds and alerts with the whole group: every Pantheon "

@@ -258,9 +258,13 @@ POST /api/demo/seed                offline sample articles
   registration then emails a 48h verification link and sign-in is blocked
   until it's clicked; "Forgot password?" emails a 1h reset link. Without
   SMTP, accounts auto-verify (self-host mode) and would-be mails are logged.
-  For hostile-internet exposure, still add login rate limiting and a reverse
-  proxy. Sources and ingestion remain shared and editable by all users by
-  design.
+  Login, registration, and password-reset endpoints are rate-limited per
+  client IP (disable with `NEWS_RATE_LIMIT=0`). When you expose the app
+  behind a proxy, set **`NEWS_PUBLIC_URL`** (e.g. `https://delphi.example.com`)
+  so emailed verification/reset links use a fixed origin instead of a
+  spoofable `Host` header — or `NEWS_ALLOWED_HOSTS` (comma-separated) to
+  allowlist the hosts links may use. Sources and ingestion remain shared and
+  editable by all users by design.
 
 ## Roadmap ideas
 

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 import re as _username_re
 
-from . import auth, ingest, mailer, repair, translate
+from . import auth, ingest, mailer, ratelimit, repair, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_demo_articles, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -220,16 +220,37 @@ _USERNAME_RE = _username_re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
 _EMAIL_RE = _username_re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 
 
-def _action_link(request: Request, param: str, token: str) -> str:
-    """Absolute link to the app carrying an action token, respecting the
-    forwarding proxy (Codespaces, reverse proxies) for scheme/host."""
+def _action_base_url(request: Request) -> str:
+    """Trusted origin for emailed action links (verification, password reset).
+
+    The Host / X-Forwarded-Host headers are attacker-controlled, so trusting
+    them lets someone request a victim's password reset while spoofing the
+    host and receive an email whose token points at their own domain. To close
+    that, set NEWS_PUBLIC_URL (e.g. https://delphi.example.com) — it always
+    wins. NEWS_ALLOWED_HOSTS (comma-separated) instead allowlists hosts and
+    rejects anything else. Only when neither is configured do we fall back to
+    the request host, for zero-config local/Codespaces use where email links
+    are typically disabled anyway."""
+    public = os.environ.get("NEWS_PUBLIC_URL", "").strip().rstrip("/")
+    if public:
+        return public
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get("x-forwarded-host", request.headers.get("host", "localhost"))
-    return f"{proto}://{host}/?{param}={token}"
+    host = host.split(",")[0].strip()  # first hop only if a proxy chained them
+    allowed = [h.strip() for h in os.environ.get("NEWS_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    if allowed and host not in allowed:
+        host = allowed[0]  # ignore the spoofed header; use a known-good host
+    return f"{proto}://{host}"
+
+
+def _action_link(request: Request, param: str, token: str) -> str:
+    """Absolute link to the app carrying an action token."""
+    return f"{_action_base_url(request)}/?{param}={urllib.parse.quote(token, safe='')}"
 
 
 @app.post("/api/auth/register", status_code=201)
 def register(body: dict, request: Request, db: Session = Depends(get_db)):
+    ratelimit.check("register", request)
     username = (body.get("username") or "").strip().lower()
     email = (body.get("email") or "").strip().lower()
     password = body.get("password") or ""
@@ -257,7 +278,8 @@ def register(body: dict, request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/api/auth/login")
-def login(body: dict, db: Session = Depends(get_db)):
+def login(body: dict, request: Request, db: Session = Depends(get_db)):
+    ratelimit.check("login", request)
     ident = (body.get("username") or "").strip().lower()  # username or email
     user = db.scalar(select(User).where(
         or_(User.username == ident, User.email == ident)))
@@ -283,6 +305,7 @@ def verify_email(token: str = Query(default=""), db: Session = Depends(get_db)):
 @app.post("/api/auth/resend-verification")
 def resend_verification(body: dict, request: Request, db: Session = Depends(get_db)):
     """Always answers 200 — no account enumeration."""
+    ratelimit.check("resend", request)
     ident = (body.get("username") or "").strip().lower()
     user = db.scalar(select(User).where(or_(User.username == ident, User.email == ident)))
     if user and not user.email_verified and mailer.enabled():
@@ -295,6 +318,7 @@ def resend_verification(body: dict, request: Request, db: Session = Depends(get_
 @app.post("/api/auth/forgot")
 def forgot_password(body: dict, request: Request, db: Session = Depends(get_db)):
     """Always answers 200 — no account enumeration."""
+    ratelimit.check("forgot", request)
     email = (body.get("email") or "").strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user and mailer.enabled():
@@ -305,7 +329,8 @@ def forgot_password(body: dict, request: Request, db: Session = Depends(get_db))
 
 
 @app.post("/api/auth/reset")
-def reset_password(body: dict, db: Session = Depends(get_db)):
+def reset_password(body: dict, request: Request, db: Session = Depends(get_db)):
+    ratelimit.check("reset", request)
     uid = auth.parse_scoped_token("reset", body.get("token") or "")
     user = db.get(User, uid) if uid else None
     if not user:
@@ -331,25 +356,12 @@ def me(authorization: str = Header(default=""), db: Session = Depends(get_db)):
     return {"user_key": f"acct:{uid}", "username": user.username, "email": user.email}
 
 
-@app.post("/api/auth/claim")
-def claim_anonymous_profile(user_id: str = Depends(user_id_header),
-                            x_user_id: str = Header(default=""),
-                            db: Session = Depends(get_db)):
-    """Move this browser's anonymous feeds/alerts into the signed-in account."""
-    if not user_id.startswith("acct:"):
-        raise HTTPException(401, "Sign in first")
-    anon = (x_user_id or "").strip()[:64]
-    if not anon or anon.startswith("acct:"):
-        raise HTTPException(422, "No anonymous profile to claim")
-    moved = {"feeds": 0, "alerts": 0}
-    for feed in db.scalars(select(Feed).where(Feed.user_id == anon)):
-        feed.user_id = user_id
-        moved["feeds"] += 1
-    for alert in db.scalars(select(Alert).where(Alert.user_id == anon)):
-        alert.user_id = user_id
-        moved["alerts"] += 1
-    db.commit()
-    return moved
+# NOTE: the old /api/auth/claim endpoint was removed. It migrated feeds/alerts
+# from a client-supplied anonymous id (X-User-Id) into the account, but that id
+# carried no proof of possession — anyone knowing another browser's random id
+# could claim its data. Since accounts became mandatory (every /api/* route
+# demands an account token), no feed or alert is ever created under an
+# anonymous id, so the endpoint migrated nothing and only presented risk.
 
 
 # ---------- session onboarding ----------
@@ -916,12 +928,19 @@ def public_pantheons(user_id: str = Depends(user_id_header), db: Session = Depen
     uid = _acct_id(user_id)
     joined = set(db.scalars(select(PantheonMember.pantheon_id).where(
         PantheonMember.user_id == uid)))
+    # Minimal projection for non-members: only what's needed to decide to
+    # join. Internal activity (feed/alert counts) and the owner's username are
+    # withheld until you're actually a member — see _pantheon_json.
     out = []
     for p in db.scalars(select(Pantheon).where(Pantheon.visibility == "public")
                         .order_by(Pantheon.name).limit(200)):
-        row = _pantheon_json(db, p, None)
-        row["joined"] = p.id in joined
-        out.append(row)
+        member_count = db.scalar(select(func.count(PantheonMember.id)).where(
+            PantheonMember.pantheon_id == p.id)) or 0
+        out.append({
+            "id": p.id, "name": p.name, "description": p.description,
+            "visibility": "public", "member_count": member_count,
+            "joined": p.id in joined,
+        })
     return out
 
 

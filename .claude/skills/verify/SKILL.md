@@ -77,6 +77,13 @@ graceful message instead; test map drawing only with real network.
   copies — excluded from /api/feeds and included in every member's /api/alerts.
   Access: members read, sharer + owner/admin edit; /api/pantheons/public must
   stay declared before /api/pantheons/{id} (route order).
+- Auth endpoints are rate-limited per IP (login 10/5min, register 5/hr,
+  forgot 5/15min…). Tests that register several accounts must launch the
+  server with `NEWS_RATE_LIMIT=0`; a dedicated limiter test runs it enabled.
+- Emailed verify/reset links honor `NEWS_PUBLIC_URL` / `NEWS_ALLOWED_HOSTS`
+  over the Host header (anti host-header-injection). The `/api/auth/claim`
+  endpoint and anonymous `X-User-Id` profile were removed — accounts are
+  mandatory, so nothing is ever created under an anonymous id.
 - Registering a user on an empty DB auto-triggers a first catalog ingest that
   holds the cycle lock — /api/ingest/run returns 409 meanwhile; poll/kick until
   your stub source's last_status is set instead of assuming one run sufficed.

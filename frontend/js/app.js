@@ -102,12 +102,21 @@ async function renderBoard() {
     let feeds = [];
     try { feeds = await API.pantheonFeeds(pid); } catch (e) { setView("home"); return; }
     if (!feeds.length) {
+      // Build with the DOM (not innerHTML) so a Pantheon name never becomes
+      // markup — names are attacker-controlled and seen by every member.
       const note = document.createElement("section");
       note.className = "feed-col";
-      note.innerHTML = `<div class="feed-head"><div class="feed-head-row"><h3>🏛 ${p.name}</h3></div></div>` +
-        '<div class="feed-body"><div class="feed-empty">No shared feeds yet. Open 📋 My feeds ' +
-        "and press 🏛 on any feed to share it with this Pantheon — everyone here will see it. " +
-        "Alerts are shared the same way from the 🔔 panel.</div></div>";
+      const nHead = document.createElement("div"); nHead.className = "feed-head";
+      const nRow = document.createElement("div"); nRow.className = "feed-head-row";
+      const nTitle = document.createElement("h3"); nTitle.textContent = "🏛 " + p.name;
+      nRow.appendChild(nTitle); nHead.appendChild(nRow);
+      const nBody = document.createElement("div"); nBody.className = "feed-body";
+      const nEmpty = document.createElement("div"); nEmpty.className = "feed-empty";
+      nEmpty.textContent = "No shared feeds yet. Open 📋 My feeds and press 🏛 on any " +
+        "feed to share it with this Pantheon — everyone here will see it. Alerts are " +
+        "shared the same way from the 🔔 panel.";
+      nBody.appendChild(nEmpty);
+      note.append(nHead, nBody);
       board.appendChild(note);
     }
     for (const feed of feeds) board.appendChild(feedColumn(feed));
@@ -449,7 +458,6 @@ function wireGate() {
 
   const finish = async (r) => {
     Session.set(r.token, r.username, r.user_key);
-    try { await API.claim(); } catch (e) { /* nothing to migrate */ }
     location.replace(location.pathname);  // drop any action params, reload
   };
   el("btn-login").onclick = async () => {
@@ -673,6 +681,15 @@ function toolBtn(txt, title, fn) {
   return b;
 }
 
+/* A ".feed-empty" note whose text is set safely (never parsed as HTML) —
+   use for anything containing a server message or user-supplied string. */
+function feedEmpty(text) {
+  const d = document.createElement("div");
+  d.className = "feed-empty";
+  d.textContent = text;
+  return d;
+}
+
 async function loadFeedArticles(feed) {
   const body = document.querySelector(`#feed-${feed.id ?? feed.home} .feed-body`);
   if (!body) return;
@@ -698,7 +715,7 @@ async function loadFeedArticles(feed) {
     if (feed.group_events) for (const g of items) body.appendChild(eventGroup(g));
     else for (const a of items) body.appendChild(articleRow(a, "focus"));
   } catch (e) {
-    body.innerHTML = `<div class="feed-empty">Failed to load: ${e.message}</div>`;
+    body.replaceChildren(feedEmpty("Failed to load: " + e.message));
   }
 }
 
@@ -1117,7 +1134,7 @@ function pantheonCard(p) {
     detail.hidden = false;
     detail.innerHTML = '<div class="feed-empty">Loading…</div>';
     try { renderPantheonDetail(detail, await API.pantheonDetail(p.id)); }
-    catch (e) { detail.innerHTML = `<div class="feed-empty">${e.message}</div>`; }
+    catch (e) { detail.replaceChildren(feedEmpty(e.message)); }
   };
   return card;
 }
