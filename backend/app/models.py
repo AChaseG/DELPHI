@@ -64,6 +64,17 @@ class Source(Base):
     articles = relationship("Article", back_populates="source", cascade="all, delete-orphan")
 
 
+class DiscoveredDomain(Base):
+    """Outcome of probing a publisher domain seen in Google News coverage,
+    so auto-discovery never hammers the same outlet twice."""
+    __tablename__ = "discovered_domains"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    domain: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="no-feed")  # added | no-feed
+    checked_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Event(Base):
     """A cluster of articles covering the same real-world happening."""
     __tablename__ = "events"

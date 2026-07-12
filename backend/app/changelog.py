@@ -14,6 +14,10 @@ CHANGELOG: list[dict] = [
         "date": "2026-07-12",
         "title": "Self-healing sources, one creation flow, guided starts",
         "items": [
+            "The source catalog now grows itself: when Google News coverage "
+            "names an outlet Delphi doesn't have, its own feed is discovered, "
+            "validated, and added automatically (tagged auto-discovered in "
+            "Sources; NEWS_AUTO_DISCOVER=0 disables).",
             "Broken sources now repair themselves: after repeated 403/404/"
             "not-a-feed errors, Delphi rediscovers the outlet's real feed "
             "(homepage autodiscovery, common paths, Google News fallback), "

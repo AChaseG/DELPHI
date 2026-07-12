@@ -234,6 +234,14 @@
              <b>Sources</b> (📰 Press / 💬 Social), add any RSS/Atom URL, edit sources in
              place, and watch their health dots: green = last poll OK, red = the error
              is in the tooltip.</p>
+          <p><b>The catalog grows itself.</b> Google News coverage names the outlet
+             behind every story; when a cycle sees an outlet Delphi doesn't have, it
+             looks for that outlet's own feed (homepage autodiscovery, then common feed
+             paths), validates it, and adds it as a source — tagged
+             <em>auto-discovered</em> in Sources, up to a few per cycle. Outlets without
+             a usable feed are remembered and left alone. Set
+             <code>NEWS_AUTO_DISCOVER=0</code> on the server to turn this off; delete or
+             disable any auto-discovered source you don't want.</p>
           <p>For matching, each new article's page is fetched once and reduced to text,
              so criteria see the whole story, not just the headline.</p>
         </details>

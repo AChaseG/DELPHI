@@ -46,7 +46,8 @@ async function boot() {
   if (META.stats.total_articles === 0) {
     toast("Fetching news", "First run — polling all sources. This can take a minute…");
     API.runIngest().then(async (r) => {
-      toast("Ingest complete", `${r.new_articles} articles from ${r.sources_ok}/${r.sources_total} sources`);
+      const found = r.discovered ? ` · discovered ${r.discovered} new source${r.discovered === 1 ? "" : "s"}` : "";
+      toast("Ingest complete", `${r.new_articles} articles from ${r.sources_ok}/${r.sources_total} sources${found}`);
       renderStats(await API.meta());
       refreshFeeds();
     }).catch(() => {});
@@ -118,7 +119,8 @@ function wireTopbar() {
     toast("Refreshing", "Polling all sources…");
     try {
       const r = await API.runIngest();
-      toast("Ingest complete", `${r.new_articles} new articles (${r.sources_ok}/${r.sources_total} sources ok)`);
+      const found = r.discovered ? ` · discovered ${r.discovered} new source${r.discovered === 1 ? "" : "s"}` : "";
+      toast("Ingest complete", `${r.new_articles} new articles (${r.sources_ok}/${r.sources_total} sources ok)${found}`);
       renderStats(await API.meta());
       await refreshFeeds();
     } catch (e) {

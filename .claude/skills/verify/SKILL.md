@@ -63,6 +63,11 @@ graceful message instead; test map drawing only with real network.
 - Elements hidden via the `hidden` attribute need the `[hidden]{display:none!important}`
   rule in styles.css — several containers set their own `display`.
 - Alert evaluation happens only inside ingest cycles, not on demo seed.
+- **Auto-discovery adds sources mid-cycle**: entries carrying
+  `<source url="...">Name</source>` tags (Google News trackers especially) make
+  ingest probe unknown publisher domains and add them as sources
+  (added_by="auto-discovered"). Outcomes persist in discovered_domains.
+  NEWS_AUTO_DISCOVER=0 disables when a test needs a stable source list.
 - **Source self-repair rewrites rss_url**: after 2 consecutive 403/404/not-a-feed
   cycles, ingest hunts for a replacement feed (homepage autodiscovery → common
   paths → Google News site: fallback) and switches the source. If a test needs

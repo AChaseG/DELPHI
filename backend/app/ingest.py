@@ -19,7 +19,7 @@ import feedparser
 import httpx
 from sqlalchemy import select
 
-from . import repair
+from . import discovery, repair
 from .clustering import assign_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -288,6 +288,7 @@ async def _run_ingest_cycle_locked() -> dict:
         all_new: list[Article] = []
         ok_sources = 0
         seen_urls: set[str] = set()
+        publishers: dict[str, tuple[str, str]] = {}  # outlets named by entries' <source> tags
         for source, entries, fetch_status in results:
             source.last_fetched_at = utcnow()
             source.last_status = fetch_status
@@ -295,6 +296,8 @@ async def _run_ingest_cycle_locked() -> dict:
                 source.consecutive_failures = (source.consecutive_failures or 0) + 1
                 continue
             source.consecutive_failures = 0
+            for dom, pub in discovery.collect_publishers(entries).items():
+                publishers.setdefault(dom, pub)
             # Commit per source so one bad feed can't roll back the whole cycle.
             try:
                 new = process_entries(db, source, entries, recent, seen_urls)
@@ -329,6 +332,20 @@ async def _run_ingest_cycle_locked() -> dict:
                         db.rollback()
                         log.exception("repair failed for source %s", source.name)
 
+        # Source discovery: outlets named by Google News coverage but missing
+        # from the catalog get their own feed found, added, and ingested now.
+        discovered = 0
+        try:
+            for source, entries in await discovery.discover_new_sources(db, publishers):
+                new = process_entries(db, source, entries, recent, seen_urls)
+                source.last_article_count = len(new)
+                db.commit()
+                all_new.extend(new)
+                discovered += 1
+        except Exception:
+            db.rollback()
+            log.exception("source discovery failed")
+
         # Pull article bodies BEFORE alert evaluation so alerts see full text.
         content_fetched = 0
         if CONTENT_FETCH:
@@ -345,6 +362,7 @@ async def _run_ingest_cycle_locked() -> dict:
             "last_content_fetched": content_fetched,
             "last_new_articles": len(all_new),
             "last_repaired": repaired,
+            "last_discovered": discovered,
             "sources_ok": ok_sources,
             "sources_total": len(sources),
             "cycles": status.get("cycles", 0) + 1,
@@ -355,11 +373,12 @@ async def _run_ingest_cycle_locked() -> dict:
             broadcaster.publish({"type": "articles", "count": len(all_new)})
         for hit in hits:
             broadcaster.publish({"type": "alert", **hit})
-        log.info("ingest cycle: %d/%d sources ok, %d new articles, %d alert hits, %d repaired",
-                 ok_sources, len(sources), len(all_new), len(hits), repaired)
+        log.info("ingest cycle: %d/%d sources ok, %d new articles, %d alert hits, "
+                 "%d repaired, %d discovered",
+                 ok_sources, len(sources), len(all_new), len(hits), repaired, discovered)
         return {"new_articles": len(all_new), "new_events": new_events,
                 "alert_hits": len(hits), "content_fetched": content_fetched,
-                "repaired": repaired,
+                "repaired": repaired, "discovered": discovered,
                 "sources_ok": ok_sources, "sources_total": len(sources)}
     finally:
         db.close()
