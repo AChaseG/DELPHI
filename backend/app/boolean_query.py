@@ -1,14 +1,23 @@
 """User-defined boolean query strings over article text.
 
 Grammar (case-insensitive keywords):
-    expr    := or_expr
-    or_expr := and_expr ( OR and_expr )*
-    and_expr:= not_expr ( [AND] not_expr )*      # adjacency = implicit AND
-    not_expr:= NOT not_expr | atom
-    atom    := '(' expr ')' | "quoted phrase" | word
+    expr     := or_expr
+    or_expr  := and_expr ( OR and_expr )*
+    and_expr := not_expr ( [AND] not_expr )*     # adjacency = implicit AND
+    not_expr := NOT not_expr | near_expr
+    near_expr:= atom ( NEAR[/n] atom )*          # operands: words/phrases only
+    atom     := '(' expr ')' | "quoted phrase" | word
 
 Words and phrases match on word boundaries, case-insensitively.
 Example:  ("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor
+
+Additional operator types:
+  - Wildcards inside words/phrases: `*` = any run of letters/digits
+    (strik* matches strike/strikes/striking), `?` = exactly one character
+    (organi?ation). A wildcarded word needs at least two literal characters.
+  - Proximity: `a NEAR/5 b` matches when the two terms occur with at most
+    5 words between them, in either order; bare NEAR defaults to NEAR/10.
+    Chains (`a NEAR/3 b NEAR/3 c`) require each adjacent pair to be close.
 
 Google-style input is accepted too, since users paste queries they first
 tried in a search engine: curly “smart quotes” are normalized, a leading
@@ -26,7 +35,7 @@ class QueryError(ValueError):
 
 @dataclass
 class Token:
-    kind: str  # AND OR NOT LPAREN RPAREN TERM
+    kind: str  # AND OR NOT NEAR LPAREN RPAREN TERM
     value: str
     pos: int
 
@@ -75,6 +84,18 @@ def tokenize(query: str) -> list[Token]:
             upper = word.upper()
             if upper in ("AND", "OR", "NOT"):
                 tokens.append(Token(upper, upper, m.start()))
+            elif upper == "NEAR" or upper.startswith("NEAR/"):
+                if upper == "NEAR":
+                    n = 10
+                else:
+                    try:
+                        n = int(upper.split("/", 1)[1])
+                    except ValueError:
+                        raise QueryError(
+                            f"NEAR needs a whole number, e.g. NEAR/5 (position {m.start()})")
+                    if not 1 <= n <= 100:
+                        raise QueryError("NEAR distance must be between 1 and 100")
+                tokens.append(Token("NEAR", str(n), m.start()))
             elif word.startswith("-") and len(word) > 1:
                 # Google-style negation: -sports == NOT sports
                 tokens.append(Token("NOT", "NOT", m.start()))
@@ -84,10 +105,37 @@ def tokenize(query: str) -> list[Token]:
     return tokens
 
 
+def _word_pattern(word: str) -> str:
+    """One word to regex source; * and ? are wildcards, the rest is literal."""
+    out, literals = [], 0
+    for ch in word:
+        if ch == "*":
+            out.append(r"\w*")
+        elif ch == "?":
+            out.append(r"\w")
+        else:
+            out.append(re.escape(ch))
+            literals += 1
+    if literals < 2 and ("*" in word or "?" in word):
+        raise QueryError(
+            f"Wildcard term {word!r} needs at least two literal characters")
+    return "".join(out)
+
+
+def _term_pattern(term: str) -> str:
+    # Multi-word phrases tolerate any whitespace between words.
+    return r"\s+".join(_word_pattern(p) for p in term.split())
+
+
 def _term_regex(term: str) -> re.Pattern:
-    # Word-boundary match; multi-word phrases tolerate any whitespace between words.
-    parts = [re.escape(p) for p in term.split()]
-    return re.compile(r"\b" + r"\s+".join(parts) + r"\b", re.IGNORECASE)
+    return re.compile(r"\b" + _term_pattern(term) + r"\b", re.IGNORECASE)
+
+
+def _near_regex(a: str, b: str, n: int) -> re.Pattern:
+    """`a` and `b` with at most n words between them, either order."""
+    gap = r"(?:\W+\w+){0,%d}?\W+" % n
+    pa, pb = _term_pattern(a), _term_pattern(b)
+    return re.compile(rf"\b(?:{pa}{gap}{pb}|{pb}{gap}{pa})\b", re.IGNORECASE)
 
 
 class _Parser:
@@ -139,7 +187,22 @@ class _Parser:
         if tok and tok.kind == "NOT":
             self.next()
             return ("not", self.not_expr())
-        return self.atom()
+        return self.near_expr()
+
+    def near_expr(self):
+        left = self.atom()
+        prev = left  # the operand a chained NEAR measures from
+        while self.peek() and self.peek().kind == "NEAR":
+            op = self.next()
+            right = self.atom()
+            if prev[0] != "term" or right[0] != "term":
+                raise QueryError(
+                    f"NEAR (position {op.pos}) works between two words or quoted "
+                    "phrases, not groups — write (a NEAR/5 c) OR (b NEAR/5 c) instead")
+            pair = ("term", _near_regex(prev[2], right[2], int(op.value)))
+            left = pair if left is prev else ("and", left, pair)
+            prev = right
+        return left
 
     def atom(self):
         tok = self.next()
@@ -151,7 +214,9 @@ class _Parser:
             self.next()
             return node
         if tok.kind == "TERM":
-            return ("term", _term_regex(tok.value))
+            return ("term", _term_regex(tok.value), tok.value)
+        if tok.kind == "NEAR":
+            raise QueryError(f"NEAR at position {tok.pos} needs a word on each side")
         raise QueryError(f"Unexpected {tok.value!r} at position {tok.pos}")
 
 

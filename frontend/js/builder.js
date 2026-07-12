@@ -412,15 +412,19 @@ const Builder = {
   },
 };
 
-/* Guided boolean-query builder: "(a OR b) AND (c OR d) NOT e" from boxes. */
+/* Guided boolean-query builder: every operator type from boxes —
+   AND (between rows), OR (within a row), exact phrases (multi-word terms),
+   NEAR/n proximity pairs, NOT terms, and * / ? wildcards typed anywhere. */
 const QueryBuilder = {
   target: null,
   groups: [],      // array of term-arrays; OR within a group, AND between groups
+  nearPairs: [],   // {a, n, b}: a NEAR/n b, ANDed with everything else
   notTerms: [],
 
   open(targetInput) {
     this.target = targetInput;
     this.groups = [[], []];
+    this.nearPairs = [];
     this.notTerms = [];
     this._wire();
     this._render();
@@ -433,6 +437,10 @@ const QueryBuilder = {
     const quote = (t) => (/\s/.test(t) ? `"${t}"` : t);
     const parts = this.groups.filter(g => g.length)
       .map(g => g.length > 1 ? "(" + g.map(quote).join(" OR ") + ")" : quote(g[0]));
+    for (const p of this.nearPairs) {
+      const a = p.a.trim(), b = p.b.trim();
+      if (a && b) parts.push(`${quote(a)} NEAR/${p.n} ${quote(b)}`);
+    }
     let q = parts.join(" AND ");
     for (const n of this.notTerms) q += (q ? " " : "") + "NOT " + quote(n);
     return q;
@@ -495,6 +503,33 @@ const QueryBuilder = {
       }
       groupsBox.appendChild(row);
     });
+    const nearBox = el("qb-near");
+    nearBox.innerHTML = "";
+    this.nearPairs.forEach((pair, i) => {
+      const row = document.createElement("div");
+      row.className = "qb-near-row";
+      const mk = (val, ph, key) => {
+        const inp = document.createElement("input");
+        inp.type = "text"; inp.value = val; inp.placeholder = ph;
+        inp.oninput = () => { pair[key] = inp.value; this._update(); };
+        return inp;
+      };
+      const num = document.createElement("input");
+      num.type = "number"; num.min = 1; num.max = 100; num.value = pair.n;
+      num.className = "qb-near-n";
+      num.oninput = () => {
+        pair.n = Math.max(1, Math.min(100, +num.value || 10));
+        this._update();
+      };
+      const label = (t) => { const s = document.createElement("span"); s.textContent = t; return s; };
+      const rm = document.createElement("button");
+      rm.className = "icon-btn"; rm.textContent = "✕"; rm.title = "Remove this proximity pair";
+      rm.onclick = () => { this.nearPairs.splice(i, 1); this._render(); };
+      row.append(mk(pair.a, "e.g. ceasefire", "a"), label("within"), num,
+                 label("words of"), mk(pair.b, "e.g. negotiations", "b"), rm);
+      nearBox.appendChild(row);
+    });
+
     const notBox = el("qb-not");
     notBox.innerHTML = "";
     notBox.appendChild(this._chipBox(this.notTerms, "e.g. sports, opinion, rumor", () => this._update()));
@@ -524,6 +559,7 @@ const QueryBuilder = {
     el("btn-close-qb").onclick = () => this.close();
     el("btn-qb-cancel").onclick = () => this.close();
     el("btn-qb-add-group").onclick = () => { this.groups.push([]); this._render(); };
+    el("btn-qb-add-near").onclick = () => { this.nearPairs.push({ a: "", n: 5, b: "" }); this._render(); };
     el("btn-qb-insert").onclick = () => {
       const q = this.build();
       if (q && this.target) {

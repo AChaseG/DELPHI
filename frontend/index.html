@@ -216,10 +216,17 @@
              <code>"exact phrases"</code>. Google-style also works: <code>-term</code>
              for NOT, <code>|</code> for OR, smart quotes are cleaned up.</p>
           <p><code>("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor</code></p>
+          <p>Two more operator types: <b>wildcards</b> — <code>strik*</code> matches
+             strike/strikes/striking, <code>organi?ation</code> matches one character
+             (both work inside phrases; at least two literal characters required) — and
+             <b>proximity</b>: <code>earthquake NEAR/5 tokyo</code> matches when the
+             terms sit at most 5 words apart in either order (<code>NEAR</code> alone
+             means NEAR/10; chains like <code>a NEAR/3 b NEAR/3 c</code> check each
+             adjacent pair).</p>
           <p>A feed can hold <b>several queries</b> — each runs separately, all fill the
              same feed. Prefer boxes over syntax? Click <b>🪄 build</b> next to any query
-             row: "must include at least one from each row, none of these", with a live
-             match count.</p>
+             row: "must include at least one from each row", proximity pairs, excluded
+             terms — every operator type, no syntax needed, with a live match count.</p>
         </details>
 
         <details>
@@ -478,7 +485,8 @@
             </label>
           </div>
           <div class="field">
-            <span>Boolean queries <em>(optional — AND / OR / NOT, quotes, parentheses; Google-style -term and | work too.
+            <span>Boolean queries <em>(optional — AND / OR / NOT, quotes, parentheses, strik* wildcards,
+              NEAR/5 proximity; Google-style -term and | work too.
               Each query runs separately; matches from all of them populate this one feed)</em></span>
             <div id="b-queries"></div>
             <div><button class="btn small" id="btn-add-query">+ Add another boolean query</button></div>
@@ -612,12 +620,19 @@
       </div>
       <div class="modal-body">
         <p class="wiz-guide">Fill the boxes — the query writes itself. An article matches when it
-           contains <b>at least one term from every “must include” row</b> and
-           <b>none</b> of the excluded terms. Multi-word terms are treated as exact phrases.</p>
+           contains <b>at least one term from every “must include” row</b>, satisfies every
+           <b>proximity pair</b>, and has <b>none</b> of the excluded terms. Multi-word terms
+           become exact phrases, and <b>*</b> works anywhere as a wildcard
+           (strik* = strike, strikes, striking; ? = exactly one letter).</p>
         <div class="field">
           <span>Must include — at least one from each row</span>
           <div id="qb-groups"></div>
           <div><button class="btn small" id="btn-qb-add-group">+ AND another requirement</button></div>
+        </div>
+        <div class="field">
+          <span>Near each other — words that must appear close together <em>(optional — NEAR)</em></span>
+          <div id="qb-near"></div>
+          <div><button class="btn small" id="btn-qb-add-near">+ Add a proximity requirement</button></div>
         </div>
         <div class="field">
           <span>Must NOT include any of these</span>
