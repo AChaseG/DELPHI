@@ -19,8 +19,12 @@ CHANGELOG: list[dict] = [
             "Local coverage for ~500 major cities across 170 countries: every "
             "city now has a local-news source in its own language, so filtering "
             "to a place — or drawing it on the map — surfaces local reporting. "
-            "Auto-discovery grows each city's real outlets from these over time; "
-            "city feeds poll on a rotation to keep cycles fast.",
+            "Auto-discovery grows each city's real outlets from these over time.",
+            "Rebuilt ingestion as a continuous rolling poller: each source "
+            "refreshes on its own cadence (wires every few minutes, city feeds "
+            "hourly, quiet ones less often) with per-host pacing, replacing the "
+            "big serialized cycle that had grown slow and skipped sources at "
+            "this catalog size.",
             "Security hardening: Pantheon names and server messages are now "
             "rendered as inert text (no cross-account script injection), "
             "emailed verification/reset links use a fixed origin instead of a "

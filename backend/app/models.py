@@ -63,6 +63,9 @@ class Source(Base):
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
     repaired_from: Mapped[str] = mapped_column(String(500), default="")
     last_repair_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Consecutive polls that yielded no new articles — used by the rolling
+    # poller to lengthen the interval of quiet city feeds (adaptive backoff).
+    idle_polls: Mapped[int] = mapped_column(Integer, default=0)
 
     articles = relationship("Article", back_populates="source", cascade="all, delete-orphan")
 

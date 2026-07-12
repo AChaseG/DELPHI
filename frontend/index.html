@@ -249,9 +249,11 @@
              language), so filtering to a place or drawing it on the map surfaces
              genuinely local reporting. Auto-discovery then grows each city's real
              outlets — its newspapers and stations — into first-class sources over time.
-             To keep polling sane, city feeds refresh on a rotation rather than every
-             cycle. (Self-hosting? <code>NEWS_SEED_CITIES=0</code> skips them;
-             <code>NEWS_LOCAL_PER_CYCLE</code> tunes the rotation.)</p>
+             Sources are polled by a continuous <b>rolling poller</b>: news wires refresh
+             every few minutes, the ~500 city feeds every hour or two (and less often when a
+             city is quiet), with requests to shared hosts paced so nothing bursts.
+             (Self-hosting? <code>NEWS_SEED_CITIES=0</code> skips city feeds;
+             <code>NEWS_CITY_INTERVAL</code> and <code>NEWS_POLL_TICK</code> tune the cadence.)</p>
           <p>Saving a feed or alert with queries/keywords also creates a <b>Google News
              tracker</b> (the 🔍 checkbox) that ingests worldwide press coverage of your
              topic, so matches aren't limited to the catalog. Track topics manually in

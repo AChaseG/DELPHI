@@ -269,9 +269,13 @@ POST /api/demo/seed                offline sample articles
   editable by all users by design.
 - **Local coverage for ~500 major cities** (170 countries) seeds on first
   run: each city gets a Google News city-edition source in the country's
-  language, and auto-discovery grows its real local outlets from there. City
-  feeds poll on a rotation to keep cycles bounded (`NEWS_LOCAL_PER_CYCLE`,
-  default 60); `NEWS_SEED_CITIES=0` skips the whole city catalog.
+  language, and auto-discovery grows its real local outlets from there.
+  `NEWS_SEED_CITIES=0` skips the whole city catalog.
+- **Ingestion is a continuous rolling poller.** Each source refreshes on its
+  own cadence (wires every few minutes, city feeds hourly, quiet ones less
+  often) with per-host pacing, so a large catalog on a rate-limited host
+  (Google News) never blocks or bursts. Tunable via `NEWS_CITY_INTERVAL`,
+  `NEWS_POLL_TICK`, `NEWS_GOOGLE_GAP`.
 
 ## Roadmap ideas
 

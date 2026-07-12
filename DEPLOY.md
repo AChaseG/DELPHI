@@ -1,7 +1,7 @@
 # Deploying D.E.L.P.H.I. as a 24/7 website
 
 Delphi is a single FastAPI process with an in-process scheduler (ingestion,
-alert firing, source self-repair, city-feed rotation) and a SQLite database.
+alert firing, source self-repair, rolling source polling) and a SQLite database.
 That shapes every deployment decision below:
 
 > **Run exactly one instance.** The scheduler, the SQLite file, and the
@@ -73,10 +73,18 @@ Terminate TLS with the platform's built-in HTTPS, or put Caddy/nginx in front.
 
 Ingestion/tuning knobs (sensible defaults; change only if needed):
 
+Ingestion is a **continuous rolling poller** — each source refreshes on its own
+cadence, with requests to a shared host (Google News backs the ~500 city feeds)
+paced into a steady drip instead of a burst. Knobs:
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NEWS_FETCH_INTERVAL` | `300` | Seconds between poll cycles. |
-| `NEWS_LOCAL_PER_CYCLE` | `60` | City local-news feeds polled per cycle (rotation). |
+| `NEWS_FETCH_INTERVAL` | `300` | Refresh interval for news wires (seconds). |
+| `NEWS_CITY_INTERVAL` | `5400` | Refresh interval for city local feeds (seconds; ~90 min). Quiet feeds back off further automatically. |
+| `NEWS_POLL_TICK` | `15` | Seconds between scheduler ticks. |
+| `NEWS_POLL_BATCH` | `80` | Max news wires fetched per tick. |
+| `NEWS_CITY_PER_TICK` | `20` | Max city feeds fetched per tick (bounds the Google drip). |
+| `NEWS_GOOGLE_GAP` | `2.0` | Min seconds between requests to news.google.com. |
 | `NEWS_SEED_CITIES` | `1` | Seed ~500 city local-news sources on first run (`0` to skip). |
 | `NEWS_AUTO_DISCOVER` | `1` | Auto-add local outlets found in coverage (`0` to disable). |
 | `NEWS_AUTO_REPAIR` | `1` | Auto-fix broken source feeds (`0` to disable). |
@@ -85,9 +93,9 @@ Ingestion/tuning knobs (sensible defaults; change only if needed):
 
 ### Resources
 
-512 MB is tight once ~500 city feeds (on rotation), full-text content
-extraction, and translation run together. Use **1 GB** (already set in
-`fly.toml`); bump higher for a large user base. On Fly: `fly scale memory 1024`.
+512 MB is tight once ~500 city feeds, full-text content extraction, and
+translation run together. Use **1 GB** (already set in `fly.toml`); bump higher
+for a large user base. On Fly: `fly scale memory 1024`.
 
 ### Backups
 
@@ -106,6 +114,6 @@ Restore by shipping the file back to `/data/news.db` and restarting the app.
 
 On first boot Delphi seeds the source catalog (86 curated sources + ~500 city
 local-news feeds) and starts polling. The "sources healthy" tile reads
-`…/N` until the first cycle completes, then climbs as the rotation works
+`…/N` until the first ticks complete, then climbs as the rolling poller works
 through the city feeds and auto-discovery promotes real local outlets. No
 manual step is required — create your account and it runs itself.

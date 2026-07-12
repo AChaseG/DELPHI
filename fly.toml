@@ -22,6 +22,6 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # 1 GB headroom for ~500 city feeds on rotation + content extraction +
+  # 1 GB headroom for ~500 city feeds (rolling poll) + content extraction +
   # translation running together. Bump higher for a large user base.
   memory = "1024mb"

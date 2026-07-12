@@ -170,11 +170,11 @@ function wireTopbar() {
   el("btn-starter-pack").onclick = starterPack;
   el("btn-refresh").onclick = async () => {
     el("btn-refresh").disabled = true;
-    toast("Refreshing", "Polling all sources…");
+    toast("Refreshing", "Polling news wires now… (local city feeds refresh in the background)");
     try {
       const r = await API.runIngest();
       const found = r.discovered ? ` · discovered ${r.discovered} new source${r.discovered === 1 ? "" : "s"}` : "";
-      toast("Ingest complete", `${r.new_articles} new articles (${r.sources_ok}/${r.sources_total} sources ok)${found}`);
+      toast("Ingest complete", `${r.new_articles} new articles (${r.sources_ok}/${r.sources_total} polled ok)${found}`);
       renderStats(await API.meta());
       await refreshFeeds();
     } catch (e) {

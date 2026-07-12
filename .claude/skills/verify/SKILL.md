@@ -65,10 +65,15 @@ graceful message instead; test map drawing only with real network.
 - Alert evaluation happens only inside ingest cycles, not on demo seed.
 - Startup seeds ~500 city local-news sources (added_by="city-catalog",
   scope="local", Google News feeds) by default — set `NEWS_SEED_CITIES=0`
-  for a lean test DB. They poll on a rotation: `select_cycle_sources()` in
-  ingest.py picks all non-city sources + the oldest `NEWS_LOCAL_PER_CYCLE`
-  city feeds. Don't run a real ingest cycle against them without stubs — the
-  live news.google.com hits time out; unit-test the pure selector instead.
+  for a lean test DB. Ingestion is a **rolling poller**: `ingest_loop` ticks
+  every `NEWS_POLL_TICK`s, fetching `due_sources()` (wires first, then ≤
+  `NEWS_CITY_PER_TICK` city feeds), paced per host by `HostPacer` (Google gets
+  `NEWS_GOOGLE_GAP`). `run_ingest_cycle()` = manual refresh: all wires + a
+  bounded, due slice of city feeds (never a Google stampede). Don't fetch real
+  google feeds in tests — pacing sleeps + blocked network hang; unit-test
+  `due_sources`/`effective_interval`/`HostPacer` and drive `_ingest_batch`
+  against local stubs. Lower `NEWS_GOOGLE_GAP`/`NEWS_SHARED_HOST_GAP` for
+  count-only tests so pacing doesn't slow them.
 - **Auto-discovery adds sources mid-cycle**: entries carrying
   `<source url="...">Name</source>` tags (Google News trackers especially) make
   ingest probe unknown publisher domains and add them as sources

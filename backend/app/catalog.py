@@ -37,8 +37,9 @@ def seed_city_sources(db: Session) -> int:
     """Register one local-news source per world city (idempotent).
 
     These are Google News city-scoped feeds; auto-discovery grows each city's
-    real local outlets from them over time. Polled on a rotation (see ingest)
-    so hundreds of local feeds don't overwhelm a cycle.
+    real local outlets from them over time. The rolling poller (see ingest)
+    refreshes them on a slow per-source interval with per-host pacing so
+    hundreds of local feeds don't overwhelm ingestion.
     """
     existing = {u for (u,) in db.execute(select(Source.rss_url)).all()}
     added = 0
