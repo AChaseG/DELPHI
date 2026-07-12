@@ -63,6 +63,12 @@ graceful message instead; test map drawing only with real network.
 - Elements hidden via the `hidden` attribute need the `[hidden]{display:none!important}`
   rule in styles.css — several containers set their own `display`.
 - Alert evaluation happens only inside ingest cycles, not on demo seed.
+- Startup seeds ~500 city local-news sources (added_by="city-catalog",
+  scope="local", Google News feeds) by default — set `NEWS_SEED_CITIES=0`
+  for a lean test DB. They poll on a rotation: `select_cycle_sources()` in
+  ingest.py picks all non-city sources + the oldest `NEWS_LOCAL_PER_CYCLE`
+  city feeds. Don't run a real ingest cycle against them without stubs — the
+  live news.google.com hits time out; unit-test the pure selector instead.
 - **Auto-discovery adds sources mid-cycle**: entries carrying
   `<source url="...">Name</source>` tags (Google News trackers especially) make
   ingest probe unknown publisher domains and add them as sources

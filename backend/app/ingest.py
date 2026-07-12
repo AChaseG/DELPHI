@@ -47,6 +47,8 @@ status: dict = {"running": False, "last_run": None, "last_new_articles": 0, "cyc
 # just headline + feed summary). NEWS_CONTENT_FETCH=0 disables.
 CONTENT_FETCH = os.environ.get("NEWS_CONTENT_FETCH", "1") == "1"
 CONTENT_MAX_PER_CYCLE = int(os.environ.get("NEWS_CONTENT_MAX_PER_CYCLE", "150"))
+# How many city local-news feeds to poll per cycle (round-robin, oldest first).
+LOCAL_PER_CYCLE = int(os.environ.get("NEWS_LOCAL_PER_CYCLE", "60"))
 CONTENT_TIMEOUT = float(os.environ.get("NEWS_CONTENT_TIMEOUT", "10"))
 CONTENT_CONCURRENCY = int(os.environ.get("NEWS_CONTENT_CONCURRENCY", "8"))
 
@@ -262,10 +264,27 @@ async def run_ingest_cycle() -> dict:
         return await _run_ingest_cycle_locked()
 
 
+def select_cycle_sources(enabled: list[Source]) -> list[Source]:
+    """Which enabled sources to poll this cycle.
+
+    City local-news feeds (added_by="city-catalog") are polled on a rotation:
+    all together they'd be hundreds of news.google.com hits per cycle
+    (serialized + rate-limited). We take only the least-recently-fetched slice,
+    so every city still refreshes regularly while per-cycle load stays bounded
+    regardless of catalog size. All other sources poll every cycle.
+    """
+    regular = [s for s in enabled if s.added_by != "city-catalog"]
+    rotating = [s for s in enabled if s.added_by == "city-catalog"]
+    rotating.sort(key=lambda s: (s.last_fetched_at is not None,
+                                 s.last_fetched_at or datetime.min))
+    return regular + rotating[:LOCAL_PER_CYCLE]
+
+
 async def _run_ingest_cycle_locked() -> dict:
     db = SessionLocal()
     try:
-        sources = db.scalars(select(Source).where(Source.enabled.is_(True))).all()
+        enabled = db.scalars(select(Source).where(Source.enabled.is_(True))).all()
+        sources = select_cycle_sources(enabled)
         recent = _recent_clusters(db)
 
         sem = asyncio.Semaphore(CONCURRENCY)

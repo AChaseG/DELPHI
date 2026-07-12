@@ -16,6 +16,11 @@ CHANGELOG: list[dict] = [
         "date": "2026-07-12",
         "title": "Self-healing sources, one creation flow, guided starts",
         "items": [
+            "Local coverage for ~500 major cities across 170 countries: every "
+            "city now has a local-news source in its own language, so filtering "
+            "to a place — or drawing it on the map — surfaces local reporting. "
+            "Auto-discovery grows each city's real outlets from these over time; "
+            "city feeds poll on a rotation to keep cycles fast.",
             "Security hardening: Pantheon names and server messages are now "
             "rendered as inert text (no cross-account script injection), "
             "emailed verification/reset links use a fixed origin instead of a "

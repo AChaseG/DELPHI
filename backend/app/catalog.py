@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import cities
 from .geo import extract_places
 from .models import Article, Source, utcnow
 from .scoring import classify_categories, cluster_tokens, score_importance
@@ -29,6 +30,25 @@ def seed_sources(db: Session) -> int:
         db.add(Source(**item))
         added += 1
     db.commit()
+    return added
+
+
+def seed_city_sources(db: Session) -> int:
+    """Register one local-news source per world city (idempotent).
+
+    These are Google News city-scoped feeds; auto-discovery grows each city's
+    real local outlets from them over time. Polled on a rotation (see ingest)
+    so hundreds of local feeds don't overwhelm a cycle.
+    """
+    existing = {u for (u,) in db.execute(select(Source.rss_url)).all()}
+    added = 0
+    for item in cities.build_city_sources():
+        if item["rss_url"] in existing:
+            continue
+        db.add(Source(**item))
+        added += 1
+    if added:
+        db.commit()
     return added
 
 

@@ -22,7 +22,7 @@ import re as _username_re
 
 from . import auth, ingest, mailer, ratelimit, repair, translate
 from .boolean_query import normalize_quotes, validate_query
-from .catalog import seed_demo_articles, seed_sources
+from .catalog import seed_city_sources, seed_demo_articles, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
 from .clustering import assign_events, rebuild_events
 from .database import Base, engine, get_db
@@ -74,6 +74,10 @@ async def lifespan(app: FastAPI):
     db = next(get_db())
     try:
         seed_sources(db)
+        if os.environ.get("NEWS_SEED_CITIES", "1") != "0":
+            added = seed_city_sources(db)
+            if added:
+                logging.getLogger("catalog").info("seeded %d city local-news sources", added)
     finally:
         db.close()
     task = None
@@ -453,6 +457,15 @@ def create_source(body: SourceIn, db: Session = Depends(get_db)):
     db.add(source)
     db.commit()
     return {"id": source.id}
+
+
+@app.post("/api/sources/seed-cities")
+def seed_cities_endpoint(db: Session = Depends(get_db)):
+    """Add local-news sources for every world city in the catalog (idempotent).
+    Lets an already-running instance pick up the city catalog without a restart."""
+    from . import cities
+    added = seed_city_sources(db)
+    return {"added": added, "cities_in_catalog": cities.city_count()}
 
 
 @app.post("/api/sources/topic-tracker", status_code=201)

@@ -265,6 +265,11 @@ POST /api/demo/seed                offline sample articles
   spoofable `Host` header — or `NEWS_ALLOWED_HOSTS` (comma-separated) to
   allowlist the hosts links may use. Sources and ingestion remain shared and
   editable by all users by design.
+- **Local coverage for ~500 major cities** (170 countries) seeds on first
+  run: each city gets a Google News city-edition source in the country's
+  language, and auto-discovery grows its real local outlets from there. City
+  feeds poll on a rotation to keep cycles bounded (`NEWS_LOCAL_PER_CYCLE`,
+  default 60); `NEWS_SEED_CITIES=0` skips the whole city catalog.
 
 ## Roadmap ideas
 
