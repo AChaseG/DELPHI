@@ -9,6 +9,11 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = os.environ.get("NEWS_DB_PATH", str(DATA_DIR / "news.db"))
+# Directory the database lives in — the right home for other persistent state
+# (e.g. the session-signing key), so it lands on the same mounted volume in
+# production instead of an ephemeral spot inside the container image.
+DB_DIR = Path(DB_PATH).resolve().parent
+DB_DIR.mkdir(parents=True, exist_ok=True)
 
 engine = create_engine(
     f"sqlite:///{DB_PATH}",

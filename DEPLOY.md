@@ -1,0 +1,111 @@
+# Deploying D.E.L.P.H.I. as a 24/7 website
+
+Delphi is a single FastAPI process with an in-process scheduler (ingestion,
+alert firing, source self-repair, city-feed rotation) and a SQLite database.
+That shapes every deployment decision below:
+
+> **Run exactly one instance.** The scheduler, the SQLite file, and the
+> in-process rate limiter cannot be shared across machines. Scale the VM
+> **up** (more CPU/RAM), never **out** (more machines). A second instance
+> would double-poll every source and can't share the database.
+
+The database — accounts, feeds, alerts, Pantheons, articles — is a single file
+on disk. It **must** live on a persistent volume, or everything resets on
+redeploy.
+
+---
+
+## Option A — Fly.io (repo is preconfigured)
+
+```bash
+fly auth login                          # or: fly auth signup
+fly launch --copy-config --no-deploy    # reuses fly.toml; pick a unique app name
+fly volumes create newsdata --size 3    # persistent disk mounted at /data
+fly secrets set NEWS_SECRET=$(openssl rand -hex 32)
+fly deploy
+```
+
+`fly.toml` already keeps one machine always on (`min_machines_running = 1`,
+`auto_stop_machines = "off"`) so ingestion and alerts run around the clock,
+and mounts the volume at `/data` (where `NEWS_DB_PATH` points the database).
+
+Custom domain:
+
+```bash
+fly certs create yourdomain.com     # then add the shown DNS records
+fly secrets set NEWS_PUBLIC_URL=https://yourdomain.com
+```
+
+Updating the site: push your changes, then `fly deploy`. The volume (and all
+data) is untouched across deploys.
+
+---
+
+## Option B — any Docker host (VPS, Render, Railway, …)
+
+The `Dockerfile` is host-agnostic. Requirements: a persistent volume at
+`/data`, the env vars below, HTTPS in front, and a single running instance.
+
+```bash
+docker build -t delphi .
+docker run -d --restart=always -p 80:8000 \
+  -v delphi-data:/data \
+  -e NEWS_SECRET=$(openssl rand -hex 32) \
+  -e NEWS_PUBLIC_URL=https://yourdomain.com \
+  delphi
+```
+
+Terminate TLS with the platform's built-in HTTPS, or put Caddy/nginx in front.
+
+---
+
+## Configuration
+
+### Secrets & environment variables
+
+| Variable | Needed? | Purpose |
+|----------|---------|---------|
+| `NEWS_SECRET` | **Strongly recommended** | Stable key that signs login tokens. If unset, a key is generated and stored beside the database (persists on the volume), but setting it explicitly is safest and lets you rotate it deliberately. |
+| `NEWS_PUBLIC_URL` | Recommended (public sites) | Your canonical origin, e.g. `https://yourdomain.com`. Emailed verification/reset links use it instead of the request's `Host` header (prevents host-header injection). |
+| `NEWS_ALLOWED_HOSTS` | Alternative to the above | Comma-separated hostnames allowed in email links, if you'd rather allowlist than pin one URL. |
+| `NEWS_SMTP_HOST` / `PORT` / `USER` / `PASS` / `FROM` | Optional | Enables real email verification + password reset (Resend, Mailgun, SES, any SMTP relay). Set `NEWS_SMTP_TLS` to `starttls`, `ssl`, or `none`. **Without SMTP, accounts auto-verify** — fine for a private instance, not ideal for a public one. |
+| `NEWS_DB_PATH` | Preset in Docker | Database file path (`/data/news.db` in the image). |
+
+Ingestion/tuning knobs (sensible defaults; change only if needed):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NEWS_FETCH_INTERVAL` | `300` | Seconds between poll cycles. |
+| `NEWS_LOCAL_PER_CYCLE` | `60` | City local-news feeds polled per cycle (rotation). |
+| `NEWS_SEED_CITIES` | `1` | Seed ~500 city local-news sources on first run (`0` to skip). |
+| `NEWS_AUTO_DISCOVER` | `1` | Auto-add local outlets found in coverage (`0` to disable). |
+| `NEWS_AUTO_REPAIR` | `1` | Auto-fix broken source feeds (`0` to disable). |
+| `NEWS_RATE_LIMIT` | `1` | Rate-limit auth endpoints (`0` to disable). |
+| `NEWS_TRANSLATE_PROVIDER` | `off` | Per-user translation provider, if configured. |
+
+### Resources
+
+512 MB is tight once ~500 city feeds (on rotation), full-text content
+extraction, and translation run together. Use **1 GB** (already set in
+`fly.toml`); bump higher for a large user base. On Fly: `fly scale memory 1024`.
+
+### Backups
+
+The volume holds everything. On Fly, daily volume snapshots are automatic
+(5-day retention: `fly volumes snapshots list <vol-id>`). For an ad-hoc copy:
+
+```bash
+fly ssh console -C "cat /data/news.db" > backup-$(date +%F).db
+```
+
+Restore by shipping the file back to `/data/news.db` and restarting the app.
+
+---
+
+## First-run behavior
+
+On first boot Delphi seeds the source catalog (86 curated sources + ~500 city
+local-news feeds) and starts polling. The "sources healthy" tile reads
+`…/N` until the first cycle completes, then climbs as the rotation works
+through the city feeds and auto-discovery promotes real local outlets. No
+manual step is required — create your account and it runs itself.

@@ -18,10 +18,13 @@ import os
 import secrets
 import time
 
-from .database import DATA_DIR
+from .database import DB_DIR
 
 TOKEN_TTL_SECONDS = 30 * 86400
-_SECRET_PATH = DATA_DIR / "secret.key"
+# Live beside the database so the key persists on the same volume across
+# redeploys (otherwise every deploy would invalidate all sessions). Setting
+# NEWS_SECRET explicitly still overrides this and is recommended in production.
+_SECRET_PATH = DB_DIR / "secret.key"
 
 
 def _secret() -> bytes:

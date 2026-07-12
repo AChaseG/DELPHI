@@ -142,36 +142,38 @@ their alert history and empty events). Real ingested news is never touched.
 
 ## Going live
 
+**→ See [DEPLOY.md](DEPLOY.md) for the full 24/7 hosting walkthrough.**
+
 **Share it straight from a codespace (temporary).** With the server running,
 open the **Ports** panel, right-click port 8000 → **Port visibility** →
 **Public**. Anyone with the `https://<codespace>-8000.app.github.dev` URL can
-now open your dashboard. Two caveats: a codespace **auto-stops after ~30
-minutes of inactivity** (Settings ▸ Codespaces lets you raise the idle timeout
-to 4 hours) and ingestion/alerts pause while it sleeps — so this is for demos,
-not hosting. Also note the app has **no authentication**: anyone with a public
-URL can read every feed and add sources, so keep visibility private unless
-you're actively sharing.
+open the sign-in page. Caveat: a codespace **auto-stops after ~30 minutes of
+inactivity** (Settings ▸ Codespaces lets you raise the idle timeout to 4 hours)
+and ingestion/alerts pause while it sleeps — so this is for demos, not hosting.
+An account is required to use the app, so a public codespace URL only exposes
+the sign-in gate, not your feeds.
 
-**Host it 24/7 (Docker).** A `Dockerfile` is included; the database lives on a
-volume at `/data` so history survives restarts:
-
-```bash
-docker build -t delphi .
-docker run -d -p 8000:8000 -v newsdata:/data --restart unless-stopped delphi
-```
-
-That works on any VPS (~$5/month). For a managed platform, `fly.toml` is
-included for Fly.io:
+**Host it 24/7 (Docker / Fly.io).** A `Dockerfile` and `fly.toml` are included;
+the database lives on a volume at `/data` so accounts and history survive
+restarts. The short version:
 
 ```bash
-fly launch --copy-config --no-deploy   # pick your app name
-fly volumes create newsdata --size 1
+# Fly.io (config is in the repo)
+fly launch --copy-config --no-deploy
+fly volumes create newsdata --size 3
+fly secrets set NEWS_SECRET=$(openssl rand -hex 32)   # stable login-token key
 fly deploy
+
+# …or any Docker host / VPS
+docker build -t delphi .
+docker run -d -p 8000:8000 -v newsdata:/data --restart unless-stopped \
+  -e NEWS_SECRET=$(openssl rand -hex 32) delphi
 ```
 
-(Railway and Render also auto-detect the Dockerfile — set a volume/disk at
-`/data`. Avoid free tiers that sleep on idle; a sleeping instance stops
-polling and alerting, same as a codespace.)
+Run a **single instance** (the scheduler, SQLite DB, and rate limiter are
+in-process — scale up, not out), avoid free tiers that sleep on idle, and set
+`NEWS_PUBLIC_URL` to your domain once you have one. Full details, email setup,
+backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 
 ### Configuration (environment variables)
 

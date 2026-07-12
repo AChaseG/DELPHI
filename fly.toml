@@ -1,7 +1,10 @@
-# Fly.io config — deploy with:
-#   fly launch --copy-config --no-deploy   (pick an app name when prompted)
-#   fly volumes create newsdata --size 1
+# Fly.io config — see DEPLOY.md for the full walkthrough. In short:
+#   fly launch --copy-config --no-deploy      (pick a unique app name)
+#   fly volumes create newsdata --size 3
+#   fly secrets set NEWS_SECRET=$(openssl rand -hex 32)
 #   fly deploy
+# Keep this a SINGLE machine: the scheduler, SQLite DB, and rate limiter are
+# all in-process — scale the VM up (below), never out.
 app = "delphi-news"
 primary_region = "iad"
 
@@ -19,4 +22,6 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # 1 GB headroom for ~500 city feeds on rotation + content extraction +
+  # translation running together. Bump higher for a large user base.
+  memory = "1024mb"
