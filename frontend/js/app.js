@@ -259,8 +259,9 @@ function wireTopbar() {
         platform: el("src-platform").value,
         scope: el("src-scope").value,
         country: el("src-country").value,
+        paywall: el("src-paywall").checked,
       });
-      el("src-name").value = ""; el("src-url").value = "";
+      el("src-name").value = ""; el("src-url").value = ""; el("src-paywall").checked = false;
       await reloadSources();
       toast("Source added", `${name} — refresh ⟳ to pull it for the first time.`);
     } catch (e) { toast("Could not add source", e.message); }
@@ -808,6 +809,14 @@ async function openEventFocus(eventId) {
       chip.title = article.title;
     }
     src.appendChild(chip);
+    if (article && article.archive_url) {
+      const arch = document.createElement("a");
+      arch.className = "chip chip-link archive-chip";
+      arch.textContent = "🔓 archive.ph";
+      arch.href = article.archive_url; arch.target = "_blank"; arch.rel = "noopener";
+      arch.title = "Read the full article via archive.ph (paywalled source)";
+      src.appendChild(arch);
+    }
   }
 
   const rel = el("ev-related");
@@ -904,6 +913,20 @@ function articleRow(a, mode = "link") {
   const span = document.createElement("span");
   span.textContent = bits.join("  ·  ");
   meta.appendChild(span);
+  if (a.archive_url) {
+    // A <span> (not a nested <a>, which is invalid inside a link-mode row):
+    // open archive.ph and suppress the row's own navigation.
+    const arch = document.createElement("span");
+    arch.className = "archive-link";
+    arch.textContent = "🔓 archive.ph";
+    arch.title = "Read the full article via archive.ph (paywalled source)";
+    arch.setAttribute("role", "link");
+    arch.onclick = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      window.open(a.archive_url, "_blank", "noopener");
+    };
+    meta.appendChild(arch);
+  }
 
   const text = document.createElement("div");
   text.className = "article-text";
@@ -1412,12 +1435,13 @@ async function renderSourcesPanel() {
     status.textContent = ok ? "●" : (s.last_status ? "●" : "○");
     const name = document.createElement("span");
     name.className = "s-name";
-    name.textContent = `${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name}`;
-    name.title = s.rss_url + (s.repaired_from ? `\nAuto-repaired — original URL: ${s.repaired_from}` : "");
+    name.textContent = `${s.paywall ? "🔒 " : ""}${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name}`;
+    name.title = s.rss_url + (s.repaired_from ? `\nAuto-repaired — original URL: ${s.repaired_from}` : "")
+      + (s.paywall ? "\nPaywalled — headlines only; readers get an archive.ph link" : "");
     const meta = document.createElement("span");
     meta.className = "s-meta";
     meta.textContent = `${s.scope} · ${s.language}${s.added_by !== "catalog" ? " · " + s.added_by : ""}`
-      + (s.repaired_from ? " · 🔧 repaired" : "");
+      + (s.repaired_from ? " · 🔧 repaired" : "") + (s.paywall ? " · 🔒 paywalled" : "");
     const tools = [];
     if (!ok && s.last_status) {
       tools.push(toolBtn("🔧", "Attempt automatic repair (re-check the URL, rediscover the feed)", async (e) => {
@@ -1472,11 +1496,17 @@ function sourceEditor(s) {
   const country = sel([["", "🌐 Global"], ...META.countries.map(c => [c.iso2, `${flagEmoji(c.iso2)} ${c.name}`])], s.country || "");
   const language = input(s.language);
   const cats = input((s.categories || []).join(", "));
+  const paywall = document.createElement("input");
+  paywall.type = "checkbox"; paywall.checked = !!s.paywall;
+  const paywallField = document.createElement("label");
+  paywallField.className = "check-inline";
+  paywallField.append(paywall, document.createTextNode(" 🔒 Paywalled — headlines only + archive.ph links"));
   form.append(
     field("Name", name), field("Feed URL", url),
     field("Platform", platform), field("Scope", scope),
     field("Country", country), field("Language (code)", language),
     field("Categories (comma-separated)", cats),
+    paywallField,
   );
   const actions = document.createElement("div");
   actions.className = "source-edit-actions";
@@ -1492,6 +1522,7 @@ function sourceEditor(s) {
         country: country.value,
         language: language.value.trim() || "en",
         categories: cats.value.split(",").map(c => c.trim().toLowerCase()).filter(Boolean),
+        paywall: paywall.checked,
       });
       await reloadSources();
       toast("Source updated", name.value.trim());

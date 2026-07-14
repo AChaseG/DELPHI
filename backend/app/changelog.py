@@ -25,6 +25,10 @@ CHANGELOG: list[dict] = [
             "hourly, quiet ones less often) with per-host pacing, replacing the "
             "big serialized cycle that had grown slow and skipped sources at "
             "this catalog size.",
+            "Paywalled sources: mark an outlet 🔒 paywalled and Delphi ingests "
+            "its RSS headlines and summaries (enough to match feeds and alerts) "
+            "without fetching the locked article body, and every story gets a "
+            "🔓 archive.ph link to a readable version.",
             "Settings now follow your account: theme, time format, volume, "
             "notifications, staleness threshold, and reading language are "
             "saved server-side and applied wherever you sign in — previously "

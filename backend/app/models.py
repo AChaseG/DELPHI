@@ -56,6 +56,9 @@ class Source(Base):
     scope: Mapped[str] = mapped_column(String(20), default="national")  # local | national | international
     categories: Mapped[list] = mapped_column(JSON, default=list)
     platform: Mapped[str] = mapped_column(String(20), default="news")  # news | reddit | mastodon | bluesky | youtube
+    # Paywalled outlet: ingest its RSS headlines/summaries but never fetch the
+    # (paywalled) article body, and offer readers an archive.ph link instead.
+    paywall: Mapped[bool] = mapped_column(Boolean, default=False)
     tier: Mapped[int] = mapped_column(Integer, default=2)  # 1 = major wire/global, 2 = national, 3 = local/niche
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     added_by: Mapped[str] = mapped_column(String(50), default="catalog")  # catalog | user | topic-tracker

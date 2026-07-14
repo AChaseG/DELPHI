@@ -327,6 +327,13 @@ button { font: inherit; }
 .source-tools { display: flex; gap: 6px; padding: 10px 16px 0; flex-wrap: wrap; }
 .source-tools input { flex: 1; min-width: 120px; padding: 6px 9px; background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); border-radius: 7px; }
 .source-tools select { flex: 1; min-width: 0; max-width: 160px; }
+.check-inline { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.archive-link {
+  margin-left: 8px; cursor: pointer; color: var(--gold);
+  font-weight: 600; white-space: nowrap;
+}
+.archive-link:hover { text-decoration: underline; }
+.archive-chip { color: var(--gold); }
 .source-tools select {
   background: var(--surface-2); color: var(--ink);
   border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px;

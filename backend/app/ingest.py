@@ -223,7 +223,11 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
     """Fetch article bodies (newest first, capped) and re-run the text-derived
     enrichment — geotagging and categorization — over headline + summary +
     body. Failures leave an article headline-matched, as before."""
-    todo = [a for a in articles if not a.content and a.url.startswith("http")]
+    # Skip paywalled outlets: fetching their article page returns a paywall/
+    # truncated stub, which would pollute content and matching. They match on
+    # RSS headline + summary only, and readers get an archive.ph link.
+    todo = [a for a in articles if not a.content and a.url.startswith("http")
+            and not (a.source and a.source.paywall)]
     todo.sort(key=lambda a: a.published_at or utcnow(), reverse=True)
     todo = todo[:cap if cap is not None else CONTENT_MAX_PER_CYCLE]
     if not todo:

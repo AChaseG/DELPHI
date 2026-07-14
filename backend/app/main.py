@@ -54,7 +54,8 @@ def _ensure_schema():
                     "consecutive_failures": "INTEGER DEFAULT 0",
                     "repaired_from": "VARCHAR(500) DEFAULT ''",
                     "last_repair_at": "DATETIME",
-                    "idle_polls": "INTEGER DEFAULT 0"},
+                    "idle_polls": "INTEGER DEFAULT 0",
+                    "paywall": "BOOLEAN DEFAULT 0"},
         "users": {"email": "VARCHAR(200) DEFAULT ''",
                   "email_verified": "BOOLEAN DEFAULT 0",
                   "last_seen_at": "DATETIME",
@@ -174,6 +175,10 @@ def _article_json(a: Article, tr: dict | None = None,
         "categories": a.categories or [],
         "places": a.places or [],
         "importance": a.importance,
+        # Paywalled outlet: hand readers an archive.ph link to the full text.
+        "paywall": bool(a.source and a.source.paywall),
+        "archive_url": (f"https://archive.ph/newest/{a.url}"
+                        if a.source and a.source.paywall and a.url.startswith("http") else None),
         "source": {
             "id": a.source.id, "name": a.source.name, "country": a.source.country,
             "scope": a.source.scope,
@@ -479,6 +484,7 @@ def list_sources(db: Session = Depends(get_db)):
         "country": s.country, "region": s.region, "language": s.language,
         "scope": s.scope, "categories": s.categories or [], "tier": s.tier,
         "platform": s.platform or "news",
+        "paywall": bool(s.paywall),
         "enabled": s.enabled, "added_by": s.added_by,
         "last_fetched_at": s.last_fetched_at.isoformat() + "Z" if s.last_fetched_at else None,
         "last_status": s.last_status, "last_article_count": s.last_article_count,
@@ -541,7 +547,7 @@ def update_source(source_id: int, body: dict, db: Session = Depends(get_db)):
         source.rss_url = new_url
         source.last_status = ""  # health unknown until next poll
     for key in ("name", "enabled", "country", "language", "scope",
-                "categories", "tier", "platform", "homepage", "region"):
+                "categories", "tier", "platform", "homepage", "region", "paywall"):
         if key in body:
             setattr(source, key, body[key])
     db.commit()

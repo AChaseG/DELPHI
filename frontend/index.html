@@ -270,6 +270,14 @@
              disable any auto-discovered source you don't want.</p>
           <p>For matching, each new article's page is fetched once and reduced to text,
              so criteria see the whole story, not just the headline.</p>
+          <p><b>Paywalled outlets.</b> Mark a source <b>🔒 paywalled</b> when adding or
+             editing it (the article page is behind a paywall, but the RSS feed's
+             headlines and summaries usually aren't). Delphi then ingests those
+             headlines and summaries — enough to match feeds and alerts on — but skips
+             fetching the locked article body, so nothing is polluted with paywall
+             stubs. Every article from a paywalled source shows a <b>🔓 archive.ph</b>
+             link (in the row and in Event Focus) that opens the story via
+             <code>archive.ph</code>, which typically has a readable snapshot.</p>
           <p><b>Retention:</b> articles are kept for 30 days by default, then pruned to
              keep the system fast (self-hosting: <code>NEWS_RETENTION_DAYS</code>, 0 =
              keep forever). Date-range feeds can only reach back as far as retention.</p>
@@ -481,6 +489,9 @@
         <option value="international">international</option>
       </select>
       <select id="src-country"></select>
+      <label class="check-inline" title="Ingest headlines only; readers get an archive.ph link to the full text">
+        <input type="checkbox" id="src-paywall"> 🔒 paywalled
+      </label>
       <button class="btn btn-primary" id="btn-add-source">Add source</button>
     </div>
     <div class="source-tools">

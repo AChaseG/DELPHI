@@ -76,6 +76,7 @@ class SourceIn(BaseModel):
     scope: str = "national"
     categories: list[str] = Field(default_factory=list)
     platform: str = "news"
+    paywall: bool = False
     tier: int = 2
     enabled: bool = True
 
