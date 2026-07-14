@@ -20,7 +20,7 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, select
 
-from . import discovery, repair
+from . import discovery, langdetect, repair
 from .clustering import assign_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -206,7 +206,10 @@ def process_entries(db, source: Source, entries: list, recent_clusters: list,
             summary=summary,
             image_url=_entry_image(entry)[:1000],
             published_at=_entry_published(entry),
-            language=source.language,
+            # Detect from the text, not the source tag: aggregators carry many
+            # languages and discovered outlets default to "en", which would
+            # otherwise leave foreign articles tagged English and untranslated.
+            language=langdetect.detect(text, source.language),
             country=country or "",
             categories=classify_categories(text, source.categories),
             places=places,
@@ -249,6 +252,8 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
             article.country = article.country or article.places[0]["country"]
         source_cats = article.source.categories if article.source else []
         article.categories = classify_categories(full, source_cats)  # title still weighted 2x
+        # Full body gives a stronger language signal than the headline did.
+        article.language = langdetect.detect(full, article.language)
         fetched += 1
     db.commit()
     return fetched

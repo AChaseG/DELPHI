@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 import re as _username_re
 
-from . import auth, ingest, mailer, ratelimit, repair, translate
+from . import auth, ingest, langdetect, mailer, ratelimit, repair, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_city_sources, seed_demo_articles, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -1357,6 +1357,24 @@ def reclassify_articles(db: Session = Depends(get_db)):
             changed += 1
     db.commit()
     return {"articles": total, "reclassified": changed}
+
+
+@app.post("/api/maintenance/detect-languages")
+def detect_languages(db: Session = Depends(get_db)):
+    """Re-detect the language of every stored article from its text (use after
+    the detector improves, or to fix a backlog tagged with the source's
+    language). Corrected articles then auto-translate for users whose reading
+    language differs."""
+    changed = total = 0
+    for article in db.scalars(select(Article)):
+        total += 1
+        text = f"{article.title}\n{article.summary}\n{article.content or ''}"
+        lang = langdetect.detect(text, article.language or "en")
+        if lang != article.language:
+            article.language = lang
+            changed += 1
+    db.commit()
+    return {"articles": total, "relabeled": changed}
 
 
 @app.post("/api/events/rebuild")

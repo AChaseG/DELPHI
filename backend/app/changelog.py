@@ -25,6 +25,11 @@ CHANGELOG: list[dict] = [
             "hourly, quiet ones less often) with per-host pacing, replacing the "
             "big serialized cycle that had grown slow and skipped sources at "
             "this catalog size.",
+            "Fixed foreign-language articles not translating: each article's "
+            "language is now detected from its text instead of trusting the "
+            "source's tag (aggregators carry many languages; auto-discovered "
+            "outlets defaulted to English), so they translate to your reading "
+            "language correctly.",
             "Paywalled sources: mark an outlet 🔒 paywalled and Delphi ingests "
             "its RSS headlines and summaries (enough to match feeds and alerts) "
             "without fetching the locked article body, and every story gets a "

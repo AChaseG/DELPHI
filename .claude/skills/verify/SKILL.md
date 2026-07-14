@@ -67,6 +67,9 @@ graceful message instead; test map drawing only with real network.
 - Elements hidden via the `hidden` attribute need the `[hidden]{display:none!important}`
   rule in styles.css — several containers set their own `display`.
 - Alert evaluation happens only inside ingest cycles, not on demo seed.
+- Article language is detected from text (langdetect.py) at ingest, not taken
+  from the source tag — translation targets it. To fix an already-stored
+  backlog after the detector changes: POST /api/maintenance/detect-languages.
 - Startup seeds ~500 city local-news sources (added_by="city-catalog",
   scope="local", Google News feeds) by default — set `NEWS_SEED_CITIES=0`
   for a lean test DB. Ingestion is a **rolling poller**: `ingest_loop` ticks
