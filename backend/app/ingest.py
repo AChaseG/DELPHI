@@ -84,6 +84,11 @@ def _strip_html(text: str) -> str:
     return _TAG_RE.sub(" ", text or "").replace("&nbsp;", " ").strip()
 
 
+def _is_http_url(url: str) -> bool:
+    """Only http(s) links are safe to store and later render as an href."""
+    return url.lower().startswith(("http://", "https://"))
+
+
 def _entry_published(entry) -> datetime:
     for key in ("published_parsed", "updated_parsed"):
         parsed = entry.get(key)
@@ -178,7 +183,10 @@ def process_entries(db, source: Source, entries: list, recent_clusters: list,
     for entry in entries[:80]:
         url = (entry.get("link") or "").strip()[:1000]
         title = _strip_html(entry.get("title", "")).strip()
-        if url and title and url not in seen_urls:
+        # Only http(s) links: a hostile/compromised feed could otherwise ship a
+        # javascript: (or data:) link that becomes a clickable XSS payload in
+        # every reader's board. Such entries are dropped entirely.
+        if url and _is_http_url(url) and title and url not in seen_urls:
             candidates.append((url, title, entry))
     if not candidates:
         return []

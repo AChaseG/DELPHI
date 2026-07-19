@@ -695,6 +695,14 @@ function feedEmpty(text) {
   return d;
 }
 
+/* Only http(s) URLs are safe as an href/src. Feed-derived links pass through
+   here so a hostile "javascript:"/"data:" URL can never become clickable —
+   defense in depth alongside the backend ingest filter (also covers rows
+   stored before that filter existed). Returns "" for anything unsafe. */
+function safeUrl(url) {
+  return /^https?:\/\//i.test(url || "") ? url : "";
+}
+
 async function loadFeedArticles(feed) {
   const body = document.querySelector(`#feed-${feed.id ?? feed.home} .feed-body`);
   if (!body) return;
@@ -804,16 +812,16 @@ async function openEventFocus(eventId) {
     chip.className = "chip chip-link";
     chip.textContent = `${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name} ↗`;
     const article = articleBySource.get(s.id);
-    if (article) {
-      chip.href = article.url; chip.target = "_blank"; chip.rel = "noopener";
+    if (article && safeUrl(article.url)) {
+      chip.href = safeUrl(article.url); chip.target = "_blank"; chip.rel = "noopener";
       chip.title = article.title;
     }
     src.appendChild(chip);
-    if (article && article.archive_url) {
+    if (article && safeUrl(article.archive_url)) {
       const arch = document.createElement("a");
       arch.className = "chip chip-link archive-chip";
       arch.textContent = "🔓 archive.ph";
-      arch.href = article.archive_url; arch.target = "_blank"; arch.rel = "noopener";
+      arch.href = safeUrl(article.archive_url); arch.target = "_blank"; arch.rel = "noopener";
       arch.title = "Read the full article via archive.ph (paywalled source)";
       src.appendChild(arch);
     }
@@ -884,7 +892,10 @@ function articleRow(a, mode = "link") {
   if (mode === "focus" && !a.event_id) mode = "link";  // unclustered stray
   const row = document.createElement(mode === "link" ? "a" : "div");
   row.className = "article";
-  if (mode === "link") { row.href = a.url; row.target = "_blank"; row.rel = "noopener"; }
+  if (mode === "link") {
+    const href = safeUrl(a.url);
+    if (href) { row.href = href; row.target = "_blank"; row.rel = "noopener"; }
+  }
   if (mode === "focus") {
     row.classList.add("article-focus");
     row.dataset.eventId = a.event_id;
@@ -937,14 +948,14 @@ function articleRow(a, mode = "link") {
     text.appendChild(s);
   }
   row.appendChild(text);
-  if (a.image_url) {
+  if (safeUrl(a.image_url)) {
     const img = document.createElement("img");
     img.className = "thumb";
     img.loading = "lazy";
     img.alt = "";
     img.referrerPolicy = "no-referrer";
     img.onerror = () => img.remove();  // dead image -> clean text-only row
-    img.src = a.image_url;
+    img.src = safeUrl(a.image_url);
     row.appendChild(img);
     row.classList.add("has-thumb");
   }
@@ -1405,7 +1416,8 @@ function renderAlertsMap(eventsByAlert) {
       const popup = document.createElement("div");
       const b = document.createElement("b"); b.textContent = alert.name;
       const link = document.createElement("a");
-      link.href = ev.article.url; link.target = "_blank"; link.rel = "noopener";
+      const href = safeUrl(ev.article.url);
+      if (href) { link.href = href; link.target = "_blank"; link.rel = "noopener"; }
       link.textContent = ev.article.title;
       const small = document.createElement("div");
       small.textContent = `${t.icon} ${t.label} ${ev.article.importance} · ${place.name}`;
