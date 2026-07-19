@@ -12,7 +12,23 @@ from __future__ import annotations
 
 import re
 
+from .intl_terms import BREAKING_INTL, CATEGORY_INTL, TAG_SYNONYMS
+
 _SCOPE_BASE = {"international": 45, "national": 35, "local": 25}
+
+# CJK/Thai have no ASCII word boundaries, so \b matching fails on them —
+# those terms are matched as substrings instead.
+_CJK_RE = re.compile(r"[぀-ヿ㐀-鿿가-힣฀-๿]")
+
+
+def _make_matcher(term: str):
+    """A predicate(text) -> bool for one term: word-boundary regex for
+    space-delimited scripts, substring for CJK/Thai."""
+    if _CJK_RE.search(term):
+        lt = term.lower()
+        return lambda s: lt in s.lower()
+    pat = re.compile(r"\b" + re.escape(term) + r"\b", re.IGNORECASE)
+    return lambda s: bool(pat.search(s))
 
 # term -> weight. Matched on word boundaries, case-insensitive.
 BREAKING_TERMS: dict[str, int] = {
@@ -33,8 +49,9 @@ BREAKING_TERMS: dict[str, int] = {
     "summit": 4, "treaty": 5, "crisis": 7, "protest": 5, "strike": 4,
 }
 
-_BREAKING_RES = [(re.compile(r"\b" + re.escape(t) + r"\b", re.IGNORECASE), w)
-                 for t, w in BREAKING_TERMS.items()]
+# English (word-boundary) + multilingual (CJK-aware) breaking-signal matchers.
+_BREAKING_MATCHERS = [(_make_matcher(t), w)
+                      for t, w in {**BREAKING_TERMS, **BREAKING_INTL}.items()]
 
 STANDARD_CATEGORIES = [
     "world", "politics", "business", "economy", "technology", "science",
@@ -84,8 +101,8 @@ _CATEGORY_HINTS: dict[str, list[str]] = {
                 "gallery", "archaeologists", "unesco", "manuscript"],
 }
 
-_CATEGORY_RES = {
-    cat: [re.compile(r"\b" + re.escape(h) + r"\b", re.IGNORECASE) for h in hints]
+_CATEGORY_MATCHERS = {
+    cat: [_make_matcher(h) for h in hints + CATEGORY_INTL.get(cat, [])]
     for cat, hints in _CATEGORY_HINTS.items()
 }
 
@@ -98,14 +115,28 @@ _STOPWORDS = frozenset(
 
 def breaking_signal(text: str) -> int:
     score = 0
-    for pattern, weight in _BREAKING_RES:
-        if pattern.search(text):
+    for match, weight in _BREAKING_MATCHERS:
+        if match(text):
             score += weight
     return min(score, 30)
 
 
-def classify_categories(text: str, source_categories: list[str] | None = None) -> list[str]:
-    """Assign standard categories from headline + summary keywords.
+def _tags_to_categories(entry_tags: list[str] | None) -> set[str]:
+    """Map an RSS item's own section tags to our categories — high precision,
+    language-agnostic where the outlet's section name is recognized."""
+    out: set[str] = set()
+    for tag in entry_tags or []:
+        cat = TAG_SYNONYMS.get((tag or "").strip().lower())
+        if cat:
+            out.add(cat)
+    return out
+
+
+def classify_categories(text: str, source_categories: list[str] | None = None,
+                        entry_tags: list[str] | None = None) -> list[str]:
+    """Assign standard categories from the outlet's own RSS section tags plus
+    headline + summary keywords (English and a multilingual core, so foreign
+    articles don't all fall into "world").
 
     A hit in the headline (first line of `text`) counts double: headlines are
     short and deliberate, so one strong keyword there is a reliable signal,
@@ -114,9 +145,9 @@ def classify_categories(text: str, source_categories: list[str] | None = None) -
     """
     title, _, body = text.partition("\n")
     cats = set(c for c in (source_categories or []) if c in STANDARD_CATEGORIES)
-    for cat, patterns in _CATEGORY_RES.items():
-        score = sum(2 if p.search(title) else (1 if p.search(body) else 0)
-                    for p in patterns)
+    cats |= _tags_to_categories(entry_tags)
+    for cat, matchers in _CATEGORY_MATCHERS.items():
+        score = sum(2 if m(title) else (1 if m(body) else 0) for m in matchers)
         if score >= 2 or (score >= 1 and cat in ("disaster", "conflict", "sports")):
             cats.add(cat)
     if not cats:

@@ -201,6 +201,7 @@ def process_entries(db, source: Source, entries: list, recent_clusters: list,
 
         summary = _strip_html(entry.get("summary", ""))[:2000]
         text = f"{title}\n{summary}"
+        entry_tags = [t.get("term", "") for t in (entry.get("tags") or []) if t.get("term")]
         places = extract_places(text)
         country = places[0]["country"] if places else source.country
         tokens = cluster_tokens(title)
@@ -219,7 +220,7 @@ def process_entries(db, source: Source, entries: list, recent_clusters: list,
             # otherwise leave foreign articles tagged English and untranslated.
             language=langdetect.detect(text, source.language),
             country=country or "",
-            categories=classify_categories(text, source.categories),
+            categories=classify_categories(text, source.categories, entry_tags),
             places=places,
             importance=score_importance(text, source.scope, source.tier, places, corroborating),
             cluster_tokens=tokens,

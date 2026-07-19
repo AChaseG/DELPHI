@@ -25,6 +25,12 @@ CHANGELOG: list[dict] = [
             "hourly, quiet ones less often) with per-host pacing, replacing the "
             "big serialized cycle that had grown slow and skipped sources at "
             "this catalog size.",
+            "Non-English articles now categorize and score properly: category "
+            "detection and breaking-signal scoring gained a multilingual core "
+            "(disaster/conflict/health/politics terms across ~10 languages, "
+            "incl. CJK) plus the outlet's own RSS section tags — so foreign "
+            "coverage populates the category columns and ranks by importance "
+            "instead of all landing in “world”.",
             "Fixed foreign-language articles not translating: each article's "
             "language is now detected from its text instead of trusting the "
             "source's tag (aggregators carry many languages; auto-discovered "
