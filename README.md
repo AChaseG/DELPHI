@@ -140,6 +140,20 @@ feeds** for a ready-made dashboard layout. For offline demos,
 panel — deletes every trace of them (sample articles, local test sources,
 their alert history and empty events). Real ingested news is never touched.
 
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+A fast, no-network suite (pure logic + in-process API via FastAPI's TestClient)
+covers boolean search, language detection, multilingual scoring, criteria
+matching, clustering, the rolling-poll scheduler, URL safety, and the auth /
+settings / Pantheon-sharing flows. It runs against a throwaway database and
+never touches `backend/data`. GitHub Actions runs it on every push
+(`.github/workflows/ci.yml`).
+
 ## Going live
 
 **→ See [DEPLOY.md](DEPLOY.md) for the full 24/7 hosting walkthrough.**

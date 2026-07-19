@@ -12,6 +12,13 @@ python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt   # once
 NEWS_DISABLE_INGEST=1 .venv/bin/uvicorn backend.app.main:app --port 8123 &
 ```
 
+**Committed suite:** `pytest` (deps: `pip install -r requirements-dev.txt`) runs
+a fast no-network suite in `tests/` — pure logic + in-process API via
+TestClient, against a throwaway DB (conftest sets NEWS_DB_PATH to a temp dir).
+GitHub Actions runs it on push. Add regression tests there; use the scratchpad
+stub-server / Playwright patterns below for things the unit suite can't cover
+(live fetch, browser UI).
+
 `NEWS_DISABLE_INGEST=1` keeps the background poller off so cycles are driven
 explicitly with `POST /api/ingest/run`. DB is `backend/data/news.db` (gitignored);
 delete it for a clean slate — SQLite runs in WAL mode, so clean up `news.db*`
