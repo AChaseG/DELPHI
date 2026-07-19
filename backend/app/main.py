@@ -74,6 +74,39 @@ def _ensure_schema():
         # filter on fetched_at every refresh).
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_articles_fetched_at ON articles (fetched_at)")
+        _ensure_fts(conn)
+
+
+def _ensure_fts(conn) -> None:
+    """Full-text index over article title+summary+content, kept in sync by
+    triggers, used to prefilter keyword/boolean searches (matching.py). New
+    on an existing database → backfill the current rows once."""
+    fresh = not conn.exec_driver_sql(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='articles_fts'"
+    ).fetchone()
+    conn.exec_driver_sql(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5("
+        "title, summary, content, content='articles', content_rowid='id', "
+        "tokenize='unicode61 remove_diacritics 2')")
+    # Triggers mirror every write into the index (external-content pattern).
+    conn.exec_driver_sql(
+        "CREATE TRIGGER IF NOT EXISTS articles_fts_ai AFTER INSERT ON articles BEGIN "
+        "INSERT INTO articles_fts(rowid, title, summary, content) "
+        "VALUES (new.id, new.title, new.summary, new.content); END")
+    conn.exec_driver_sql(
+        "CREATE TRIGGER IF NOT EXISTS articles_fts_ad AFTER DELETE ON articles BEGIN "
+        "INSERT INTO articles_fts(articles_fts, rowid, title, summary, content) "
+        "VALUES ('delete', old.id, old.title, old.summary, old.content); END")
+    conn.exec_driver_sql(
+        "CREATE TRIGGER IF NOT EXISTS articles_fts_au AFTER UPDATE ON articles BEGIN "
+        "INSERT INTO articles_fts(articles_fts, rowid, title, summary, content) "
+        "VALUES ('delete', old.id, old.title, old.summary, old.content); "
+        "INSERT INTO articles_fts(rowid, title, summary, content) "
+        "VALUES (new.id, new.title, new.summary, new.content); END")
+    if fresh:
+        conn.exec_driver_sql(
+            "INSERT INTO articles_fts(rowid, title, summary, content) "
+            "SELECT id, title, summary, content FROM articles")
 
 
 @asynccontextmanager

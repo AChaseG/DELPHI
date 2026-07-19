@@ -36,6 +36,10 @@ CHANGELOG: list[dict] = [
             "incl. CJK) plus the outlet's own RSS section tags — so foreign "
             "coverage populates the category columns and ranks by importance "
             "instead of all landing in “world”.",
+            "Faster, more complete search: keyword and boolean feeds/searches "
+            "now use a full-text index, so they scan the whole retention window "
+            "efficiently instead of only the newest couple-thousand articles — "
+            "rare terms in older stories are no longer missed.",
             "Geotagging and maps now cover ~480 major world cities (up from "
             "170), including native-script names — so filtering or drawing a "
             "box around Porto, Surabaya, 東京 or القاهرة surfaces their coverage.",

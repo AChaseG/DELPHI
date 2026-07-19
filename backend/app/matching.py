@@ -23,9 +23,15 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session, defer, joinedload
 
-from .boolean_query import QueryError, compile_query
+from sqlalchemy import text
+
+from .boolean_query import QueryError, compile_query, covering_terms
 from .geo import places_match_geo
 from .models import Article, Source, utcnow
+
+# Scripts SQLite's unicode61 tokenizer doesn't word-segment — FTS can't
+# reliably match these, so queries containing them fall back to a full scan.
+_FTS_UNSAFE = re.compile(r"[぀-ヿ㐀-鿿가-힣฀-๿*?]")
 
 
 def _kw_regex(kw: str) -> re.Pattern:
@@ -46,7 +52,8 @@ class CriteriaMatcher:
         self.source_ids = set(self.criteria.get("source_ids") or [])
         self.min_importance = int(self.criteria.get("min_importance") or 0)
         self.geo = self.criteria.get("geo") or None
-        self.keyword_res = [_kw_regex(k) for k in (self.criteria.get("keywords") or []) if k.strip()]
+        self.keywords = [k for k in (self.criteria.get("keywords") or []) if k.strip()]
+        self.keyword_res = [_kw_regex(k) for k in self.keywords]
         self.exclude_res = [_kw_regex(k) for k in (self.criteria.get("exclude_keywords") or []) if k.strip()]
         # Multiple boolean strings run independently and OR together: an
         # article matches if ANY compiles+matches (other criteria still AND).
@@ -54,6 +61,7 @@ class CriteriaMatcher:
         legacy = (self.criteria.get("query") or "").strip()
         if legacy:
             query_strings.append(legacy)
+        self.query_strings = query_strings
         self.query_preds = []
         for q in query_strings:
             try:
@@ -124,6 +132,31 @@ class CriteriaMatcher:
         return True
 
 
+def _fts_terms(matcher: CriteriaMatcher) -> set[str] | None:
+    """Terms every match must contain, for an FTS prefilter — or None to fall
+    back to a full scan. Keywords are OR-required, so they alone cover a match
+    even alongside a boolean query; otherwise derive a covering set from the
+    (OR-combined) boolean queries. Anything FTS can't tokenize reliably
+    (wildcards, CJK/Thai) forces a full scan for correctness."""
+    if matcher.keywords:
+        terms = set(matcher.keywords)
+    elif matcher.query_strings:
+        covers = [covering_terms(q) for q in matcher.query_strings]
+        if any(c is None for c in covers):
+            return None
+        terms = set().union(*covers) if covers else set()
+    else:
+        return None
+    if not terms or any(_FTS_UNSAFE.search(t) for t in terms):
+        return None
+    return terms
+
+
+def _fts_match_expr(terms: set[str]) -> str:
+    """FTS5 MATCH string: OR of quoted phrases (quotes doubled to escape)."""
+    return " OR ".join('"' + t.replace('"', '""') + '"' for t in sorted(terms))
+
+
 def query_articles(
     db: Session,
     criteria: dict,
@@ -131,7 +164,13 @@ def query_articles(
     limit: int = 50,
     scan_cap: int = 2000,
 ) -> list[Article]:
-    """SQL prefilter on cheap columns, then compiled criteria over candidates."""
+    """SQL prefilter on cheap columns, then compiled criteria over candidates.
+
+    When the criteria require text and a safe covering term-set exists, an FTS5
+    index narrows candidates to articles actually containing those terms — far
+    fewer rows, and it reaches the whole table instead of only the newest
+    `scan_cap`. The Python matcher below still decides exact membership, so FTS
+    only ever needs to return a superset."""
     matcher = CriteriaMatcher(criteria)
 
     stmt = select(Article).options(joinedload(Article.source))
@@ -139,6 +178,13 @@ def query_articles(
     # only pay to load them when some predicate actually reads the text.
     if not matcher.needs_text:
         stmt = stmt.options(defer(Article.content))
+
+    fts_terms = _fts_terms(matcher) if matcher.needs_text else None
+    if fts_terms:
+        sub = (text("SELECT rowid FROM articles_fts WHERE articles_fts MATCH :ftsq")
+               .bindparams(ftsq=_fts_match_expr(fts_terms)).columns(rowid=Article.id.type))
+        stmt = stmt.where(Article.id.in_(select(sub.subquery().c.rowid)))
+        scan_cap = max(scan_cap, 20000)  # FTS already bounds the set to true candidates
     if matcher.since:
         stmt = stmt.where(Article.published_at >= matcher.since)
     if matcher.date_from:

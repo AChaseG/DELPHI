@@ -74,6 +74,12 @@ graceful message instead; test map drawing only with real network.
 - Elements hidden via the `hidden` attribute need the `[hidden]{display:none!important}`
   rule in styles.css — several containers set their own `display`.
 - Alert evaluation happens only inside ingest cycles, not on demo seed.
+- Keyword/boolean search uses an FTS5 index (articles_fts) kept in sync by
+  triggers; matching.query_articles narrows candidates via a covering term-set
+  (boolean_query.covering_terms) then the Python matcher decides exact
+  membership — FTS only ever returns a superset, so wildcards/CJK/NOT-only fall
+  back to a full scan. The `db` test fixture must DELETE FROM articles (fires
+  the sync triggers); the FTS table isn't in Base.metadata.
 - Article language is detected from text (langdetect.py) at ingest, not taken
   from the source tag — translation targets it. To fix an already-stored
   backlog after the detector changes: POST /api/maintenance/detect-languages.
