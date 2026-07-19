@@ -36,6 +36,11 @@ CHANGELOG: list[dict] = [
             "incl. CJK) plus the outlet's own RSS section tags — so foreign "
             "coverage populates the category columns and ranks by importance "
             "instead of all landing in “world”.",
+            "Mobile & accessibility pass: the layout now fits phone screens "
+            "(toolbar wraps, one feed column fills the screen and you swipe "
+            "between them, panels and dialogs go full-width) with no sideways "
+            "scrolling, larger tap targets, visible keyboard focus, and screen-"
+            "reader labels on icon-only buttons.",
             "Faster, more complete search: keyword and boolean feeds/searches "
             "now use a full-text index, so they scan the whole retention window "
             "efficiently instead of only the newest couple-thousand articles — "

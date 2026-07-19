@@ -682,7 +682,9 @@ function criteriaBadges(c, sort) {
 
 function toolBtn(txt, title, fn) {
   const b = document.createElement("button");
-  b.className = "icon-btn"; b.textContent = txt; b.title = title; b.onclick = fn;
+  b.className = "icon-btn"; b.textContent = txt; b.title = title;
+  b.setAttribute("aria-label", title);  // icon-only button needs a text label
+  b.onclick = fn;
   return b;
 }
 

@@ -29,10 +29,10 @@
       <input id="global-search" type="search" placeholder="Search all news… (supports AND OR NOT)" autocomplete="off">
       <button id="btn-create" class="btn btn-primary" title="Create a feed or an alert — pick which with the toggle inside">+ Create</button>
       <button id="btn-sources" class="btn" title="Manage sources">Sources</button>
-      <button id="btn-pantheons" class="btn bell" title="Pantheons — organizations that share feeds and alerts">🏛<span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
-      <button id="btn-refresh" class="btn" title="Poll all sources now">⟳</button>
-      <button id="btn-alerts-panel" class="btn bell" title="Alerts">🔔<span id="bell-count" class="bell-count" hidden>0</span></button>
-      <button id="btn-settings" class="btn" title="Settings">⚙</button>
+      <button id="btn-pantheons" class="btn bell" aria-label="Pantheons" title="Pantheons — organizations that share feeds and alerts">🏛<span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
+      <button id="btn-refresh" class="btn" aria-label="Poll all sources now" title="Poll all sources now">⟳</button>
+      <button id="btn-alerts-panel" class="btn bell" aria-label="Alerts" title="Alerts">🔔<span id="bell-count" class="bell-count" hidden>0</span></button>
+      <button id="btn-settings" class="btn" aria-label="Settings" title="Settings">⚙</button>
       <button id="btn-profile" class="btn" title="Your feeds and alerts are private to your profile">👤 Sign in</button>
     </div>
   </header>
@@ -41,7 +41,7 @@
   <aside id="settings-panel" class="side-panel" hidden>
     <div class="side-panel-head">
       <h2>Settings</h2>
-      <button class="icon-btn" id="btn-close-settings">✕</button>
+      <button class="icon-btn" id="btn-close-settings" aria-label="Close settings">✕</button>
     </div>
     <div class="settings-body">
       <h3 class="set-h">Appearance</h3>
@@ -123,7 +123,7 @@
     <div class="modal faq-modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h2>❓ D.E.L.P.H.I. — FAQ &amp; tutorial</h2>
-        <button class="icon-btn" id="btn-close-faq">✕</button>
+        <button class="icon-btn" id="btn-close-faq" aria-label="Close faq">✕</button>
       </div>
       <div class="modal-body faq-body">
 
@@ -394,7 +394,7 @@
     <div class="modal faq-modal updates-modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h2 id="updates-title">🆕 What's new</h2>
-        <button class="icon-btn" id="btn-close-updates">✕</button>
+        <button class="icon-btn" id="btn-close-updates" aria-label="Close updates">✕</button>
       </div>
       <div class="modal-body faq-body" id="updates-body"></div>
       <div class="modal-foot">
@@ -475,7 +475,7 @@
     <div class="side-panel-head">
       <h2>Alerts</h2>
       <button class="btn small" id="btn-toggle-alerts-map" title="Show alert hits on a map">🗺 Map</button>
-      <button class="icon-btn" id="btn-close-alerts">✕</button>
+      <button class="icon-btn" id="btn-close-alerts" aria-label="Close alerts">✕</button>
     </div>
     <div id="alerts-map" class="alerts-map" hidden></div>
     <div id="alerts-list"></div>
@@ -485,7 +485,7 @@
   <aside id="sources-panel" class="side-panel wide" hidden>
     <div class="side-panel-head">
       <h2>Sources</h2>
-      <button class="icon-btn" id="btn-close-sources">✕</button>
+      <button class="icon-btn" id="btn-close-sources" aria-label="Close sources">✕</button>
     </div>
     <div class="source-tools">
       <input id="topic-query" type="text" placeholder="Track a topic…">
@@ -524,7 +524,7 @@
   <aside id="pantheons-panel" class="side-panel" hidden>
     <div class="side-panel-head">
       <h2>🏛 Pantheons</h2>
-      <button class="icon-btn" id="btn-close-pantheons">✕</button>
+      <button class="icon-btn" id="btn-close-pantheons" aria-label="Close pantheons">✕</button>
     </div>
     <div class="settings-body">
       <p class="set-note">A Pantheon is an organization: create one, invite other accounts,
@@ -566,7 +566,7 @@
           <button data-step="2">3 · Refine</button>
           <button data-step="3">4 · Review</button>
         </nav>
-        <button class="icon-btn" id="btn-close-builder">✕</button>
+        <button class="icon-btn" id="btn-close-builder" aria-label="Close builder">✕</button>
       </div>
       <div class="modal-body">
 
@@ -727,7 +727,7 @@
     <div class="modal qb-modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h2>🪄 Build a Boolean search</h2>
-        <button class="icon-btn" id="btn-close-qb">✕</button>
+        <button class="icon-btn" id="btn-close-qb" aria-label="Close qb">✕</button>
       </div>
       <div class="modal-body">
         <p class="wiz-guide">Boolean searching uses operators to define relationships between
@@ -776,7 +776,7 @@
     <div class="modal event-modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h2 id="ev-title">Event</h2>
-        <button class="icon-btn" id="btn-close-event">✕</button>
+        <button class="icon-btn" id="btn-close-event" aria-label="Close event">✕</button>
       </div>
       <div class="modal-body" id="ev-body">
         <div class="ev-badges" id="ev-badges"></div>
