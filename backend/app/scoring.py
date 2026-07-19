@@ -155,11 +155,41 @@ def classify_categories(text: str, source_categories: list[str] | None = None,
     return sorted(cats)
 
 
-def cluster_tokens(title: str) -> str:
-    """Normalized significant tokens of a headline, for corroboration grouping."""
+# Complete short numbers (not embedded in longer digit runs), independent of
+# ASCII word boundaries — \b fails against CJK, so "マグニチュード6.8" wouldn't match.
+_NUM_RE = re.compile(r"(?<!\d)\d{1,4}(?:[.,]\d+)?(?!\d)")
+
+
+def invariant_anchors(text: str, places: list[dict] | None = None) -> list[str]:
+    """Language-invariant tokens for cross-language clustering: canonical city
+    names (from geotagging, identical across scripts) and significant numbers.
+    A Japanese and an English report of the same earthquake share e.g.
+    {"tokyo", "6.8"} even though their headline words don't. Excluded to keep
+    precision: countries (too broad), bare 1-digit and 4-digit numbers (years/
+    ids are common and non-discriminative) — kept: decimals and 2-3 digit
+    integers (magnitudes, tolls, counts)."""
+    anchors: set[str] = set()
+    for p in places or []:
+        if p.get("kind") == "city":
+            for w in re.findall(r"[a-z0-9]+", (p.get("name") or "").lower()):
+                if len(w) > 2:
+                    anchors.add(w)
+    for m in _NUM_RE.findall(text or "")[:8]:
+        norm = m.replace(",", ".")
+        if "." in norm or 2 <= len(norm) <= 3:
+            anchors.add(norm)
+    return sorted(anchors)
+
+
+def cluster_tokens(title: str, text: str | None = None,
+                   places: list[dict] | None = None) -> str:
+    """Normalized significant tokens for corroboration/event grouping: the
+    headline's own words plus language-invariant anchors (so coverage in
+    different languages of the same event can still cluster)."""
     words = re.findall(r"[a-z0-9]+", title.lower())
-    sig = [w for w in words if len(w) > 2 and w not in _STOPWORDS]
-    return " ".join(sorted(set(sig))[:12])
+    sig = {w for w in words if len(w) > 2 and w not in _STOPWORDS}
+    sig |= set(invariant_anchors(text if text is not None else title, places))
+    return " ".join(sorted(sig)[:15])
 
 
 def tokens_similarity(a: str, b: str) -> float:

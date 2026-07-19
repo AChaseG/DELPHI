@@ -36,6 +36,13 @@ CHANGELOG: list[dict] = [
             "incl. CJK) plus the outlet's own RSS section tags — so foreign "
             "coverage populates the category columns and ranks by importance "
             "instead of all landing in “world”.",
+            "Geotagging and maps now cover ~480 major world cities (up from "
+            "170), including native-script names — so filtering or drawing a "
+            "box around Porto, Surabaya, 東京 or القاهرة surfaces their coverage.",
+            "Cross-language event clustering: a story's coverage in its own "
+            "language now groups with the English coverage instead of forming a "
+            "separate event, using language-invariant anchors (canonical city "
+            "names + significant numbers).",
             "Fixed foreign-language articles not translating: each article's "
             "language is now detected from its text instead of trusting the "
             "source's tag (aggregators carry many languages; auto-discovered "

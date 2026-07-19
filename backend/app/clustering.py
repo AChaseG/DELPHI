@@ -23,10 +23,15 @@ _MAX_EVENT_TOKENS = 18
 
 
 def _best_match(article: Article, events: list[Event]) -> Event | None:
-    if not article.cluster_tokens:
-        return None
+    a = set(article.cluster_tokens.split())
+    if len(a) < 2:
+        return None  # too sparse to cluster confidently (would over-merge on a
+                     # single common token, e.g. a lone city name)
     best, best_sim = None, 0.0
     for ev in events:
+        b = set(ev.cluster_tokens.split())
+        if len(a & b) < 2:
+            continue  # require ≥2 shared tokens, not just a high ratio
         sim = tokens_similarity(article.cluster_tokens, ev.cluster_tokens)
         if sim > best_sim:
             best, best_sim = ev, sim

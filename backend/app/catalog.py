@@ -138,7 +138,7 @@ def seed_demo_articles(db: Session) -> int:
             places=places,
             importance=score_importance(text, source.scope, source.tier, places,
                                         corroborating_sources=rng.choice([0, 0, 1, 2])),
-            cluster_tokens=cluster_tokens(title),
+            cluster_tokens=cluster_tokens(title, text, places),
         ))
         added += 1
     db.commit()

@@ -204,7 +204,7 @@ def process_entries(db, source: Source, entries: list, recent_clusters: list,
         entry_tags = [t.get("term", "") for t in (entry.get("tags") or []) if t.get("term")]
         places = extract_places(text)
         country = places[0]["country"] if places else source.country
-        tokens = cluster_tokens(title)
+        tokens = cluster_tokens(title, text, places)
         corroborating = _corroboration(source.id, tokens, recent_clusters)
 
         article = Article(

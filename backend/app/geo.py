@@ -22,11 +22,52 @@ GAZETTEER_PATH = Path(__file__).resolve().parent.parent / "data" / "gazetteer.js
 # Aliases this short are matched case-sensitively (avoids "us"/"in" false hits).
 _CASE_SENSITIVE_MAX_LEN = 3
 
+# CJK/Thai have no ASCII word boundaries, so \b never matches — those aliases
+# (e.g. 東京, 서울) are matched as substrings instead.
+_CJK_RE = re.compile(r"[぀-ヿ㐀-鿿가-힣฀-๿]")
+# Cyrillic place names decline heavily (Москва → в Москве), so match the stem
+# plus any case ending rather than the exact nominative.
+_CYR_RE = re.compile(r"[а-яёіїєґ]", re.IGNORECASE)
+_CYR_ENDING_VOWELS = "аяоеыиуюьйії"
+
 
 @lru_cache(maxsize=1)
 def load_gazetteer() -> dict:
     with open(GAZETTEER_PATH, encoding="utf-8") as fh:
         return json.load(fh)
+
+
+@lru_cache(maxsize=1)
+def _merged_cities() -> list[dict]:
+    """Gazetteer cities plus every source-catalog city not already present.
+
+    Catalog cities that lack exact coordinates are placed at their country's
+    centroid — approximate for a map marker, but always country-correct for
+    geofencing — so all ~500 catalog cities become geotaggable. Native-script
+    aliases (cities.CITY_ALIASES) are attached so non-English coverage matches.
+    """
+    from . import cities as _cities
+    gaz = load_gazetteer()
+    countries = {c["iso2"]: c for c in gaz["countries"]}
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for city in gaz.get("cities", []):
+        seen.add((city["name"].lower(), city["country"]))
+        out.append({**city,
+                    "aliases": list(city.get("aliases", []))
+                    + _cities.CITY_ALIASES.get(city["name"], [])})
+    for name, cc in _cities.catalog_cities():
+        key = (name.lower(), cc)
+        if key in seen:
+            continue
+        centroid = countries.get(cc)
+        if not centroid:
+            continue
+        seen.add(key)
+        out.append({"name": name, "country": cc,
+                    "lat": centroid["lat"], "lon": centroid["lon"],
+                    "aliases": _cities.CITY_ALIASES.get(name, [])})
+    return out
 
 
 @lru_cache(maxsize=1)
@@ -39,8 +80,16 @@ def _compiled_places() -> list[tuple[re.Pattern, dict]]:
         for n in names:
             if not n:
                 continue
-            flags = 0 if len(n) <= _CASE_SENSITIVE_MAX_LEN else re.IGNORECASE
-            pattern = re.compile(r"\b" + re.escape(n) + r"\b", flags)
+            if _CJK_RE.search(n):
+                # CJK/Thai: no word boundaries — match as a substring.
+                pattern = re.compile(re.escape(n))
+            elif _CYR_RE.search(n) and len(n) >= 4:
+                # Slavic declension: strip a trailing vowel and allow any ending.
+                stem = n[:-1] if n[-1].lower() in _CYR_ENDING_VOWELS else n
+                pattern = re.compile(r"\b" + re.escape(stem) + r"[а-яёіїєґ]*", re.IGNORECASE)
+            else:
+                flags = 0 if len(n) <= _CASE_SENSITIVE_MAX_LEN else re.IGNORECASE
+                pattern = re.compile(r"\b" + re.escape(n) + r"\b", flags)
             compiled.append((pattern, place))
 
     for c in gaz["countries"]:
@@ -53,7 +102,7 @@ def _compiled_places() -> list[tuple[re.Pattern, dict]]:
         }
         add([c["name"], *c.get("aliases", [])], place)
 
-    for city in gaz.get("cities", []):
+    for city in _merged_cities():
         place = {
             "name": city["name"],
             "country": city["country"],

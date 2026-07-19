@@ -200,7 +200,11 @@
           <summary>🧵 Events, Event Focus, and dimming</summary>
           <p>Coverage of the same story from different outlets is clustered into an
              <b>event</b> (headline similarity, 72-hour rolling window). Feeds with
-             "group into events" show one card per story with a report/source count.</p>
+             "group into events" show one card per story with a report/source count.
+             Clustering also uses <b>language-invariant anchors</b> — canonical city
+             names (recognized across scripts, e.g. 東京 → Tokyo) and significant
+             numbers (a magnitude, a toll) — so a story's coverage in its own language
+             groups with the English coverage, not as a separate event.</p>
           <p>Selecting any story — grouped card or single article row — opens
              <b>Event Focus</b>: the founding report's synopsis, stats, a map of tagged
              places, the full timeline newest-first, "covered by" outlet links, and
@@ -293,9 +297,12 @@
           <summary>🗺 Drawing areas on the map</summary>
           <p>In the wizard's "Where" step, draw a polygon, rectangle, or circle. Only
              news geolocated inside the shape matches — via places mentioned in the
-             article (countries and major cities), falling back to the country of the
-             outlet. Works identically for alerts: "alert me on anything Critical inside
-             this box" is the classic use.</p>
+             article, falling back to the country of the outlet. Geotagging covers every
+             country plus <b>~480 major world cities</b> (including native-script names,
+             so 東京 or القاهرة are recognized too); a city without exact coordinates
+             sits at its country's centre, so geofencing is always country-correct.
+             Works identically for alerts: "alert me on anything Critical inside this
+             box" is the classic use.</p>
         </details>
 
         <details>

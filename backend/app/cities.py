@@ -258,3 +258,44 @@ def build_city_sources() -> list[dict]:
 
 def city_count() -> int:
     return sum(len(cities) for cs in WORLD.values() for _, cities in cs.values())
+
+
+def catalog_cities() -> list[tuple[str, str]]:
+    """(city name, ISO2 country) for every catalog city — used to extend the
+    geotagging gazetteer so these cities are recognized in article text."""
+    out: list[tuple[str, str]] = []
+    for countries in WORLD.values():
+        for cc, (_lang, names) in countries.items():
+            for name in names:
+                out.append((name, cc))
+    return out
+
+
+# Native-script / alternate names for major world cities, so geotagging (and
+# cross-language event clustering, which keys off canonical place names) works
+# on non-English coverage. Keyed by the catalog's English city name.
+CITY_ALIASES: dict[str, list[str]] = {
+    "Tokyo": ["東京"], "Osaka": ["大阪"], "Kyoto": ["京都"], "Yokohama": ["横浜"],
+    "Nagoya": ["名古屋"], "Sapporo": ["札幌"], "Fukuoka": ["福岡"], "Kobe": ["神戸"],
+    "Beijing": ["北京"], "Shanghai": ["上海"], "Guangzhou": ["广州"], "Shenzhen": ["深圳"],
+    "Chengdu": ["成都"], "Chongqing": ["重庆"], "Wuhan": ["武汉"], "Xi'an": ["西安"],
+    "Hangzhou": ["杭州"], "Nanjing": ["南京"], "Hong Kong": ["香港"], "Taipei": ["台北"],
+    "Kaohsiung": ["高雄"], "Seoul": ["서울"], "Busan": ["부산"], "Incheon": ["인천"],
+    "Daegu": ["대구"], "Pyongyang": ["평양"],
+    "Moscow": ["Москва"], "Saint Petersburg": ["Санкт-Петербург"], "Novosibirsk": ["Новосибирск"],
+    "Yekaterinburg": ["Екатеринбург"], "Kazan": ["Казань"], "Vladivostok": ["Владивосток"],
+    # Ukrainian declension alternates the stem vowel (Київ → Києвом), so the
+    # alternated stem is listed alongside the nominative and the Russian form.
+    "Kyiv": ["Київ", "Києв", "Киев"], "Kharkiv": ["Харків", "Харков", "Харьков"],
+    "Odesa": ["Одеса", "Одесса"], "Lviv": ["Львів", "Львов"], "Minsk": ["Мінск", "Минск"],
+    "Athens": ["Αθήνα"], "Thessaloniki": ["Θεσσαλονίκη"],
+    "Cairo": ["القاهرة"], "Alexandria": ["الإسكندرية"], "Baghdad": ["بغداد"], "Basra": ["البصرة"],
+    "Damascus": ["دمشق"], "Aleppo": ["حلب"], "Riyadh": ["الرياض"], "Jeddah": ["جدة"],
+    "Mecca": ["مكة"], "Beirut": ["بيروت"], "Amman": ["عمّان"], "Tripoli": ["طرابلس"],
+    "Tunis": ["تونس"], "Casablanca": ["الدار البيضاء"], "Rabat": ["الرباط"],
+    "Sanaa": ["صنعاء"], "Doha": ["الدوحة"], "Kuwait City": ["الكويت"], "Dubai": ["دبي"],
+    "Abu Dhabi": ["أبوظبي"], "Tehran": ["تهران"], "Mashhad": ["مشهد"], "Isfahan": ["اصفهان"],
+    "Jerusalem": ["ירושלים", "القدس"], "Tel Aviv": ["תל אביב"],
+    "Bangkok": ["กรุงเทพ", "กรุงเทพมหานคร"], "Chiang Mai": ["เชียงใหม่"],
+    "Delhi": ["दिल्ली"], "Mumbai": ["मुंबई"], "Kolkata": ["कोलकाता"],
+}
