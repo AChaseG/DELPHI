@@ -165,6 +165,11 @@
              and stored in the alert's history with a map of where hits happened.</p>
           <p>Rule of thumb: broad topics you check on your schedule → feed. Narrow,
              time-critical triggers ("anything Critical inside this drawn box") → alert.</p>
+          <p><b>Out-of-app delivery.</b> An alert can also reach you when the dashboard
+             is closed: tick <b>✉️ Email me</b> (a digest to your account address each
+             time it fires — needs server SMTP configured) and/or set a <b>🔗 webhook
+             URL</b> to POST the matching hits as JSON (for Slack/Discord/your own
+             service). Both batch per firing, so a busy alert can't flood you.</p>
           <p><b>Convert any time.</b> Both are built in the same wizard — pick with the
              📋 Feed / 🔔 Alert toggle at the top. Open an existing feed or alert with
              ✎ and flip that toggle to turn one into the other; every criterion carries
@@ -687,6 +692,13 @@
           </div>
           <div class="field" id="alert-only-fields" hidden>
             <label class="check-row"><input type="checkbox" id="b-active" checked> Alert active (fires live on new matching articles)</label>
+            <label class="check-row"><input type="checkbox" id="b-notify-email">
+              ✉️ Email me when this fires
+              <em style="color:var(--ink-muted);font-style:normal">(to your account address; one digest per matching batch — needs server SMTP)</em></label>
+            <label class="field" style="margin-top:6px">
+              <span>🔗 Webhook URL <em>(optional — POST matching hits as JSON, for Slack/Discord/your own service)</em></span>
+              <input id="b-webhook" type="url" placeholder="https://hooks.example.com/…">
+            </label>
           </div>
         </section>
 

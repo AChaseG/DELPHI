@@ -20,14 +20,14 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, select
 
-from . import discovery, langdetect, repair
+from . import discovery, langdetect, mailer, repair
 from .clustering import assign_events
 from .content import fetch_article_text
 from .database import SessionLocal
 from .events import broadcaster
 from .matching import CriteriaMatcher
 from .models import (Alert, AlertEvent, Article, Event, Source, Translation,
-                     ViewedEvent, utcnow)
+                     User, ViewedEvent, utcnow)
 from .geo import extract_places
 from .scoring import classify_categories, cluster_tokens, score_importance, tokens_similarity
 
@@ -283,6 +283,8 @@ def evaluate_alerts(db, new_articles: list[Article]) -> list[dict]:
                     "alert_name": alert.name,
                     "user_id": alert.user_id,
                     "pantheon_id": alert.pantheon_id,
+                    "notify_email": bool(alert.notify_email),
+                    "webhook_url": alert.webhook_url or "",
                     "article_id": article.id,
                     "title": article.title,
                     "url": article.url,
@@ -290,6 +292,46 @@ def evaluate_alerts(db, new_articles: list[Article]) -> list[dict]:
                     "country": article.country,
                 })
     return hits
+
+
+async def deliver_alerts(db, hits: list[dict]) -> int:
+    """Out-of-app delivery for hits whose alert opted in: one email to the
+    alert owner and/or one webhook POST per alert per cycle (batched so a busy
+    alert can't flood). In-app SSE/toast is handled separately by the caller.
+    Never raises — a failed channel is logged, ingestion continues."""
+    from collections import defaultdict
+    by_alert: dict[int, list[dict]] = defaultdict(list)
+    for h in hits:
+        if h.get("notify_email") or h.get("webhook_url"):
+            by_alert[h["alert_id"]].append(h)
+    if not by_alert:
+        return 0
+    delivered = 0
+    async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+        for items in by_alert.values():
+            first = items[0]
+            if first.get("notify_email") and mailer.enabled():
+                uid = first["user_id"]
+                user = db.get(User, int(uid.split(":", 1)[1])) if uid.startswith("acct:") else None
+                if user and user.email:
+                    try:
+                        # smtplib is blocking — keep it off the event loop.
+                        await asyncio.to_thread(mailer.send_alert_digest,
+                                                user.email, first["alert_name"], items)
+                        delivered += 1
+                    except Exception:
+                        log.exception("alert email delivery failed")
+            url = first.get("webhook_url")
+            if url:
+                payload = {"alert": first["alert_name"], "count": len(items),
+                           "hits": [{k: h[k] for k in ("title", "url", "importance",
+                                                        "country", "article_id")} for h in items]}
+                try:
+                    await client.post(url, json=payload)
+                    delivered += 1
+                except Exception:
+                    log.warning("alert webhook POST to %s failed", url)
+    return delivered
 
 
 # ---------- rolling poll scheduling ----------
@@ -456,6 +498,12 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     new_events = assign_events(db, all_new)
     hits = evaluate_alerts(db, all_new)
     db.commit()
+    # Out-of-app delivery (email/webhook) for alerts that opted in — after the
+    # commit so a delivery hiccup can't lose the persisted hit.
+    try:
+        await deliver_alerts(db, hits)
+    except Exception:
+        log.exception("alert delivery pass failed")
 
     status.update({
         "last_run": utcnow().isoformat(),

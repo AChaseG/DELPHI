@@ -203,6 +203,8 @@ const Builder = {
     el("b-group").checked = !!(item && item.group_events);
     // Feeds have no `active`; default true so a feed→alert conversion fires.
     el("b-active").checked = item && item.active !== undefined ? !!item.active : true;
+    el("b-notify-email").checked = !!(item && item.notify_email);
+    el("b-webhook").value = (item && item.webhook_url) || "";
     // Pantheon-shared copies can be edited but not converted feed↔alert.
     el("builder-mode").hidden = !!(item && item.pantheon_id);
     this.setMode(mode);
@@ -298,6 +300,8 @@ const Builder = {
     try {
       if (this.mode === "alert") {
         body.active = el("b-active").checked;
+        body.notify_email = el("b-notify-email").checked;
+        body.webhook_url = el("b-webhook").value.trim();
         delete body.sort;
         if (converting) {
           await API.createAlert(body);

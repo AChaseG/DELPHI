@@ -1334,7 +1334,10 @@ async function renderAlertsPanel() {
     const head = document.createElement("div");
     head.className = "alert-head";
     const h = document.createElement("h4");
-    h.textContent = `${alert.name}${alert.unseen ? ` (${alert.unseen} new)` : ""}`;
+    const delivery = (alert.notify_email ? " ✉️" : "") + (alert.webhook_url ? " 🔗" : "");
+    h.textContent = `${alert.name}${delivery}${alert.unseen ? ` (${alert.unseen} new)` : ""}`;
+    if (delivery) h.title = "Delivers out-of-app:" +
+      (alert.notify_email ? " email" : "") + (alert.webhook_url ? " webhook" : "");
     const tools = [];
     if (alert.pantheon_id) {
       const t = document.createElement("span");

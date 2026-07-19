@@ -49,7 +49,9 @@ def _ensure_schema():
                   "pantheon_id": "INTEGER",
                   "shared_by": "VARCHAR(32) DEFAULT ''"},
         "alerts": {"pantheon_id": "INTEGER",
-                   "shared_by": "VARCHAR(32) DEFAULT ''"},
+                   "shared_by": "VARCHAR(32) DEFAULT ''",
+                   "notify_email": "BOOLEAN DEFAULT 0",
+                   "webhook_url": "VARCHAR(500) DEFAULT ''"},
         "sources": {"platform": "VARCHAR(20) DEFAULT 'news'",
                     "consecutive_failures": "INTEGER DEFAULT 0",
                     "repaired_from": "VARCHAR(500) DEFAULT ''",
@@ -809,6 +811,17 @@ def mark_event_viewed(event_id: int, user_id: str = Depends(user_id_header),
 
 # ---------- alerts ----------
 
+def _valid_webhook(url: str) -> str:
+    """Accept only http(s) webhook URLs; reject anything else (a stored
+    file://, gopher://, … could be abused). Empty string disables the webhook."""
+    url = (url or "").strip()[:500]
+    if not url:
+        return ""
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(422, "Webhook URL must start with http:// or https://")
+    return url
+
+
 @app.get("/api/alerts")
 def list_alerts(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     """The caller's own alerts plus every alert shared with their Pantheons."""
@@ -836,6 +849,7 @@ def list_alerts(user_id: str = Depends(user_id_header), db: Session = Depends(ge
         unseen = unseen_by_alert.get(a.id, 0)
         row = {
             "id": a.id, "name": a.name, "criteria": a.criteria, "active": a.active,
+            "notify_email": bool(a.notify_email), "webhook_url": a.webhook_url or "",
             "last_triggered_at": a.last_triggered_at.isoformat() + "Z" if a.last_triggered_at else None,
             "unseen": unseen,
         }
@@ -857,7 +871,9 @@ def create_alert(body: AlertIn, user_id: str = Depends(user_id_header),
     _reject_invalid_query(body.criteria)
     _ensure_coverage_source(db, body.criteria)
     alert = Alert(user_id=user_id, name=body.name,
-                  criteria=body.criteria.model_dump(), active=body.active)
+                  criteria=body.criteria.model_dump(), active=body.active,
+                  notify_email=body.notify_email,
+                  webhook_url=_valid_webhook(body.webhook_url))
     db.add(alert)
     db.commit()
     return {"id": alert.id}
@@ -872,6 +888,8 @@ def update_alert(alert_id: int, body: AlertIn, user_id: str = Depends(user_id_he
     alert.name = body.name
     alert.criteria = body.criteria.model_dump()
     alert.active = body.active
+    alert.notify_email = body.notify_email
+    alert.webhook_url = _valid_webhook(body.webhook_url)
     db.commit()
     return {"ok": True}
 

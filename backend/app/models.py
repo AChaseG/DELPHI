@@ -224,6 +224,9 @@ class Alert(Base):
     name: Mapped[str] = mapped_column(String(200))
     criteria: Mapped[dict] = mapped_column(JSON, default=dict)  # same shape as Feed.criteria
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Out-of-app delivery so time-critical hits reach you with the tab closed.
+    notify_email: Mapped[bool] = mapped_column(Boolean, default=False)  # email the owner
+    webhook_url: Mapped[str] = mapped_column(String(500), default="")   # POST hits here
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

@@ -16,6 +16,11 @@ CHANGELOG: list[dict] = [
         "date": "2026-07-12",
         "title": "Self-healing sources, one creation flow, guided starts",
         "items": [
+            "Alerts can now reach you out-of-app: tick ✉️ Email me and/or add a "
+            "🔗 webhook URL when building an alert, and matching hits are "
+            "delivered (batched per firing) even when the dashboard tab is "
+            "closed — email needs server SMTP; the webhook POSTs JSON for "
+            "Slack/Discord/your own service.",
             "Local coverage for ~500 major cities across 170 countries: every "
             "city now has a local-news source in its own language, so filtering "
             "to a place — or drawing it on the map — surfaces local reporting. "

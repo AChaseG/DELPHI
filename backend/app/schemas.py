@@ -54,6 +54,8 @@ class AlertIn(BaseModel):
     name: str
     criteria: Criteria = Field(default_factory=Criteria)
     active: bool = True
+    notify_email: bool = False
+    webhook_url: str = ""
 
 
 class AlertOut(AlertIn):

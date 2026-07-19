@@ -69,6 +69,18 @@ def send_verification(to: str, username: str, link: str) -> bool:
     )
 
 
+def send_alert_digest(to: str, alert_name: str, hits: list[dict]) -> bool:
+    """One email per alert per ingest cycle, listing the new matching stories."""
+    lines = [f"{h['title']}\n  {h.get('url', '')}" for h in hits]
+    n = len(hits)
+    return send(
+        to, f"🔔 D.E.L.P.H.I. alert: {alert_name} ({n} new)",
+        f"Your alert “{alert_name}” matched {n} new "
+        f"{'story' if n == 1 else 'stories'}:\n\n" + "\n\n".join(lines) +
+        "\n\nOpen D.E.L.P.H.I. to see the full context, map, and timeline.\n",
+    )
+
+
 def send_password_reset(to: str, username: str, link: str) -> bool:
     return send(
         to, "Reset your D.E.L.P.H.I. password",
