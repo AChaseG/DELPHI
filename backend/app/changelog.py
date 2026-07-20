@@ -13,6 +13,21 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-07-20",
+        "title": "Operator console",
+        "items": [
+            "Operators can now manage every account from a new 🛠 Admin panel: "
+            "search all users, force-verify an email, grant or revoke operator "
+            "access, suspend or reinstate an account, reset a locked-out user's "
+            "password, and delete an account with all its feeds, alerts, and "
+            "pantheons. Operators are designated with the NEWS_ADMIN_USERS "
+            "secret (a built-in operator that survives losing the database) or "
+            "promoted from within the console — no admin password is baked into "
+            "the code, and guards prevent removing the last operator or locking "
+            "yourself out.",
+        ],
+    },
+    {
         "date": "2026-07-12",
         "title": "Self-healing sources, one creation flow, guided starts",
         "items": [

@@ -32,6 +32,7 @@
       <button id="btn-pantheons" class="btn bell" aria-label="Pantheons" title="Pantheons — organizations that share feeds and alerts">🏛<span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
       <button id="btn-refresh" class="btn" aria-label="Poll all sources now" title="Poll all sources now">⟳</button>
       <button id="btn-alerts-panel" class="btn bell" aria-label="Alerts" title="Alerts">🔔<span id="bell-count" class="bell-count" hidden>0</span></button>
+      <button id="btn-admin" class="btn" aria-label="Operator console" title="Operator console — manage all accounts" hidden>🛠 Admin</button>
       <button id="btn-settings" class="btn" aria-label="Settings" title="Settings">⚙</button>
       <button id="btn-profile" class="btn" title="Your feeds and alerts are private to your profile">👤 Sign in</button>
     </div>
@@ -547,6 +548,23 @@
       <div id="pn-mine"></div>
       <h3 class="set-h">Public Pantheons</h3>
       <div id="pn-public"></div>
+    </div>
+  </aside>
+
+  <!-- Admin / operator console -->
+  <aside id="admin-panel" class="side-panel wide" hidden>
+    <div class="side-panel-head">
+      <h2>🛠 Operator console</h2>
+      <button class="icon-btn" id="btn-close-admin" aria-label="Close admin">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="set-note">Every account on this instance. Operators are set with the
+        <code>NEWS_ADMIN_USERS</code> secret (built-in, can't be removed here) or promoted below.</p>
+      <div class="source-tools">
+        <input id="admin-search" type="search" placeholder="Search username or email…">
+        <span id="admin-summary" class="set-note"></span>
+      </div>
+      <div id="admin-users"></div>
     </div>
   </aside>
 

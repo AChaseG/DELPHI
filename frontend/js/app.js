@@ -151,6 +151,7 @@ function wireTopbar() {
   el("btn-view-mine").onclick = () => setView("mine");
   updateViewButtons();
   wirePantheons();
+  wireAdmin();
   // Reading-language picker: articles in other languages are translated
   // automatically into this language (defaults to the browser language).
   const sel = el("lang-select");
@@ -535,6 +536,7 @@ const PLATFORM_ICONS = { news: "📰", reddit: "👽", mastodon: "🐘", bluesky
 /* ---------- stats ---------- */
 function renderStats(meta) {
   if (meta) META = meta;
+  el("btn-admin").hidden = !META.is_admin;  // operator-only console
   const s = META.stats;
   el("stat-articles").textContent = s.articles_24h.toLocaleString();
   el("stat-countries").textContent = s.countries_24h;
@@ -1042,6 +1044,120 @@ function wirePantheons() {
       toast("Pantheon founded", `“${name}” is ready — invite members from its card below.`);
     } catch (e) { toast("Could not create", e.message); }
   };
+}
+
+/* ---------- admin / operator console ---------- */
+let ADMIN_ME = null;   // caller's own account id, so the UI never offers self-lockout
+
+function wireAdmin() {
+  el("btn-admin").onclick = async () => {
+    el("admin-panel").hidden = false;
+    await renderAdminUsers();
+  };
+  el("btn-close-admin").onclick = () => { el("admin-panel").hidden = true; };
+  let t;
+  el("admin-search").addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => renderAdminUsers(el("admin-search").value.trim()), 250);
+  });
+}
+
+async function renderAdminUsers(q = "") {
+  const box = el("admin-users");
+  box.textContent = "Loading…";
+  let data;
+  try { data = await API.adminUsers(q); }
+  catch (e) { box.textContent = ""; toast("Admin", e.message); return; }
+  ADMIN_ME = data.me;
+  el("admin-summary").textContent =
+    `${data.users.length} account${data.users.length === 1 ? "" : "s"} · ${data.admin_count} operator${data.admin_count === 1 ? "" : "s"}`;
+  box.innerHTML = "";
+  if (!data.users.length) { box.textContent = "No matching accounts."; return; }
+  for (const u of data.users) box.appendChild(adminUserRow(u));
+}
+
+function adminUserRow(u) {
+  const row = document.createElement("div");
+  row.className = "admin-row" + (u.disabled ? " disabled" : "");
+
+  const head = document.createElement("div");
+  head.className = "admin-row-head";
+  const name = document.createElement("span");
+  name.className = "admin-name";
+  name.textContent = u.username;
+  head.appendChild(name);
+  const badge = (text, cls) => {
+    const b = document.createElement("span");
+    b.className = "admin-badge " + cls;
+    b.textContent = text;
+    head.appendChild(b);
+  };
+  if (u.id === ADMIN_ME) badge("you", "you");
+  if (u.is_admin) badge(u.config_admin ? "operator · built-in" : "operator", "op");
+  if (u.disabled) badge("suspended", "warn");
+  if (!u.email_verified) badge("unverified", "warn");
+  row.appendChild(head);
+
+  const meta = document.createElement("div");
+  meta.className = "admin-meta";
+  const seen = u.last_seen_at ? "last seen " + timeAgo(u.last_seen_at) : "never signed in";
+  meta.textContent = `${u.email || "no email"} · ${u.feeds} feed${u.feeds === 1 ? "" : "s"}, `
+    + `${u.alerts} alert${u.alerts === 1 ? "" : "s"}, ${u.pantheons} pantheon${u.pantheons === 1 ? "" : "s"} · ${seen}`;
+  row.appendChild(meta);
+
+  const acts = document.createElement("div");
+  acts.className = "admin-acts";
+  const btn = (label, title, fn, cls = "") => {
+    const b = document.createElement("button");
+    b.className = "btn small" + (cls ? " " + cls : "");
+    b.textContent = label; if (title) b.title = title;
+    b.onclick = fn;
+    acts.appendChild(b);
+    return b;
+  };
+  const refresh = () => renderAdminUsers(el("admin-search").value.trim());
+  const guard = async (fn, okMsg) => {
+    try { await fn(); if (okMsg) toast("Done", okMsg); await refresh(); }
+    catch (e) { toast("Admin", e.message); }
+  };
+
+  if (!u.email_verified)
+    btn("Verify", "Mark this email verified", () =>
+      guard(() => API.adminVerify(u.id), `${u.username} verified.`));
+
+  if (u.id !== ADMIN_ME && !u.config_admin) {
+    if (u.is_admin)
+      btn("Demote", "Revoke operator access", () =>
+        guard(() => API.adminSetAdmin(u.id, false), `${u.username} is no longer an operator.`));
+    else
+      btn("Make operator", "Grant operator access", () =>
+        guard(() => API.adminSetAdmin(u.id, true), `${u.username} is now an operator.`));
+  }
+
+  if (u.id !== ADMIN_ME && !u.config_admin) {
+    if (u.disabled)
+      btn("Reinstate", "Allow this account to sign in again", () =>
+        guard(() => API.adminSetDisabled(u.id, false), `${u.username} reinstated.`));
+    else
+      btn("Suspend", "Block this account from signing in", () =>
+        guard(() => API.adminSetDisabled(u.id, true), `${u.username} suspended.`), "warn");
+  }
+
+  btn("Reset password", "Set a new password for this account", () => {
+    const pw = prompt(`New password for ${u.username} (min 8 characters):`);
+    if (pw == null) return;
+    if (pw.length < 8) { toast("Too short", "Password must be at least 8 characters."); return; }
+    guard(() => API.adminResetPassword(u.id, pw), `Password reset for ${u.username}.`);
+  });
+
+  if (u.id !== ADMIN_ME && !u.config_admin)
+    btn("Delete", "Permanently delete this account and all its data", () => {
+      if (!confirm(`Delete ${u.username} and all their feeds, alerts, and pantheons? This cannot be undone.`)) return;
+      guard(() => API.adminDeleteUser(u.id), `${u.username} deleted.`);
+    }, "danger");
+
+  row.appendChild(acts);
+  return row;
 }
 
 /* Small anchored chooser: pick one of my Pantheons. */

@@ -62,7 +62,9 @@ def _ensure_schema():
                   "email_verified": "BOOLEAN DEFAULT 0",
                   "last_seen_at": "DATETIME",
                   "changelog_seen": "TEXT",
-                  "settings": "TEXT"},
+                  "settings": "TEXT",
+                  "is_admin": "BOOLEAN DEFAULT 0",
+                  "disabled": "BOOLEAN DEFAULT 0"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -224,8 +226,9 @@ def _article_json(a: Article, tr: dict | None = None,
 # ---------- meta ----------
 
 @app.get("/api/meta")
-def meta(db: Session = Depends(get_db)):
+def meta(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     gaz = load_gazetteer()
+    me_user = db.get(User, _acct_id(user_id))
     total_articles = db.scalar(select(func.count(Article.id))) or 0
     day_ago = utcnow().replace(microsecond=0)
     from datetime import timedelta
@@ -261,6 +264,7 @@ def meta(db: Session = Depends(get_db)):
             "sources_total": sources_total,
         },
         "ingest": ingest.status,
+        "is_admin": bool(me_user and _is_admin(me_user)),
     }
 
 
@@ -268,6 +272,44 @@ def meta(db: Session = Depends(get_db)):
 
 _USERNAME_RE = _username_re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
 _EMAIL_RE = _username_re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+
+# Config-designated operators: usernames and/or emails listed in NEWS_ADMIN_USERS
+# (comma-separated) are admins the moment they register — no password is baked
+# into the code, and losing the DB can never lock the operator out. Matched
+# case-insensitively against both username and email.
+_ADMIN_HANDLES = frozenset(
+    h.strip().lower() for h in os.environ.get("NEWS_ADMIN_USERS", "").split(",") if h.strip()
+)
+
+
+def _is_configured_admin(user: User) -> bool:
+    return bool(_ADMIN_HANDLES) and (
+        (user.username or "").lower() in _ADMIN_HANDLES
+        or (user.email or "").lower() in _ADMIN_HANDLES
+    )
+
+
+def _is_admin(user: User) -> bool:
+    """Effective admin: the persisted flag OR a NEWS_ADMIN_USERS designation."""
+    return bool(user.is_admin) or _is_configured_admin(user)
+
+
+def require_admin(user_id: str = Depends(user_id_header),
+                  db: Session = Depends(get_db)) -> User:
+    """Dependency for /api/admin/* — resolves the caller and demands admin.
+    Config-designated operators are auto-promoted on first admin use so the DB
+    reflects reality (and the last-admin guards see them)."""
+    user = db.get(User, _acct_id(user_id))
+    if user is None:
+        raise HTTPException(401, "Account no longer exists")
+    if user.disabled:
+        raise HTTPException(403, "This account is suspended")
+    if not _is_admin(user):
+        raise HTTPException(403, "Operator access required")
+    if not user.is_admin and _is_configured_admin(user):
+        user.is_admin = True
+        db.commit()
+    return user
 
 
 def _action_base_url(request: Request) -> str:
@@ -316,6 +358,7 @@ def register(body: dict, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(409, "An account with that email already exists")
     user = User(username=username, email=email, password_hash=auth.hash_password(password),
                 email_verified=not mailer.enabled())  # self-host mode: auto-verify
+    user.is_admin = _is_configured_admin(user)  # NEWS_ADMIN_USERS → built-in operator
     db.add(user)
     db.commit()
     if mailer.enabled():
@@ -324,7 +367,7 @@ def register(body: dict, request: Request, db: Session = Depends(get_db)):
         mailer.send_verification(email, username, link)
         return {"verification_sent": True, "username": username, "email": email}
     return {"token": auth.make_token(user.id), "username": username,
-            "email": email, "user_key": f"acct:{user.id}"}
+            "email": email, "user_key": f"acct:{user.id}", "is_admin": _is_admin(user)}
 
 
 @app.post("/api/auth/login")
@@ -335,10 +378,16 @@ def login(body: dict, request: Request, db: Session = Depends(get_db)):
         or_(User.username == ident, User.email == ident)))
     if not user or not auth.verify_password(body.get("password") or "", user.password_hash):
         raise HTTPException(401, "Wrong username/email or password")
+    if user.disabled:
+        raise HTTPException(403, "This account has been suspended by an operator")
     if mailer.enabled() and not user.email_verified:
         raise HTTPException(403, "unverified: check your inbox for the verification link")
+    # Keep the DB flag in step with a NEWS_ADMIN_USERS designation.
+    if not user.is_admin and _is_configured_admin(user):
+        user.is_admin = True
+        db.commit()
     return {"token": auth.make_token(user.id), "username": user.username,
-            "email": user.email, "user_key": f"acct:{user.id}"}
+            "email": user.email, "user_key": f"acct:{user.id}", "is_admin": _is_admin(user)}
 
 
 @app.get("/api/auth/verify")
@@ -403,7 +452,8 @@ def me(authorization: str = Header(default=""), db: Session = Depends(get_db)):
     user = db.get(User, uid)
     if not user:
         raise HTTPException(401, "Account no longer exists")
-    return {"user_key": f"acct:{uid}", "username": user.username, "email": user.email}
+    return {"user_key": f"acct:{uid}", "username": user.username, "email": user.email,
+            "is_admin": _is_admin(user)}
 
 
 # NOTE: the old /api/auth/claim endpoint was removed. It migrated feeds/alerts
@@ -1635,6 +1685,151 @@ def _reject_invalid_query(criteria):
             err = validate_query(q)
             if err:
                 raise HTTPException(422, f"Invalid boolean query “{q}”: {err}")
+
+
+# ---------- admin / operator console ----------
+
+def _user_admin_json(db: Session, u: User) -> dict:
+    acct = f"acct:{u.id}"
+    return {
+        "id": u.id, "username": u.username, "email": u.email,
+        "email_verified": bool(u.email_verified),
+        "disabled": bool(u.disabled),
+        "is_admin": _is_admin(u),
+        "config_admin": _is_configured_admin(u),  # designated in NEWS_ADMIN_USERS
+        "created_at": u.created_at.isoformat() + "Z" if u.created_at else None,
+        "last_seen_at": u.last_seen_at.isoformat() + "Z" if u.last_seen_at else None,
+        "feeds": db.scalar(select(func.count(Feed.id)).where(Feed.user_id == acct)) or 0,
+        "alerts": db.scalar(select(func.count(Alert.id)).where(Alert.user_id == acct)) or 0,
+        "pantheons": db.scalar(select(func.count(PantheonMember.id)).where(
+            PantheonMember.user_id == u.id)) or 0,
+    }
+
+
+def _admin_count(db: Session) -> int:
+    """How many accounts can currently reach the operator console (persisted
+    flag or a NEWS_ADMIN_USERS designation)."""
+    return sum(1 for u in db.scalars(select(User)) if _is_admin(u))
+
+
+def _delete_user(db: Session, user: User) -> None:
+    """Remove an account and everything referencing it: personal feeds/alerts
+    (alert events cascade through the ORM), viewed-event history, Pantheon
+    memberships and invites, and any Pantheon they own (with its shared
+    feeds/alerts, members, and invites)."""
+    acct = f"acct:{user.id}"
+    for p in db.scalars(select(Pantheon).where(Pantheon.owner_id == user.id)).all():
+        db.execute(sa_delete(Feed).where(Feed.pantheon_id == p.id))
+        for a in db.scalars(select(Alert).where(Alert.pantheon_id == p.id)).all():
+            db.delete(a)  # per-row so AlertEvent children cascade
+        db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == p.id))
+        db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == p.id))
+        db.delete(p)
+    db.execute(sa_delete(PantheonMember).where(PantheonMember.user_id == user.id))
+    db.execute(sa_delete(PantheonInvite).where(
+        or_(PantheonInvite.user_id == user.id, PantheonInvite.invited_by == user.id)))
+    db.execute(sa_delete(Feed).where(Feed.user_id == acct))
+    for a in db.scalars(select(Alert).where(Alert.user_id == acct)).all():
+        db.delete(a)
+    db.execute(sa_delete(ViewedEvent).where(ViewedEvent.user_id == acct))
+    db.delete(user)
+
+
+def _admin_target(db: Session, uid: int) -> User:
+    u = db.get(User, uid)
+    if not u:
+        raise HTTPException(404, "No such account")
+    return u
+
+
+@app.get("/api/admin/users")
+def admin_list_users(admin: User = Depends(require_admin), db: Session = Depends(get_db),
+                     q: str = Query(default="")):
+    """Every account, newest first, with per-account content counts. Optional
+    ?q= substring-filters username/email."""
+    stmt = select(User).order_by(User.created_at.desc())
+    term = q.strip().lower()
+    if term:
+        like = f"%{term}%"
+        stmt = stmt.where(or_(func.lower(User.username).like(like),
+                              func.lower(User.email).like(like)))
+    users = db.scalars(stmt.limit(500)).all()
+    return {"users": [_user_admin_json(db, u) for u in users],
+            "admin_count": _admin_count(db), "me": admin.id}
+
+
+@app.post("/api/admin/users/{uid}/disable")
+def admin_set_disabled(uid: int, body: dict, admin: User = Depends(require_admin),
+                       db: Session = Depends(get_db)):
+    """Suspend (disabled=true) or reinstate an account. Suspended users can't
+    sign in and lose admin access; existing sessions stop at the next login."""
+    u = _admin_target(db, uid)
+    disabled = bool(body.get("disabled", True))
+    if disabled:
+        if u.id == admin.id:
+            raise HTTPException(400, "You can't suspend your own account")
+        if _is_configured_admin(u):
+            raise HTTPException(400, "This operator is set in NEWS_ADMIN_USERS and can't be suspended")
+    u.disabled = disabled
+    db.commit()
+    return _user_admin_json(db, u)
+
+
+@app.post("/api/admin/users/{uid}/verify")
+def admin_verify_user(uid: int, admin: User = Depends(require_admin),
+                      db: Session = Depends(get_db)):
+    """Force-verify an email (useful when SMTP is unconfigured or bouncing)."""
+    u = _admin_target(db, uid)
+    u.email_verified = True
+    db.commit()
+    return _user_admin_json(db, u)
+
+
+@app.post("/api/admin/users/{uid}/admin")
+def admin_set_admin(uid: int, body: dict, admin: User = Depends(require_admin),
+                    db: Session = Depends(get_db)):
+    """Grant or revoke operator access via the persisted is_admin flag."""
+    u = _admin_target(db, uid)
+    make = bool(body.get("is_admin", True))
+    if not make:
+        if _is_configured_admin(u):
+            raise HTTPException(400, "Designated in NEWS_ADMIN_USERS — remove them there instead")
+        if _is_admin(u) and _admin_count(db) <= 1:
+            raise HTTPException(400, "Can't remove the last operator")
+    u.is_admin = make
+    db.commit()
+    return _user_admin_json(db, u)
+
+
+@app.post("/api/admin/users/{uid}/reset-password")
+def admin_reset_password(uid: int, body: dict, admin: User = Depends(require_admin),
+                         db: Session = Depends(get_db)):
+    """Set a new password for an account — the way to recover a locked-out user
+    when email delivery isn't configured."""
+    u = _admin_target(db, uid)
+    pw = body.get("password") or ""
+    if len(pw) < 8:
+        raise HTTPException(422, "Password must be at least 8 characters")
+    u.password_hash = auth.hash_password(pw)
+    u.email_verified = True
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/admin/users/{uid}")
+def admin_delete_user(uid: int, admin: User = Depends(require_admin),
+                      db: Session = Depends(get_db)):
+    """Permanently delete an account and all of its content."""
+    u = _admin_target(db, uid)
+    if u.id == admin.id:
+        raise HTTPException(400, "You can't delete your own account from here")
+    if _is_configured_admin(u):
+        raise HTTPException(400, "This operator is set in NEWS_ADMIN_USERS and can't be deleted")
+    if _is_admin(u) and _admin_count(db) <= 1:
+        raise HTTPException(400, "Can't delete the last operator")
+    _delete_user(db, u)
+    db.commit()
+    return {"ok": True}
 
 
 # Unknown /api/* paths get a clear JSON 404 (registered after all real API

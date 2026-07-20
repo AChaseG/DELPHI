@@ -154,6 +154,13 @@ const API = {
   shareFeed: (feedId, pantheonId) => api(`/api/feeds/${feedId}/share`, { method: "POST", body: JSON.stringify({ pantheon_id: pantheonId }) }),
   shareAlert: (alertId, pantheonId) => api(`/api/alerts/${alertId}/share`, { method: "POST", body: JSON.stringify({ pantheon_id: pantheonId }) }),
 
+  adminUsers: (q = "") => api("/api/admin/users" + (q ? "?q=" + encodeURIComponent(q) : "")),
+  adminSetDisabled: (id, disabled) => api(`/api/admin/users/${id}/disable`, { method: "POST", body: JSON.stringify({ disabled }) }),
+  adminVerify: (id) => api(`/api/admin/users/${id}/verify`, { method: "POST" }),
+  adminSetAdmin: (id, is_admin) => api(`/api/admin/users/${id}/admin`, { method: "POST", body: JSON.stringify({ is_admin }) }),
+  adminResetPassword: (id, password) => api(`/api/admin/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
+  adminDeleteUser: (id) => api(`/api/admin/users/${id}`, { method: "DELETE" }),
+
   hello: () => api("/api/session/hello", { method: "POST" }),
   checkUpdates: () => api("/api/session/check-updates", { method: "POST" }),
   getSettings: () => api("/api/session/settings"),

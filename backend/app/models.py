@@ -41,6 +41,14 @@ class User(Base):
     # volume, reading language, …) so settings follow the account across
     # browsers, devices, and origin changes — not just this one localStorage.
     settings: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Operator account: may reach the /api/admin/* endpoints. This DB flag is
+    # one of two ways in — accounts named in NEWS_ADMIN_USERS are admins even
+    # with the flag off (the built-in, config-designated operator), and a
+    # promotion by another admin sets this flag. No admin password is ever
+    # hardcoded; see main.py:_is_admin.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Suspended by an admin: kept for history but blocked from signing in.
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Source(Base):
