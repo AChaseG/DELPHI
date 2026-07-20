@@ -1,27 +1,24 @@
-# Fly.io config — see DEPLOY.md for the full walkthrough. In short:
-#   fly launch --copy-config --no-deploy      (pick a unique app name)
-#   fly volumes create newsdata --size 3
-#   fly secrets set NEWS_SECRET=$(openssl rand -hex 32)
-#   fly deploy
-# Keep this a SINGLE machine: the scheduler, SQLite DB, and rate limiter are
-# all in-process — scale the VM up (below), never out.
-app = "delphi-news"
-primary_region = "iad"
+# fly.toml app configuration file generated for delphi-xf2l2a on 2026-07-20T22:02:22Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'delphi-xf2l2a'
+primary_region = 'lax'
+
+[build]
+
+[[mounts]]
+  source = 'data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8000
   force_https = true
-  # Keep one machine always on so ingestion and alerts run 24/7.
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
-[mounts]
-  source = "newsdata"
-  destination = "/data"
-
 [[vm]]
-  size = "shared-cpu-1x"
-  # 1 GB headroom for ~500 city feeds (rolling poll) + content extraction +
-  # translation running together. Bump higher for a large user base.
-  memory = "1024mb"
+  size = 'shared-cpu-1x'
+  memory = '1024mb'
