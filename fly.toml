@@ -1,10 +1,10 @@
-# fly.toml app configuration file generated for delphi-news on 2026-07-20T22:58:31Z
+# fly.toml app configuration file generated for delphi-2vir0g on 2026-07-20T23:12:59Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'delphi-news'
-primary_region = 'lax'
+app = 'delphi-2vir0g'
+primary_region = 'ams'
 
 [build]
 
