@@ -13,6 +13,20 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-07-21",
+        "title": "Pantheons outlive their founders",
+        "items": [
+            "Deleting an account no longer dissolves the Pantheons it owned. "
+            "Ownership passes to the most senior remaining member — an existing "
+            "admin first, otherwise the longest-standing member — and the feeds "
+            "and alerts that person had shared stay on the group's board under "
+            "the new owner. Only a Pantheon with nobody else left in it is "
+            "closed. Inherited alerts keep firing for the group but drop the "
+            "departed member's email/webhook delivery, so notifications never "
+            "get redirected to someone who didn't set them up.",
+        ],
+    },
+    {
         "date": "2026-07-20",
         "title": "Operator console",
         "items": [

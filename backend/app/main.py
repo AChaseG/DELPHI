@@ -1749,19 +1749,69 @@ def _admin_count(db: Session) -> int:
     return sum(1 for u in db.scalars(select(User)) if _is_admin(u))
 
 
+def _successor(db: Session, pantheon_id: int, leaving_user_id: int) -> PantheonMember | None:
+    """The member who should inherit a Pantheon when its owner goes away:
+    existing admins first (they were already trusted with it), then the
+    longest-standing member. None when nobody else is left."""
+    members = db.scalars(select(PantheonMember).where(
+        PantheonMember.pantheon_id == pantheon_id,
+        PantheonMember.user_id != leaving_user_id)).all()
+    return min(members, key=lambda m: (m.role != "admin", m.joined_at, m.id), default=None)
+
+
+def _close_pantheon(db: Session, p: Pantheon) -> None:
+    """Delete a Pantheon that has no members left, with its shared content."""
+    db.execute(sa_delete(Feed).where(Feed.pantheon_id == p.id))
+    for a in db.scalars(select(Alert).where(Alert.pantheon_id == p.id)).all():
+        db.delete(a)  # per-row so AlertEvent children cascade
+    db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == p.id))
+    db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == p.id))
+    db.delete(p)
+
+
 def _delete_user(db: Session, user: User) -> None:
-    """Remove an account and everything referencing it: personal feeds/alerts
-    (alert events cascade through the ORM), viewed-event history, Pantheon
-    memberships and invites, and any Pantheon they own (with its shared
-    feeds/alerts, members, and invites)."""
+    """Remove an account and everything personal to it, while leaving the groups
+    it belonged to intact.
+
+    Personal feeds/alerts (alert events cascade through the ORM), viewed-event
+    history, memberships, and invites all go. Pantheons do not: an organization
+    other people depend on should survive one member leaving, so each Pantheon
+    this account owned is handed to the most senior remaining member and its
+    shared content is reassigned to the new owner. Only a Pantheon with nobody
+    else left in it is closed.
+    """
     acct = f"acct:{user.id}"
+
     for p in db.scalars(select(Pantheon).where(Pantheon.owner_id == user.id)).all():
-        db.execute(sa_delete(Feed).where(Feed.pantheon_id == p.id))
-        for a in db.scalars(select(Alert).where(Alert.pantheon_id == p.id)).all():
-            db.delete(a)  # per-row so AlertEvent children cascade
-        db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == p.id))
-        db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == p.id))
-        db.delete(p)
+        heir = _successor(db, p.id, user.id)
+        if heir is None:
+            _close_pantheon(db, p)
+        else:
+            p.owner_id = heir.user_id
+            heir.role = "owner"
+    db.flush()  # ownership must be settled before content is reassigned below
+
+    # Content this account shared into a Pantheon belongs to the group, not to
+    # the departing member: hand it to that Pantheon's (possibly new) owner so
+    # the shared board keeps working. Anything whose Pantheon was just closed
+    # falls through to the personal-content deletion below.
+    for feed in db.scalars(select(Feed).where(
+            Feed.user_id == acct, Feed.pantheon_id.isnot(None))).all():
+        p = db.get(Pantheon, feed.pantheon_id)
+        if p:
+            feed.user_id = f"acct:{p.owner_id}"
+    for alert in db.scalars(select(Alert).where(
+            Alert.user_id == acct, Alert.pantheon_id.isnot(None))).all():
+        p = db.get(Pantheon, alert.pantheon_id)
+        if p:
+            alert.user_id = f"acct:{p.owner_id}"
+            # Out-of-app delivery pointed at the departing member — an inherited
+            # alert must not start emailing or POSTing to someone who never
+            # configured it. The alert keeps firing in-app for the group.
+            alert.notify_email = False
+            alert.webhook_url = ""
+    db.flush()
+
     db.execute(sa_delete(PantheonMember).where(PantheonMember.user_id == user.id))
     db.execute(sa_delete(PantheonInvite).where(
         or_(PantheonInvite.user_id == user.id, PantheonInvite.invited_by == user.id)))

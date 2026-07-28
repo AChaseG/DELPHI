@@ -195,3 +195,129 @@ def test_delete_user_cascades(client, admin_env):
 def test_cannot_delete_self_or_configured_admin(client, admin_env):
     boss_hdr, boss_id = _register(client, "boss")
     assert client.delete(f"/api/admin/users/{boss_id}", headers=boss_hdr).status_code == 400
+
+
+# ---------- Pantheon succession when an owner's account is deleted ----------
+
+def _make_pantheon(client, hdr, name="Watch Desk"):
+    r = client.post("/api/pantheons", json={"name": name}, headers=hdr)
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def _join(client, owner_hdr, pantheon_id, member_hdr, member_name):
+    """Invite member_name and have them accept."""
+    r = client.post(f"/api/pantheons/{pantheon_id}/invite",
+                    json={"user": member_name}, headers=owner_hdr)
+    assert r.status_code in (200, 201), r.text
+    invites = client.get("/api/pantheons", headers=member_hdr).json()["invites"]
+    inv = next(i for i in invites if i["pantheon_id"] == pantheon_id)
+    assert client.post(f"/api/pantheons/invites/{inv['id']}/accept",
+                       headers=member_hdr).status_code == 200
+
+
+def test_deleting_owner_transfers_pantheon_to_admin(client, admin_env):
+    """An existing admin inherits ahead of plain members."""
+    boss_hdr, _ = _register(client, "boss")
+    owner_hdr, owner_id = _register(client, "owner")
+    mem_hdr, mem_id = _register(client, "member")
+    adm_hdr, adm_id = _register(client, "deputy")
+    pid = _make_pantheon(client, owner_hdr)
+    _join(client, owner_hdr, pid, mem_hdr, "member")     # joins first
+    _join(client, owner_hdr, pid, adm_hdr, "deputy")     # joins later, promoted
+    assert client.post(f"/api/pantheons/{pid}/members/{adm_id}/role",
+                       json={"role": "admin"}, headers=owner_hdr).status_code == 200
+
+    assert client.delete(f"/api/admin/users/{owner_id}", headers=boss_hdr).status_code == 200
+
+    detail = client.get(f"/api/pantheons/{pid}", headers=adm_hdr)
+    assert detail.status_code == 200, "the Pantheon must survive its owner's deletion"
+    body = detail.json()
+    assert body["owner_name"] == "deputy"          # admin inherited, not the earlier joiner
+    assert body["role"] == "owner"
+    assert {m["username"] for m in body["members"]} == {"member", "deputy"}
+
+
+def test_deleting_owner_falls_back_to_longest_standing_member(client, admin_env):
+    boss_hdr, _ = _register(client, "boss")
+    owner_hdr, owner_id = _register(client, "owner")
+    first_hdr, _ = _register(client, "first")
+    second_hdr, _ = _register(client, "second")
+    pid = _make_pantheon(client, owner_hdr)
+    _join(client, owner_hdr, pid, first_hdr, "first")
+    _join(client, owner_hdr, pid, second_hdr, "second")
+
+    client.delete(f"/api/admin/users/{owner_id}", headers=boss_hdr)
+
+    body = client.get(f"/api/pantheons/{pid}", headers=first_hdr).json()
+    assert body["owner_name"] == "first"
+
+
+def test_shared_content_transfers_with_the_pantheon(client, admin_env):
+    """Feeds and alerts the departing owner shared stay on the group's board,
+    reassigned to the heir — and an inherited alert stops emailing them."""
+    boss_hdr, _ = _register(client, "boss")
+    owner_hdr, owner_id = _register(client, "owner")
+    heir_hdr, heir_id = _register(client, "heir")
+    pid = _make_pantheon(client, owner_hdr)
+    _join(client, owner_hdr, pid, heir_hdr, "heir")
+
+    feed_id = client.post("/api/feeds", json={"name": "Shared feed"},
+                          headers=owner_hdr).json()["id"]
+    alert_id = client.post("/api/alerts", json={"name": "Shared alert", "notify_email": True},
+                           headers=owner_hdr).json()["id"]
+    assert client.post(f"/api/feeds/{feed_id}/share", json={"pantheon_id": pid},
+                       headers=owner_hdr).status_code in (200, 201)
+    assert client.post(f"/api/alerts/{alert_id}/share", json={"pantheon_id": pid},
+                       headers=owner_hdr).status_code in (200, 201)
+
+    client.delete(f"/api/admin/users/{owner_id}", headers=boss_hdr)
+
+    shared = client.get(f"/api/pantheons/{pid}/feeds", headers=heir_hdr)
+    assert shared.status_code == 200
+    assert any(f["name"] == "Shared feed" for f in shared.json()), \
+        "shared feed should survive and stay on the Pantheon board"
+    with SessionLocal() as s:
+        acct = f"acct:{heir_id}"
+        feeds = s.query(Feed).filter_by(pantheon_id=pid).all()
+        alerts = s.query(Alert).filter_by(pantheon_id=pid).all()
+        assert feeds and all(f.user_id == acct for f in feeds)
+        assert alerts and all(a.user_id == acct for a in alerts)
+        # inherited delivery settings must not follow the alert to a new owner
+        assert all(a.notify_email is False and a.webhook_url == "" for a in alerts)
+
+
+def test_solo_owner_deletion_closes_the_pantheon(client, admin_env):
+    boss_hdr, _ = _register(client, "boss")
+    owner_hdr, owner_id = _register(client, "owner")
+    pid = _make_pantheon(client, owner_hdr, "Solo Desk")
+    feed_id = client.post("/api/feeds", json={"name": "Solo feed"},
+                          headers=owner_hdr).json()["id"]
+    client.post(f"/api/feeds/{feed_id}/share", json={"pantheon_id": pid}, headers=owner_hdr)
+
+    client.delete(f"/api/admin/users/{owner_id}", headers=boss_hdr)
+
+    from backend.app.models import Pantheon, PantheonMember
+    with SessionLocal() as s:
+        assert s.get(Pantheon, pid) is None
+        assert s.query(PantheonMember).filter_by(pantheon_id=pid).count() == 0
+        assert s.query(Feed).filter_by(pantheon_id=pid).count() == 0
+
+
+def test_personal_content_is_still_deleted(client, admin_env):
+    """Only shared content is preserved; private feeds/alerts go with the user."""
+    boss_hdr, _ = _register(client, "boss")
+    owner_hdr, owner_id = _register(client, "owner")
+    heir_hdr, _ = _register(client, "heir")
+    pid = _make_pantheon(client, owner_hdr)
+    _join(client, owner_hdr, pid, heir_hdr, "heir")
+    client.post("/api/feeds", json={"name": "Private feed"}, headers=owner_hdr)
+    client.post("/api/alerts", json={"name": "Private alert"}, headers=owner_hdr)
+
+    client.delete(f"/api/admin/users/{owner_id}", headers=boss_hdr)
+
+    acct = f"acct:{owner_id}"
+    with SessionLocal() as s:
+        assert s.query(Feed).filter_by(user_id=acct).count() == 0
+        assert s.query(Alert).filter_by(user_id=acct).count() == 0
+        assert s.get(User, owner_id) is None
