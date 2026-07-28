@@ -26,7 +26,7 @@ from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_city_sources, seed_demo_articles, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
 from .clustering import assign_events, rebuild_events
-from .database import Base, engine, get_db
+from .database import Base, SessionLocal, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer
 from .matching import query_articles
@@ -144,7 +144,15 @@ async def require_account(request: Request, call_next):
     """An account is required to use the system: every API route except
     /api/auth/* demands a valid session token. Static assets stay public so
     the sign-in page itself can load. The SSE stream may pass the token as a
-    ?token= query parameter (EventSource cannot set headers)."""
+    ?token= query parameter (EventSource cannot set headers).
+
+    The token's signature is not sufficient on its own: tokens live for 30 days
+    and carry no revocation, so the account behind one is re-checked here on
+    every request. Without that, an operator suspending or deleting an account
+    would only stop future sign-ins while the holder's current token kept
+    working for weeks. The check is a primary-key lookup, and it sits in the
+    middleware so it covers routes that take no user_id dependency too.
+    """
     path = request.url.path
     if path.startswith("/api") and not path.startswith("/api/auth/"):
         token = ""
@@ -153,8 +161,16 @@ async def require_account(request: Request, call_next):
             token = authz[7:].strip()
         elif "token" in request.query_params:
             token = request.query_params["token"]
-        if not token or auth.parse_token(token) is None:
+        uid = auth.parse_token(token) if token else None
+        if uid is None:
             return JSONResponse({"detail": "Authentication required — sign in"}, status_code=401)
+        with SessionLocal() as session:
+            user = session.get(User, uid)
+            if user is None:
+                return JSONResponse({"detail": "Account no longer exists"}, status_code=401)
+            if user.disabled:
+                return JSONResponse(
+                    {"detail": "This account has been suspended by an operator"}, status_code=403)
     return await call_next(request)
 
 
@@ -361,6 +377,14 @@ def register(body: dict, request: Request, background: BackgroundTasks,
     user = User(username=username, email=email, password_hash=auth.hash_password(password),
                 email_verified=not mailer.enabled())  # self-host mode: auto-verify
     user.is_admin = _is_configured_admin(user)  # NEWS_ADMIN_USERS → built-in operator
+    if user.is_admin:
+        # The designated operator is verified on sight. Setting NEWS_ADMIN_USERS
+        # requires control of the deployment, which is stronger proof than
+        # receiving an email — and without this, misconfigured SMTP locks
+        # everyone out of their own instance: sign-up demands a verification
+        # link that can never arrive, and no one can reach the console that
+        # would fix it. This keeps a way in that email delivery cannot break.
+        user.email_verified = True
     db.add(user)
     db.commit()
     if mailer.enabled():
@@ -386,12 +410,15 @@ def login(body: dict, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(401, "Wrong username/email or password")
     if user.disabled:
         raise HTTPException(403, "This account has been suspended by an operator")
+    # Keep the DB flags in step with a NEWS_ADMIN_USERS designation — including
+    # for an operator account that registered before being designated, or while
+    # mail was broken, so the console is always reachable.
+    if _is_configured_admin(user) and not (user.is_admin and user.email_verified):
+        user.is_admin = True
+        user.email_verified = True
+        db.commit()
     if mailer.enabled() and not user.email_verified:
         raise HTTPException(403, "unverified: check your inbox for the verification link")
-    # Keep the DB flag in step with a NEWS_ADMIN_USERS designation.
-    if not user.is_admin and _is_configured_admin(user):
-        user.is_admin = True
-        db.commit()
     return {"token": auth.make_token(user.id), "username": user.username,
             "email": user.email, "user_key": f"acct:{user.id}", "is_admin": _is_admin(user)}
 

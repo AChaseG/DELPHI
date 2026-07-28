@@ -28,6 +28,38 @@ def admin_env(monkeypatch):
     monkeypatch.setattr(main, "_ADMIN_HANDLES", frozenset({"boss"}))
 
 
+def test_designated_operator_bypasses_broken_email(client, monkeypatch):
+    """Misconfigured SMTP must not lock the owner out of their own instance:
+    with mail 'enabled' but undeliverable, sign-up demands a link that never
+    arrives. The NEWS_ADMIN_USERS operator is verified on sight so the console
+    that fixes it stays reachable."""
+    monkeypatch.setattr(main, "_ADMIN_HANDLES", frozenset({"boss@example.com"}))
+    monkeypatch.setattr(main.mailer, "enabled", lambda: True)
+
+    # An ordinary account is held at the verification gate, as designed.
+    r = client.post("/api/auth/register", json={
+        "username": "alice", "email": "alice@example.com", "password": "password123"})
+    assert r.status_code == 201 and r.json().get("verification_sent") is True
+    assert client.post("/api/auth/login",
+                       json={"username": "alice", "password": "password123"}).status_code == 403
+
+    # The designated operator gets straight in and can reach the console.
+    r = client.post("/api/auth/register", json={
+        "username": "boss", "email": "boss@example.com", "password": "password123"})
+    assert r.status_code == 201, r.text
+    login = client.post("/api/auth/login", json={"username": "boss", "password": "password123"})
+    assert login.status_code == 200, login.text
+    hdr = {"Authorization": "Bearer " + login.json()["token"]}
+    assert client.get("/api/admin/users", headers=hdr).status_code == 200
+
+    # ...and can force-verify the account that email left stranded.
+    alice_id = [u["id"] for u in client.get("/api/admin/users", headers=hdr).json()["users"]
+                if u["username"] == "alice"][0]
+    assert client.post(f"/api/admin/users/{alice_id}/verify", headers=hdr).status_code == 200
+    assert client.post("/api/auth/login",
+                       json={"username": "alice", "password": "password123"}).status_code == 200
+
+
 def test_non_admin_is_denied(client):
     hdr, _ = _register(client, "alice")
     assert client.get("/api/admin/users", headers=hdr).status_code == 403
@@ -95,6 +127,29 @@ def test_suspend_blocks_login_and_reinstate_restores(client, admin_env):
                        headers=boss_hdr).status_code == 200
     assert client.post("/api/auth/login",
                        json={"username": "alice", "password": "password123"}).status_code == 200
+
+
+def test_suspension_revokes_an_existing_session(client, admin_env):
+    """A 30-day token carries no revocation, so suspending an account must cut
+    off the session it already holds — not just block the next sign-in."""
+    boss_hdr, _ = _register(client, "boss")
+    alice_hdr, alice_id = _register(client, "alice")
+    assert client.get("/api/feeds", headers=alice_hdr).status_code == 200
+    client.post(f"/api/admin/users/{alice_id}/disable", json={"disabled": True}, headers=boss_hdr)
+    # Same token, now suspended.
+    assert client.get("/api/feeds", headers=alice_hdr).status_code == 403
+    assert client.get("/api/meta", headers=alice_hdr).status_code == 403
+    # Reinstating restores the same session.
+    client.post(f"/api/admin/users/{alice_id}/disable", json={"disabled": False}, headers=boss_hdr)
+    assert client.get("/api/feeds", headers=alice_hdr).status_code == 200
+
+
+def test_deleted_account_token_stops_working(client, admin_env):
+    boss_hdr, _ = _register(client, "boss")
+    alice_hdr, alice_id = _register(client, "alice")
+    assert client.get("/api/feeds", headers=alice_hdr).status_code == 200
+    client.delete(f"/api/admin/users/{alice_id}", headers=boss_hdr)
+    assert client.get("/api/feeds", headers=alice_hdr).status_code == 401
 
 
 def test_cannot_suspend_self_or_configured_admin(client, admin_env):

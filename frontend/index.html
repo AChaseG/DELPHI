@@ -160,8 +160,9 @@
           <p><b>A feed is a place you look.</b> It's a column on your board that always
              shows the current matching articles, sorted and optionally grouped into
              events. Nothing interrupts you.</p>
-          <p><b>An alert looks for you.</b> Every ingest cycle (about every 5 minutes),
-             new articles are tested against your active alerts. A hit is pushed live to
+          <p><b>An alert looks for you.</b> Articles are tested against your active
+             alerts as they arrive — continuously, not on a fixed schedule, since each
+             source refreshes on its own cadence. A hit is pushed live to
              the dashboard — toast, sound, bell counter, optional desktop notification —
              and stored in the alert's history with a map of where hits happened.</p>
           <p>Rule of thumb: broad topics you check on your schedule → feed. Narrow,

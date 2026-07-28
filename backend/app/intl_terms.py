@@ -82,14 +82,14 @@ for _en, _cat in {
     "economia": "economy", "экономика": "economy", "اقتصاد": "economy",
     "mundo": "world", "monde": "world", "welt": "world", "mondo": "world",
     "мир": "world", "عالم": "world", "国際": "world", "国际": "world",
-    "deportes": "sports", "sport": "sports", "esportes": "sports",
+    "deportes": "sports", "esportes": "sports",
     "スポーツ": "sports", "体育": "sports", "스포츠": "sports",
     "salud": "health", "santé": "health", "gesundheit": "health",
     "saúde": "health", "здоровье": "health", "صحة": "health",
     "tecnología": "technology", "technologie": "technology",
     "tecnologia": "technology", "테크": "technology", "科技": "technology",
     "ciencia": "science", "wissenschaft": "science", "наука": "science",
-    "cultura": "culture", "culture": "culture", "kultur": "culture",
+    "cultura": "culture", "kultur": "culture",
     "sucesos": "crime", "faits divers": "crime", "происшествия": "crime",
 }.items():
     TAG_SYNONYMS[_en.lower()] = _cat

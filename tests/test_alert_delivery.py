@@ -3,7 +3,7 @@ email/webhook fan-out from a batch of hits (batched per alert, non-fatal)."""
 import asyncio
 
 from backend.app import ingest, mailer
-from backend.app.models import Alert, User, utcnow
+from backend.app.models import User
 
 
 def test_alert_delivery_config_round_trips(client, register):

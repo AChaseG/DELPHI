@@ -1,7 +1,6 @@
 """Ingest core: URL safety, per-source language detection, rolling-poll
 scheduling primitives (HostPacer, due-selection, intervals)."""
 import asyncio
-from datetime import timedelta
 
 from backend.app import ingest
 from backend.app.models import Source, utcnow
