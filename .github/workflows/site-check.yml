@@ -1,0 +1,54 @@
+# Probe the live site from GitHub's runners — a neutral network with no
+# corporate proxy or TLS inspection in the way.
+#
+# Use this when the site behaves differently for you than it should: it shows
+# whether a failure is coming from the server or from the network you happen to
+# be sitting on. Compares the custom domain against the fly.dev hostname on the
+# same paths, so a difference between them isolates a routing/proxy problem
+# rather than an application one.
+#
+# GitHub → Actions → "Check the live site" → Run workflow.
+name: Check the live site
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Custom domain to test'
+        required: true
+        default: 'delphi-news.com'
+      fly_host:
+        description: 'The app .fly.dev hostname to compare against'
+        required: true
+        default: 'delphi-2vir0g.fly.dev'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compare both hostnames
+        run: |
+          for host in "${{ inputs.domain }}" "${{ inputs.fly_host }}"; do
+            echo "==================================================="
+            echo "HOST: $host"
+            echo "==================================================="
+            echo "--- resolves to ---"
+            getent ahosts "$host" | awk '{print "   " $1}' | sort -u
+            echo "--- TLS certificate ---"
+            echo | openssl s_client -connect "$host:443" -servername "$host" 2>/dev/null \
+              | openssl x509 -noout -subject -issuer 2>/dev/null | sed 's/^/   /' \
+              || echo "   (could not read certificate)"
+            for path in "/" "/js/app.js" "/reset/probe-token" "/verify/probe-token"; do
+              code=$(curl -s -o /tmp/body -w '%{http_code}' --max-time 25 "https://$host$path" || echo "FAILED")
+              size=$(wc -c < /tmp/body 2>/dev/null || echo 0)
+              echo "   $path -> HTTP $code (${size} bytes)"
+              # A 404 body is short; show it so we can tell whose 404 it is.
+              if [ "$code" = "404" ] || [ "$size" -lt 200 ]; then
+                echo "       body: $(head -c 120 /tmp/body | tr '\n' ' ')"
+              fi
+            done
+            echo "--- server header on / ---"
+            curl -sI --max-time 25 "https://$host/" | grep -i "^server:\|^fly-\|^via:" | sed 's/^/   /' \
+              || echo "   (none)"
+            echo
+          done
