@@ -26,8 +26,10 @@ jobs:
       group: fly-deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/checkout@v5
+      # Pinned to a release rather than @master: this action holds a token that
+      # can deploy production, so it shouldn't silently change under us.
+      - uses: superfly/flyctl-actions/setup-flyctl@v1.5
       # --remote-only builds the image on Fly's builders, so the runner needs
       # no Docker of its own.
       - run: flyctl deploy --remote-only
