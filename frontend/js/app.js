@@ -222,6 +222,7 @@ function wireTopbar() {
       toast("Topic tracker added", `Now ingesting worldwide coverage of “${q}”. Refresh to pull articles.`);
     } catch (e) { toast("Could not add topic", e.message); }
   };
+  feedback(el("btn-track-topic"), "Searching…");
   // country dropdown for the add-source form
   const cs = el("src-country");
   cs.appendChild(new Option("🌐 Global", ""));
@@ -237,6 +238,7 @@ function wireTopbar() {
       toast("Social trackers added", r.created.join(" · ") + " — refresh ⟳ to pull posts.");
     } catch (e) { toast("Could not add social trackers", e.message); }
   };
+  feedback(el("btn-track-social"), "Searching…");
 
   el("btn-purge-demo").onclick = async () => {
     if (!confirm("Delete all demo/sample articles and local test sources? Real news is untouched.")) return;
@@ -251,6 +253,7 @@ function wireTopbar() {
       await Promise.all([refreshFeeds(), refreshAlerts()]);
     } catch (e) { toast("Purge failed", e.message); }
   };
+  feedback(el("btn-purge-demo"), "Removing…");
   el("btn-add-source").onclick = async () => {
     const name = el("src-name").value.trim(), url = el("src-url").value.trim();
     if (!name || !url) { toast("Missing fields", "A source needs a name and a feed URL."); return; }
@@ -267,6 +270,7 @@ function wireTopbar() {
       toast("Source added", `${name} — refresh ⟳ to pull it for the first time.`);
     } catch (e) { toast("Could not add source", e.message); }
   };
+  feedback(el("btn-add-source"), "Adding…");
 }
 
 /* ---------- settings ---------- */
@@ -385,6 +389,7 @@ function wireSettings() {
     try { showUpdates(await API.changelog(), "The full release history, newest first."); }
     catch (e) { toast("Unavailable", e.message); }
   };
+  feedback(el("btn-whats-new"), "Loading…");
   el("btn-close-updates").onclick = closeUpdates;
   el("btn-updates-ok").onclick = closeUpdates;
   el("updates-backdrop").addEventListener("mousedown", (e) => {
@@ -725,7 +730,10 @@ function toolBtn(txt, title, fn) {
   b.className = "icon-btn"; b.textContent = txt; b.title = title;
   b.setAttribute("aria-label", title);  // icon-only button needs a text label
   b.onclick = fn;
-  return b;
+  // Shared factory for every column/source/alert icon button (📌 ✎ 🗑 🏛 🔧),
+  // so wrapping here gives the whole set busy state and error reporting. No
+  // label: these are glyphs, and replacing the text would lose the icon.
+  return feedback(b);
 }
 
 /* A ".feed-empty" note whose text is set safely (never parsed as HTML) —
@@ -1082,6 +1090,7 @@ function wirePantheons() {
       toast("Pantheon founded", `“${name}” is ready — invite members from its card below.`);
     } catch (e) { toast("Could not create", e.message); }
   };
+  feedback(el("btn-create-pantheon"), "Creating…");
 }
 
 /* ---------- admin / operator console ---------- */
@@ -1150,6 +1159,7 @@ function adminUserRow(u) {
     b.className = "btn small" + (cls ? " " + cls : "");
     b.textContent = label; if (title) b.title = title;
     b.onclick = fn;
+    feedback(b);   // every operator action disables while it runs
     acts.appendChild(b);
     return b;
   };
@@ -1246,6 +1256,7 @@ async function renderPantheonsPanel() {
         toast("Welcome", `You joined ${inv.name} — its board is now in the view switcher.`);
       } catch (e) { toast("Could not join", e.message); }
     };
+    feedback(yes, "Joining…");
     const no = document.createElement("button");
     no.className = "icon-btn"; no.textContent = "✕"; no.title = "Decline";
     no.onclick = async () => {
@@ -1253,6 +1264,7 @@ async function renderPantheonsPanel() {
       await refreshPantheons();
       renderPantheonsPanel();
     };
+    feedback(no);
     row.append(label, meta, yes, no);
     invBox.appendChild(row);
   }
@@ -1294,6 +1306,7 @@ async function renderPantheonsPanel() {
           toast("Joined", `Welcome to ${p.name}.`);
         } catch (e) { toast("Could not join", e.message); }
       };
+      feedback(join, "Joining…");
       row.append(label, meta, join);
       pub.appendChild(row);
     }
@@ -1330,6 +1343,7 @@ function pantheonCard(p) {
     try { renderPantheonDetail(detail, await API.pantheonDetail(p.id)); }
     catch (e) { detail.replaceChildren(feedEmpty(e.message)); }
   };
+  feedback(detailBtn);
   return card;
 }
 
@@ -1356,6 +1370,7 @@ function renderPantheonDetail(box, d) {
           .catch(e => toast("Could not change role", e.message));
         renderPantheonDetail(box, await API.pantheonDetail(d.id));
       };
+      feedback(promote);
       row.appendChild(promote);
     }
     if (admin && m.role !== "owner" && (d.role === "owner" || m.role === "member")) {
@@ -1367,6 +1382,7 @@ function renderPantheonDetail(box, d) {
         renderPantheonDetail(box, await API.pantheonDetail(d.id));
         refreshPantheons();
       };
+      feedback(kick);
       row.appendChild(kick);
     }
     members.appendChild(row);
@@ -1392,6 +1408,7 @@ function renderPantheonDetail(box, d) {
         renderPantheonDetail(box, await API.pantheonDetail(d.id));
       } catch (e) { toast("Could not invite", e.message); }
     };
+    feedback(btn);
     invRow.append(input, btn);
     box.appendChild(invRow);
   }
@@ -1443,6 +1460,7 @@ function renderPantheonDetail(box, d) {
       renderPantheonsPanel();
       if (VIEW === "pantheon:" + d.id) setView("home");
     };
+    feedback(del);
     foot.appendChild(del);
   } else {
     const leave = document.createElement("button");
@@ -1454,6 +1472,7 @@ function renderPantheonDetail(box, d) {
       renderPantheonsPanel();
       if (VIEW === "pantheon:" + d.id) setView("home");
     };
+    feedback(leave);
     foot.appendChild(leave);
   }
   box.appendChild(foot);
@@ -1754,6 +1773,53 @@ function connectStream() {
   };
   es.onerror = () => { es.close(); setTimeout(connectStream, 5000); };
 }
+
+/* ---------- button feedback ----------
+   Wrap a button that already has an async onclick so the click is always
+   visibly acknowledged: the control disables while the work is in flight (which
+   also stops double-submits), and a failure becomes a toast instead of nothing
+   at all. Call it right after assigning the handler:
+
+       btn.onclick = async () => { ... };
+       feedback(btn);                       // spinner state, keeps its label
+       feedback(btn, "Saving…");            // text buttons can say what's happening
+
+   Without a label the button keeps its text and gets the .working class, so
+   icon-only buttons (✕, 🔧, 🗑) don't lose their glyph. */
+function feedback(btn, label = "") {
+  const handler = btn.onclick;
+  if (!handler) return btn;
+  btn.onclick = async (ev) => {
+    if (btn.disabled) return;               // already running
+    const text = btn.textContent, wasDisabled = btn.disabled;
+    btn.disabled = true;
+    if (label) btn.textContent = label;
+    btn.classList.add("working");
+    try {
+      return await handler.call(btn, ev);
+    } catch (e) {
+      console.error("[action]", e);
+      toast("That didn't work", (e && e.message) || String(e));
+    } finally {
+      // The handler often re-renders the list this button lives in, which
+      // discards the node — only restore it if it's still on the page.
+      if (btn.isConnected) {
+        btn.disabled = wasDisabled;
+        if (label) btn.textContent = text;
+        btn.classList.remove("working");
+      }
+    }
+  };
+  return btn;
+}
+
+// Nothing should fail silently: an async handler that rejects without its own
+// catch would otherwise leave the user staring at an unchanged screen.
+window.addEventListener("unhandledrejection", (ev) => {
+  const reason = ev.reason;
+  console.error("[unhandled]", reason);
+  toast("Something went wrong", (reason && reason.message) || String(reason));
+});
 
 /* ---------- toasts ---------- */
 function toast(title, body, isAlert = false) {
