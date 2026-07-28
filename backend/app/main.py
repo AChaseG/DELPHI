@@ -353,8 +353,18 @@ def _action_base_url(request: Request) -> str:
 
 
 def _action_link(request: Request, param: str, token: str) -> str:
-    """Absolute link to the app carrying an action token."""
-    return f"{_action_base_url(request)}/?{param}={urllib.parse.quote(token, safe='')}"
+    """Absolute link to the app carrying an action token, in the URL fragment.
+
+    A fragment rather than a query string, for two reasons. It is never sent to
+    the server, so the token cannot end up in access logs, proxy logs, or a
+    Referer header leaked to a third party. And it survives redirects that drop
+    query strings — domain forwarding (GoDaddy's "connect a domain", many
+    registrars' apex redirects) commonly strips `?...`, which silently turns a
+    reset link into a plain visit to the sign-in page with no explanation.
+
+    The client accepts either form, so links already in inboxes keep working.
+    """
+    return f"{_action_base_url(request)}/#{param}={urllib.parse.quote(token, safe='')}"
 
 
 @app.post("/api/auth/register", status_code=201)

@@ -529,16 +529,20 @@ function wireGate() {
       : "If that address has an account, a reset link is on its way.", true);
   });
 
-  // Action links from emails land here as URL parameters.
-  const params = new URLSearchParams(location.search);
-  if (params.get("verify")) {
-    API.verifyEmail(params.get("verify"))
+  // Action links from emails. Current links carry the token in the URL
+  // fragment (it never reaches the server, and it survives redirects that
+  // strip query strings); older links used a query parameter, so read both.
+  const query = new URLSearchParams(location.search);
+  const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const actionToken = (name) => fragment.get(name) || query.get(name);
+  if (actionToken("verify")) {
+    API.verifyEmail(actionToken("verify"))
       .then(r => say(`Email verified — welcome, ${r.username}! Sign in below.`, true))
       .catch(e => say(e.message));
     history.replaceState(null, "", location.pathname);
-  } else if (params.get("reset")) {
+  } else if (actionToken("reset")) {
     show("gate-reset");
-    const token = params.get("reset");
+    const token = actionToken("reset");
     el("btn-reset").onclick = () => busy("btn-reset", "Updating password…", async () => {
       try {
         const r = await API.resetPassword(token, el("reset-password").value);

@@ -64,3 +64,26 @@ def test_registration_requires_valid_email_and_password(client):
     assert client.post("/api/auth/register",
                        json={"username": "gooduser", "email": "a@b.com", "password": "short"}
                        ).status_code == 422  # weak password
+
+
+def test_action_links_use_a_url_fragment(client, monkeypatch):
+    """Reset/verify tokens ride in the fragment, not the query string: query
+    strings are dropped by registrar domain-forwarding (turning a reset link
+    into a silent bounce to the sign-in page) and land in server/proxy logs."""
+    from backend.app import mailer
+    sent = []
+    monkeypatch.setattr(mailer, "enabled", lambda: True)
+    monkeypatch.setattr(mailer, "send_password_reset",
+                        lambda to, user, link: sent.append(link) or True)
+    monkeypatch.setattr(mailer, "send_verification",
+                        lambda to, user, link: sent.append(link) or True)
+    monkeypatch.setenv("NEWS_PUBLIC_URL", "https://delphi-news.com")
+
+    client.post("/api/auth/register", json={
+        "username": "linkuser", "email": "linkuser@example.com", "password": "password123"})
+    client.post("/api/auth/forgot", json={"email": "linkuser@example.com"})
+
+    assert sent, "no action link was generated"
+    for link in sent:
+        assert "/#" in link, f"token should be in the fragment: {link}"
+        assert "/?" not in link, f"token must not be in the query string: {link}"
