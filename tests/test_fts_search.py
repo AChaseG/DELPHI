@@ -92,3 +92,32 @@ def test_index_syncs_on_content_update_and_delete(seeded):
     db.delete(art)
     db.commit()
     assert query_articles(db, {"keywords": ["zebra"]}, limit=10) == []
+
+
+def test_common_term_search_returns_the_newest_matches(db):
+    """A term present in most of the corpus must still return the newest
+    articles first. Guards the FTS prefilter against being bounded by rowid
+    (insertion order) as a speed optimization: articles arrive out of
+    publication order, so such a cap silently drops the most recent hits."""
+    from datetime import timedelta
+
+    from backend.app import matching
+    from backend.app.models import Article, Source, utcnow
+
+    src = Source(name="S", rss_url="http://s.local/f")
+    db.add(src)
+    db.flush()
+
+    # Inserted oldest-id-first but newest-published-first, the arrangement a
+    # rowid-ordered prefilter gets wrong.
+    now = utcnow()
+    for i in range(40):
+        db.add(Article(
+            source_id=src.id, url=f"http://s.local/a/{i}", guid=str(i),
+            title=f"Report {i} about flooding", summary="", content="",
+            published_at=now - timedelta(hours=i), fetched_at=now,
+            language="en", country="US", categories=[], places=[], importance=50))
+    db.commit()
+
+    got = matching.query_articles(db, {"keywords": ["flooding"]}, sort="newest", limit=5)
+    assert [a.title for a in got] == [f"Report {i} about flooding" for i in range(5)]

@@ -33,6 +33,11 @@ from .models import Article, Source, utcnow
 # reliably match these, so queries containing them fall back to a full scan.
 _FTS_UNSAFE = re.compile(r"[぀-ヿ㐀-鿿가-힣฀-๿*?]")
 
+# Rows fetched per round trip while scanning candidates. Small enough that a
+# query filling its page early reads a fraction of the scan cap, large enough
+# that a selective query doesn't pay for many round trips.
+_STREAM_BATCH = 256
+
 
 def _kw_regex(kw: str) -> re.Pattern:
     parts = [re.escape(p) for p in kw.split()]
@@ -181,6 +186,13 @@ def query_articles(
 
     fts_terms = _fts_terms(matcher) if matcher.needs_text else None
     if fts_terms:
+        # Deliberately unbounded. Capping this subquery (ORDER BY rowid DESC
+        # LIMIT n) roughly halves the cost of searching a very common term, but
+        # rowid is insertion order, not publication order: a newly added source
+        # backfilling old stories, or repair re-ingesting an archive, gives old
+        # articles high rowids. The cap then discards the newest matches — a
+        # silent recall failure, and missing a recent story is the worst thing
+        # this system can do. Speed here comes from streaming instead (below).
         sub = (text("SELECT rowid FROM articles_fts WHERE articles_fts MATCH :ftsq")
                .bindparams(ftsq=_fts_match_expr(fts_terms)).columns(rowid=Article.id.type))
         stmt = stmt.where(Article.id.in_(select(sub.subquery().c.rowid)))
@@ -202,8 +214,14 @@ def query_articles(
         stmt = stmt.order_by(Article.published_at.desc())
     stmt = stmt.limit(scan_cap)
 
+    # Stream the candidates instead of materializing all of them. The loop below
+    # stops as soon as `limit` matches are found, but a buffered result builds
+    # the entire scan_cap first — and on the FTS path that is up to 20k rows
+    # *with* article bodies (~20 KB each), i.e. hundreds of MB and seconds of
+    # work for a page of results, on every search of a common term. Batching
+    # means a query that fills its page early pays for only the rows it read.
     results: list[Article] = []
-    for article in db.scalars(stmt):
+    for article in db.scalars(stmt.execution_options(yield_per=_STREAM_BATCH)):
         if matcher.matches(article):
             results.append(article)
             if len(results) >= limit:
