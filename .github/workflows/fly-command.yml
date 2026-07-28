@@ -1,0 +1,37 @@
+# Run a single flyctl command from the browser — no local terminal needed.
+#
+# GitHub → Actions → "Run a Fly command" → Run workflow → type the command
+# WITHOUT the leading "fly", e.g.:
+#
+#     ips list -a delphi-2vir0g
+#     certs list -a delphi-2vir0g
+#     certs remove delphi-news.com -a old-app-name --yes
+#     certs add delphi-news.com -a delphi-2vir0g
+#     apps list
+#
+# The output appears in the workflow run's log.
+#
+# Destructive commands (apps destroy, certs remove, volumes destroy) normally
+# ask for confirmation, which nothing can answer here — append --yes to those,
+# and be certain before you do. This uses the same FLY_API_TOKEN as the deploy
+# workflow, so it can change anything in your Fly account: treat it as admin
+# access and keep the repository private.
+name: Run a Fly command
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'flyctl arguments (omit the leading "fly")'
+        required: true
+        default: 'apps list'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: flyctl ${{ inputs.command }}
+        run: flyctl ${{ inputs.command }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
