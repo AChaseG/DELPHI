@@ -440,14 +440,25 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
         for dom, pub in discovery.collect_publishers(entries).items():
             publishers.setdefault(dom, pub)
         # Commit per source so one bad feed can't roll back the whole batch.
-        try:
+        def store(source=source, entries=entries):
             new = process_entries(db, source, entries, recent, seen_urls)
             source.last_article_count = len(new)
             # Quiet city feeds back off; a productive poll resets the streak.
             if _is_city(source):
                 source.idle_polls = 0 if new else (source.idle_polls or 0) + 1
-            ok_sources += 1
             db.commit()
+            return new
+
+        try:
+            # Off the event loop: scoring, language detection, geotagging, and
+            # the FTS-indexed inserts are blocking CPU/disk work. Run inline,
+            # they hold the loop for the whole batch — on a small VM that is
+            # tens of seconds during which the server answers no requests at
+            # all, and sign-in appears to hang. Awaiting a worker thread keeps
+            # exactly one of these running (the session is never used
+            # concurrently) while HTTP requests continue to be served.
+            new = await asyncio.to_thread(store)
+            ok_sources += 1
             all_new.extend(new)
         except Exception as exc:
             db.rollback()
@@ -466,7 +477,8 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
                 try:
                     fixed, entries = await repair.attempt_repair(client, db, source)
                     if fixed:
-                        new = process_entries(db, source, entries, recent, seen_urls)
+                        new = await asyncio.to_thread(
+                            process_entries, db, source, entries, recent, seen_urls)
                         source.last_article_count = len(new)
                         ok_sources += 1
                         repaired += 1
@@ -481,7 +493,8 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     discovered = 0
     try:
         for source, entries in await discovery.discover_new_sources(db, publishers):
-            new = process_entries(db, source, entries, recent, seen_urls)
+            new = await asyncio.to_thread(
+                process_entries, db, source, entries, recent, seen_urls)
             source.last_article_count = len(new)
             db.commit()
             all_new.extend(new)
@@ -495,9 +508,15 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     if CONTENT_FETCH:
         content_fetched = await enrich_with_content(db, all_new)
 
-    new_events = assign_events(db, all_new)
-    hits = evaluate_alerts(db, all_new)
-    db.commit()
+    # Clustering and alert matching scale with the batch and are equally
+    # blocking — same treatment, so a large batch can't stall the server.
+    def cluster_and_match():
+        events = assign_events(db, all_new)
+        matched = evaluate_alerts(db, all_new)
+        db.commit()
+        return events, matched
+
+    new_events, hits = await asyncio.to_thread(cluster_and_match)
     # Out-of-app delivery (email/webhook) for alerts that opted in — after the
     # commit so a delivery hiccup can't lose the persisted hit.
     try:
