@@ -27,9 +27,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
-      # Pinned to a release rather than @master: this action holds a token that
-      # can deploy production, so it shouldn't silently change under us.
-      - uses: superfly/flyctl-actions/setup-flyctl@v1.5
+      # @master is the ref Fly documents for this action, and the only one known
+      # to resolve — an earlier attempt to pin it to @v1.5 failed to resolve and
+      # broke the deploy. It is a moving ref holding a deploy-capable token, so
+      # the stricter option is pinning to a specific commit SHA of
+      # superfly/flyctl-actions once one is confirmed to exist.
+      - uses: superfly/flyctl-actions/setup-flyctl@master
       # --remote-only builds the image on Fly's builders, so the runner needs
       # no Docker of its own.
       - run: flyctl deploy --remote-only
