@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import (BackgroundTasks, Depends, FastAPI, Header, HTTPException,
                      Query, Request)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
@@ -353,18 +353,20 @@ def _action_base_url(request: Request) -> str:
 
 
 def _action_link(request: Request, param: str, token: str) -> str:
-    """Absolute link to the app carrying an action token, in the URL fragment.
+    """Absolute link to the app carrying an action token, as a path segment.
 
-    A fragment rather than a query string, for two reasons. It is never sent to
-    the server, so the token cannot end up in access logs, proxy logs, or a
-    Referer header leaked to a third party. And it survives redirects that drop
-    query strings — domain forwarding (GoDaddy's "connect a domain", many
-    registrars' apex redirects) commonly strips `?...`, which silently turns a
-    reset link into a plain visit to the sign-in page with no explanation.
+    Path rather than query string or fragment, because mail systems rewrite
+    links and only the path reliably survives. A query string is dropped by
+    registrar domain-forwarding and some redirectors, landing the user on the
+    sign-in page with no explanation. A fragment gets percent-encoded to %23 by
+    link-rewriting scanners (Outlook Safe Links and similar), turning it into a
+    nonsense path and a 404. Both were observed in practice.
 
-    The client accepts either form, so links already in inboxes keep working.
+    /reset/<token> and /verify/<token> are served the app itself (see the routes
+    beside the static mount), and the client also still reads the older ?param=
+    and #param= forms so links already sitting in inboxes keep working.
     """
-    return f"{_action_base_url(request)}/#{param}={urllib.parse.quote(token, safe='')}"
+    return f"{_action_base_url(request)}/{param}/{urllib.parse.quote(token, safe='')}"
 
 
 @app.post("/api/auth/register", status_code=201)
@@ -1938,6 +1940,19 @@ def api_fallback(path: str):
     raise HTTPException(
         404, f"Unknown API endpoint: /api/{path}. If this endpoint should exist, "
              "the server may be running an older version — git pull and restart.")
+
+
+@app.get("/reset/{token:path}")
+@app.get("/verify/{token:path}")
+def action_link_page(token: str):
+    """Serve the app for emailed action links.
+
+    The token is read from the path by the client; the server does nothing with
+    it here. These have to be real routes because the static mount would 404 on
+    a path that is not a file on disk.
+    """
+    return FileResponse(FRONTEND_DIR / "index.html",
+                        headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
 class RevalidatingStatic(StaticFiles):

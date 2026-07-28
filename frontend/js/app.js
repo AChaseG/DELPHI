@@ -529,12 +529,17 @@ function wireGate() {
       : "If that address has an account, a reset link is on its way.", true);
   });
 
-  // Action links from emails. Current links carry the token in the URL
-  // fragment (it never reaches the server, and it survives redirects that
-  // strip query strings); older links used a query parameter, so read both.
+  // Action links from emails. Current links put the token in the path
+  // (/reset/<token>) because that is the only part mail systems don't mangle:
+  // query strings get dropped by registrar forwarding, and fragments get
+  // percent-encoded to %23 by link-rewriting scanners. Older ?param= and
+  // #param= links are still accepted so anything already sent keeps working.
   const query = new URLSearchParams(location.search);
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
-  const actionToken = (name) => fragment.get(name) || query.get(name);
+  const path = location.pathname.match(/^\/(reset|verify)\/(.+)$/);
+  const actionToken = (name) =>
+    (path && path[1] === name ? decodeURIComponent(path[2]) : null)
+    || fragment.get(name) || query.get(name);
   if (actionToken("verify")) {
     API.verifyEmail(actionToken("verify"))
       .then(r => say(`Email verified — welcome, ${r.username}! Sign in below.`, true))

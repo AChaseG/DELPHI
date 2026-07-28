@@ -66,10 +66,11 @@ def test_registration_requires_valid_email_and_password(client):
                        ).status_code == 422  # weak password
 
 
-def test_action_links_use_a_url_fragment(client, monkeypatch):
-    """Reset/verify tokens ride in the fragment, not the query string: query
-    strings are dropped by registrar domain-forwarding (turning a reset link
-    into a silent bounce to the sign-in page) and land in server/proxy logs."""
+def test_action_links_use_a_path_segment(client, monkeypatch):
+    """Reset/verify tokens ride in the path. Query strings are dropped by
+    registrar domain-forwarding, and fragments are percent-encoded to %23 by
+    mail link-rewriters — both were observed turning a live reset link into a
+    dead end."""
     from backend.app import mailer
     sent = []
     monkeypatch.setattr(mailer, "enabled", lambda: True)
@@ -85,5 +86,26 @@ def test_action_links_use_a_url_fragment(client, monkeypatch):
 
     assert sent, "no action link was generated"
     for link in sent:
-        assert "/#" in link, f"token should be in the fragment: {link}"
-        assert "/?" not in link, f"token must not be in the query string: {link}"
+        assert "/reset/" in link or "/verify/" in link, \
+            f"token should be a path segment: {link}"
+        assert "?" not in link and "#" not in link, \
+            f"query strings get stripped and fragments get %23-encoded by mail rewriters: {link}"
+
+
+def test_action_link_paths_serve_the_app(client):
+    """/reset/<token> and /verify/<token> must return the app, not a 404 —
+    the static mount alone 404s on any path that isn't a file on disk."""
+    for path in ("/reset/sometoken", "/verify/sometoken"):
+        r = client.get(path)
+        assert r.status_code == 200, f"{path} -> {r.status_code}"
+        assert "<html" in r.text.lower()
+
+
+def test_index_assets_are_absolute():
+    """Relative asset URLs break when the page is served from a nested path:
+    /reset/<token> would request /reset/js/app.js and get HTML back, so no
+    script runs and the reset form never appears."""
+    import pathlib
+    html = pathlib.Path("frontend/index.html").read_text()
+    for asset in ('js/app.js', 'js/api.js', 'css/styles.css'):
+        assert f'"/{asset}"' in html, f"{asset} should be referenced absolutely"
