@@ -66,13 +66,34 @@ const Session = {
   },
 };
 
+/* No request may hang forever. A server that stops answering (wedged worker,
+   dropped connection, a proxy holding the response) would otherwise leave the
+   UI stuck on "Creating your account…" with nothing to act on, which is
+   indistinguishable from a broken button. Abort instead and surface it.
+   Generous by design: slow is not the same as dead. */
+const API_TIMEOUT_MS = 30000;
+
 async function api(path, options = {}) {
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {}),
   };
   if (Session.token()) headers["Authorization"] = "Bearer " + Session.token();
-  const resp = await fetch(path, { ...options, headers });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), options.timeout || API_TIMEOUT_MS);
+  let resp;
+  try {
+    resp = await fetch(path, { ...options, headers, signal: ctl.signal });
+  } catch (e) {
+    if (e.name === "AbortError") {
+      throw new Error(
+        `The server didn't respond within ${Math.round((options.timeout || API_TIMEOUT_MS) / 1000)}s. `
+        + "It may be restarting or overloaded — try again in a moment.");
+    }
+    throw new Error("Couldn't reach the server — check your connection.");
+  } finally {
+    clearTimeout(timer);
+  }
   if (resp.status === 401 && Session.token()) {
     Session.clear();  // expired session: return to the sign-in gate
     location.reload();
