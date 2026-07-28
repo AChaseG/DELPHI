@@ -1,0 +1,35 @@
+# Deploy D.E.L.P.H.I. to Fly.io from GitHub — no local terminal needed.
+#
+# One-time setup:
+#   1. Fly dashboard → Tokens (or account → Access Tokens) → create a deploy
+#      token for the app.
+#   2. GitHub → this repo → Settings → Secrets and variables → Actions →
+#      New repository secret, named FLY_API_TOKEN, with that value.
+#
+# To deploy: GitHub → Actions tab → "Deploy to Fly.io" → Run workflow.
+# Deploys are manual on purpose, so a code push never redeploys production by
+# surprise. To make every push to this branch deploy instead, uncomment the
+# `push:` trigger below.
+name: Deploy to Fly.io
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [claude/global-news-scraper-dashboard-wjc8le]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Never let two deploys race: the app is a single machine with SQLite on a
+    # volume, so overlapping deploys can fight over the same mount.
+    concurrency:
+      group: fly-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # --remote-only builds the image on Fly's builders, so the runner needs
+      # no Docker of its own.
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
