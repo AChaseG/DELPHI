@@ -521,13 +521,13 @@ function wireGate() {
       say(`Almost there — we emailed a verification link to ${r.email}. Click it, then sign in.`, true);
     } catch (e) { say(e.message); }
   });
-  el("btn-forgot").onclick = async () => {
+  el("btn-forgot").onclick = () => busy("btn-forgot", "Sending reset link…", async () => {
     const r = await API.forgotPassword(el("forgot-email").value.trim()).catch(() => ({}));
     show("gate-signin");
     say(r.mail_enabled === false
       ? "Email isn't configured on this server — ask the administrator to reset your password."
       : "If that address has an account, a reset link is on its way.", true);
-  };
+  });
 
   // Action links from emails land here as URL parameters.
   const params = new URLSearchParams(location.search);
@@ -539,14 +539,14 @@ function wireGate() {
   } else if (params.get("reset")) {
     show("gate-reset");
     const token = params.get("reset");
-    el("btn-reset").onclick = async () => {
+    el("btn-reset").onclick = () => busy("btn-reset", "Updating password…", async () => {
       try {
         const r = await API.resetPassword(token, el("reset-password").value);
         show("gate-signin");
         say(`Password updated, ${r.username} — sign in with it below.`, true);
         history.replaceState(null, "", location.pathname);
       } catch (e) { say(e.message); }
-    };
+    });
   }
 
   el("auth-password").addEventListener("keydown", (e) => { if (e.key === "Enter") el("btn-login").click(); });
