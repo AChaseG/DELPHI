@@ -1853,4 +1853,21 @@ def api_fallback(path: str):
              "the server may be running an older version — git pull and restart.")
 
 
-app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+class RevalidatingStatic(StaticFiles):
+    """Serve the frontend with must-revalidate caching.
+
+    Browsers cache app.js/styles.css aggressively by default, so after a deploy
+    a returning user can keep running the *previous* build — bugs appear fixed
+    in the repo but not in the browser, and the only workaround is telling
+    people to hard-refresh. "no-cache" still allows caching but forces an ETag
+    revalidation on every load, so updates land immediately and unchanged files
+    cost only a 304.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
+app.mount("/", RevalidatingStatic(directory=str(FRONTEND_DIR), html=True), name="frontend")

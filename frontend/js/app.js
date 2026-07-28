@@ -460,10 +460,20 @@ function wireGate() {
     for (const id of ["gate-signin", "gate-register", "gate-forgot", "gate-reset"])
       el(id).hidden = id !== pane;
   };
-  el("gate-to-register").onclick = (e) => { e.preventDefault(); say(""); show("gate-register"); el("reg-username").focus(); };
-  el("gate-to-signin").onclick = (e) => { e.preventDefault(); say(""); show("gate-signin"); el("auth-username").focus(); };
-  el("gate-to-forgot").onclick = (e) => { e.preventDefault(); say(""); show("gate-forgot"); el("forgot-email").focus(); };
-  el("gate-forgot-back").onclick = (e) => { e.preventDefault(); say(""); show("gate-signin"); };
+  // Wire defensively: this gate is the only way into the app, so one missing
+  // element must not abort the rest of the wiring and leave, say, the Create
+  // account button inert with no clue why. A miss is logged loudly instead.
+  const on = (id, handler) => {
+    const node = el(id);
+    if (!node) { console.error(`[gate] #${id} is missing from the page`); return; }
+    node.onclick = handler;
+  };
+  const focus = (id) => { const n = el(id); if (n) n.focus(); };
+
+  on("gate-to-register", (e) => { e.preventDefault(); say(""); show("gate-register"); focus("reg-username"); });
+  on("gate-to-signin", (e) => { e.preventDefault(); say(""); show("gate-signin"); focus("auth-username"); });
+  on("gate-to-forgot", (e) => { e.preventDefault(); say(""); show("gate-forgot"); focus("forgot-email"); });
+  on("gate-forgot-back", (e) => { e.preventDefault(); say(""); show("gate-signin"); });
 
   const finish = async (r) => {
     Session.set(r.token, r.username, r.user_key);
@@ -478,7 +488,12 @@ function wireGate() {
     b.textContent = working;
     note(working);
     try { await fn(); }
-    finally { b.disabled = false; b.textContent = label; }
+    catch (e) {
+      // Last-resort surface: an unexpected fault here (network dropped, a bug
+      // in the handler) must never look like a button that did nothing.
+      console.error("[gate]", e);
+      say(e && e.message ? e.message : "Something went wrong — please try again.");
+    } finally { b.disabled = false; b.textContent = label; }
   };
   el("btn-login").onclick = () => busy("btn-login", "Signing in…", async () => {
     const ident = el("auth-username").value.trim();
