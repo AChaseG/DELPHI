@@ -453,6 +453,9 @@ function wireGate() {
     st.textContent = msg;
     st.className = "query-status " + (ok ? "ok" : "err");
   };
+  // Neutral in-progress note — say() would paint it as an error (red), which
+  // reads as "your sign-up failed" while it is actually still working.
+  const note = (msg) => { st.textContent = msg; st.className = "query-status"; };
   const show = (pane) => {
     for (const id of ["gate-signin", "gate-register", "gate-forgot", "gate-reset"])
       el(id).hidden = id !== pane;
@@ -466,7 +469,18 @@ function wireGate() {
     Session.set(r.token, r.username, r.user_key);
     location.replace(location.pathname);  // drop any action params, reload
   };
-  el("btn-login").onclick = async () => {
+  // Run an auth request with visible progress: without this a slow reply (the
+  // server may be waiting on an SMTP relay) looks like a button that does
+  // nothing, and double-clicks fire duplicate registrations.
+  const busy = async (btn, working, fn) => {
+    const b = el(btn), label = b.textContent;
+    b.disabled = true;
+    b.textContent = working;
+    note(working);
+    try { await fn(); }
+    finally { b.disabled = false; b.textContent = label; }
+  };
+  el("btn-login").onclick = () => busy("btn-login", "Signing in…", async () => {
     const ident = el("auth-username").value.trim();
     try { await finish(await API.login(ident, el("auth-password").value)); }
     catch (e) {
@@ -482,8 +496,8 @@ function wireGate() {
         st.appendChild(a);
       } else say(e.message);
     }
-  };
-  el("btn-register").onclick = async () => {
+  });
+  el("btn-register").onclick = () => busy("btn-register", "Creating your account…", async () => {
     try {
       const r = await API.register(
         el("reg-username").value.trim(), el("reg-email").value.trim(), el("reg-password").value);
@@ -491,7 +505,7 @@ function wireGate() {
       show("gate-signin");                      // verification required
       say(`Almost there — we emailed a verification link to ${r.email}. Click it, then sign in.`, true);
     } catch (e) { say(e.message); }
-  };
+  });
   el("btn-forgot").onclick = async () => {
     const r = await API.forgotPassword(el("forgot-email").value.trim()).catch(() => ({}));
     show("gate-signin");

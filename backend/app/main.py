@@ -11,7 +11,8 @@ import httpx
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import (BackgroundTasks, Depends, FastAPI, Header, HTTPException,
+                     Query, Request)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -341,7 +342,8 @@ def _action_link(request: Request, param: str, token: str) -> str:
 
 
 @app.post("/api/auth/register", status_code=201)
-def register(body: dict, request: Request, db: Session = Depends(get_db)):
+def register(body: dict, request: Request, background: BackgroundTasks,
+             db: Session = Depends(get_db)):
     ratelimit.check("register", request)
     username = (body.get("username") or "").strip().lower()
     email = (body.get("email") or "").strip().lower()
@@ -364,7 +366,11 @@ def register(body: dict, request: Request, db: Session = Depends(get_db)):
     if mailer.enabled():
         link = _action_link(request, "verify",
                             auth.make_scoped_token("verify", user.id, 48 * 3600))
-        mailer.send_verification(email, username, link)
+        # Hand the SMTP conversation to a background task: talking to the relay
+        # can take seconds (or hit smtplib's 20s timeout when the relay stalls),
+        # and blocking the response that long makes the Create-account button
+        # look dead. The account already exists, so delivery is independent.
+        background.add_task(mailer.send_verification, email, username, link)
         return {"verification_sent": True, "username": username, "email": email}
     return {"token": auth.make_token(user.id), "username": username,
             "email": email, "user_key": f"acct:{user.id}", "is_admin": _is_admin(user)}
@@ -402,7 +408,8 @@ def verify_email(token: str = Query(default=""), db: Session = Depends(get_db)):
 
 
 @app.post("/api/auth/resend-verification")
-def resend_verification(body: dict, request: Request, db: Session = Depends(get_db)):
+def resend_verification(body: dict, request: Request, background: BackgroundTasks,
+                        db: Session = Depends(get_db)):
     """Always answers 200 — no account enumeration."""
     ratelimit.check("resend", request)
     ident = (body.get("username") or "").strip().lower()
@@ -410,20 +417,23 @@ def resend_verification(body: dict, request: Request, db: Session = Depends(get_
     if user and not user.email_verified and mailer.enabled():
         link = _action_link(request, "verify",
                             auth.make_scoped_token("verify", user.id, 48 * 3600))
-        mailer.send_verification(user.email, user.username, link)
+        background.add_task(mailer.send_verification, user.email, user.username, link)
     return {"ok": True}
 
 
 @app.post("/api/auth/forgot")
-def forgot_password(body: dict, request: Request, db: Session = Depends(get_db)):
-    """Always answers 200 — no account enumeration."""
+def forgot_password(body: dict, request: Request, background: BackgroundTasks,
+                    db: Session = Depends(get_db)):
+    """Always answers 200 — no account enumeration. Sending happens in the
+    background so the response time can't reveal whether the address exists
+    (and so a stalled relay doesn't hang the caller)."""
     ratelimit.check("forgot", request)
     email = (body.get("email") or "").strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user and mailer.enabled():
         link = _action_link(request, "reset",
                             auth.make_scoped_token("reset", user.id, 3600))
-        mailer.send_password_reset(user.email, user.username, link)
+        background.add_task(mailer.send_password_reset, user.email, user.username, link)
     return {"ok": True, "mail_enabled": mailer.enabled()}
 
 
