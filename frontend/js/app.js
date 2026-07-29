@@ -1954,7 +1954,9 @@ function sourceEditor(s) {
   paywall.type = "checkbox"; paywall.checked = !!s.paywall;
   const paywallField = document.createElement("label");
   paywallField.className = "check-inline";
-  paywallField.append(paywall, document.createTextNode(" 🔒 Paywalled — headlines only + archive.ph links"));
+  // Just the label — what it does is explained in the FAQ, not squeezed in here.
+  paywallField.title = "See the FAQ: Paywalled outlets";
+  paywallField.append(paywall, document.createTextNode(" 🔒 Paywalled"));
   form.append(
     field("Name", name), field("Feed URL", url),
     field("Platform", platform), field("Scope", scope),

@@ -427,10 +427,35 @@ button { font: inherit; }
 .alert-inactive { opacity: 0.55; }
 .alert-events { margin-top: 6px; }
 
-.source-tools { display: flex; gap: 6px; padding: 10px 16px 0; flex-wrap: wrap; }
-.source-tools input { flex: 1; min-width: 120px; padding: 6px 9px; background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); border-radius: 7px; }
-.source-tools select { flex: 1; min-width: 0; max-width: 160px; }
-.check-inline { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.source-tools {
+  display: flex; gap: 8px; padding: 10px 16px 0;
+  flex-wrap: wrap; align-items: center;
+}
+/* Text fields may share the row; checkboxes are sized separately below. */
+.source-tools input:not([type="checkbox"]) {
+  flex: 1 1 150px; min-width: 140px; padding: 6px 9px;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 7px;
+}
+/* A select must never be squeezed below its own text: min-width 0 let these
+   shrink until the emoji and the label printed over each other. */
+.source-tools select { flex: 0 1 auto; min-width: 136px; max-width: 200px; }
+
+/* Checkbox + label, side by side.
+   Two rules used to break this: the generic `.source-tools input` /
+   `.source-edit input` sizing stretched the box to a 120px padded control that
+   covered its own words, and `.source-edit label`'s column direction stacked
+   the box on top of them. Both are overridden here, deliberately after those
+   rules so this wins. */
+.check-inline {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  font-size: 12px; color: var(--ink-2);
+  white-space: nowrap;
+}
 .archive-link {
   margin-left: 8px; cursor: pointer; color: var(--gold);
   font-weight: 600; white-space: nowrap;
@@ -453,6 +478,23 @@ button { font: inherit; }
   border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; font-size: 12.5px;
 }
 .source-edit-actions { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
+/* Must come after the generic input rules above to undo their sizing. */
+.source-tools .check-inline input[type="checkbox"],
+.source-edit .check-inline input[type="checkbox"] {
+  flex: none;
+  width: 15px; height: 15px;
+  min-width: 0; padding: 0; margin: 0;
+}
+/* `.source-edit label` (0,1,1) outranks `.check-inline` (0,1,0), so its
+   column direction kept stacking the box on top of its own words. Matching
+   both selectors wins the cascade. */
+.source-edit label.check-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  grid-column: 1 / -1;
+}
 
 .source-row {
   display: flex; align-items: center; gap: 8px;
