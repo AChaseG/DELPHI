@@ -56,7 +56,14 @@ class CriteriaMatcher:
         self.languages = set(self.criteria.get("languages") or [])
         self.source_ids = set(self.criteria.get("source_ids") or [])
         self.min_importance = int(self.criteria.get("min_importance") or 0)
-        self.geo = self.criteria.get("geo") or None
+        # Any number of areas, matched as OR. `geo` was the original single-area
+        # key and is still written by older clients and stored on saved feeds,
+        # so it is folded in rather than replaced.
+        self.geos = [g for g in (self.criteria.get("geos") or []) if g]
+        legacy = self.criteria.get("geo") or None
+        if legacy:
+            self.geos.append(legacy)
+        self.geo = self.geos[0] if self.geos else None
         self.keywords = [k for k in (self.criteria.get("keywords") or []) if k.strip()]
         self.keyword_res = [_kw_regex(k) for k in self.keywords]
         self.exclude_res = [_kw_regex(k) for k in (self.criteria.get("exclude_keywords") or []) if k.strip()]
@@ -132,7 +139,8 @@ class CriteriaMatcher:
             return False
         if self.query_preds and not any(pred(text) for pred in self.query_preds):
             return False
-        if self.geo and not places_match_geo(article.places or [], article.country, self.geo):
+        if self.geos and not any(
+                places_match_geo(article.places or [], article.country, g) for g in self.geos):
             return False
         return True
 

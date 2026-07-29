@@ -5,7 +5,7 @@ const Builder = {
   editing: null,       // existing feed/alert object when editing
   keywords: [],
   exclude: [],
-  geo: null,
+  geos: [],        // any number of areas, matched as OR
   map: null,
   drawnLayer: null,
   meta: null,
@@ -151,7 +151,7 @@ const Builder = {
       }
     }
     el("btn-toggle-map").onclick = () => this.toggleMap();
-    el("btn-clear-geo").onclick = () => this.setGeo(null);
+    el("btn-clear-geo").onclick = () => this.setGeo([]);
     el("btn-preview").onclick = () => this.preview();
     el("btn-save-item").onclick = () => this.save();
     el("btn-delete-item").onclick = () => this.remove();
@@ -215,7 +215,7 @@ const Builder = {
     el("preview-count").textContent = "";
     el("builder-map").hidden = true;
     el("btn-toggle-map").textContent = "Draw area on map";
-    this.setGeo(c.geo || null, /*renderOnly*/ true);
+    this.setGeo(c.geos && c.geos.length ? c.geos : (c.geo || null), /*renderOnly*/ true);
     this.showStep(0);
     el("modal-backdrop").hidden = false;
   },
@@ -273,7 +273,8 @@ const Builder = {
       date_from: el("b-date-from").value || "",
       date_to: el("b-date-to").value || "",
       hide_stale: el("b-stale").checked,
-      geo: this.geo,
+      geos: this.geos,
+      geo: null,   // superseded by geos; cleared so it can't double-count
       auto_coverage: el("b-coverage").checked,
     };
     const sort = document.querySelector('input[name="b-sort"]:checked').value;
@@ -396,53 +397,78 @@ const Builder = {
       },
       edit: { featureGroup: this.drawnItems, edit: false, remove: true },
     }));
+    // Areas accumulate: draw as many as the feed needs, matched as OR.
     this.map.on(L.Draw.Event.CREATED, (e) => {
-      this.drawnItems.clearLayers();          // one geofence per feed/alert
       this.drawnItems.addLayer(e.layer);
       if (e.layerType === "circle") {
         const c = e.layer.getLatLng();
-        this.geo = { type: "Circle", center: [c.lat, c.lng], radius_km: e.layer.getRadius() / 1000 };
+        this.geos.push({ type: "Circle", center: [c.lat, c.lng],
+                         radius_km: e.layer.getRadius() / 1000 });
       } else {
-        this.geo = e.layer.toGeoJSON().geometry;
+        this.geos.push(e.layer.toGeoJSON().geometry);
       }
       this._updateGeoSummary();
     });
-    this.map.on(L.Draw.Event.DELETED, () => this.setGeo(null));
+    // Leaflet.draw hands back only the layers removed, so rebuild the list
+    // from what is still on the map.
+    this.map.on(L.Draw.Event.DELETED, () => {
+      this.geos = this._geosFromLayers();
+      this._updateGeoSummary();
+    });
     this._renderGeo();
   },
 
-  setGeo(geo, renderOnly = false) {
-    this.geo = geo;
+  /* Read the areas back off the map after a deletion. */
+  _geosFromLayers() {
+    const out = [];
+    if (!this.drawnItems) return out;
+    this.drawnItems.eachLayer((l) => {
+      if (l instanceof L.Circle) {
+        const c = l.getLatLng();
+        out.push({ type: "Circle", center: [c.lat, c.lng], radius_km: l.getRadius() / 1000 });
+      } else if (l.toGeoJSON) {
+        out.push(l.toGeoJSON().geometry);
+      }
+    });
+    return out;
+  },
+
+  setGeo(geos, renderOnly = false) {
+    // Accepts a list, a single area (older saved feeds), or null.
+    this.geos = Array.isArray(geos) ? geos.filter(Boolean) : (geos ? [geos] : []);
     this._updateGeoSummary();
-    if (this.map && !renderOnly) this._renderGeo();
-    if (this.map && renderOnly) this._renderGeo();
+    if (this.map) this._renderGeo();
   },
 
   _renderGeo() {
     if (!this.drawnItems) return;
     this.drawnItems.clearLayers();
-    if (!this.geo) return;
-    if (this.geo.type === "Circle") {
-      this.drawnItems.addLayer(
-        L.circle([this.geo.center[0], this.geo.center[1]], { radius: this.geo.radius_km * 1000 })
-      );
-    } else {
-      L.geoJSON({ type: "Feature", geometry: this.geo }).eachLayer(l => this.drawnItems.addLayer(l));
+    for (const geo of this.geos) {
+      if (geo.type === "Circle") {
+        this.drawnItems.addLayer(
+          L.circle([geo.center[0], geo.center[1]], { radius: geo.radius_km * 1000 })
+        );
+      } else {
+        L.geoJSON({ type: "Feature", geometry: geo })
+          .eachLayer(l => this.drawnItems.addLayer(l));
+      }
     }
   },
 
   _fitToGeo() {
-    if (this.geo && this.drawnItems && this.drawnItems.getLayers().length) {
+    if (this.geos.length && this.drawnItems && this.drawnItems.getLayers().length) {
       this.map.fitBounds(this.drawnItems.getBounds().pad(0.4));
     }
   },
 
   _updateGeoSummary() {
     const s = el("geo-summary");
-    if (!this.geo) { s.textContent = "No area set"; el("btn-clear-geo").hidden = true; return; }
-    s.textContent = this.geo.type === "Circle"
-      ? `Circle, radius ${this.geo.radius_km.toFixed(1)} km`
-      : `${this.geo.type} area set`;
+    if (!this.geos.length) { s.textContent = "No area set"; el("btn-clear-geo").hidden = true; return; }
+    const describe = (g) => (g.type === "Circle"
+      ? `circle ${g.radius_km.toFixed(0)} km` : g.type.toLowerCase());
+    s.textContent = this.geos.length === 1
+      ? `1 area — ${describe(this.geos[0])}`
+      : `${this.geos.length} areas — ${this.geos.map(describe).join(", ")}`;
     el("btn-clear-geo").hidden = false;
   },
 };

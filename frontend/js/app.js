@@ -156,6 +156,7 @@ function wireTopbar() {
   wirePantheons();
   wireAdmin();
   wireActionRail();
+  wireLocations();
   // Reading-language picker: articles in other languages are translated
   // automatically into this language (defaults to the browser language).
   const sel = el("lang-select");
@@ -1040,6 +1041,14 @@ function articleRow(a, mode = "link") {
   if (a.source) bits.push(a.source.name);
   if (a.country) bits.push(flagEmoji(a.country) + " " + a.country);
   bits.push(timeAgo(a.published_at));
+  // Favourite-location hits are marked wherever the article shows up.
+  for (const n of a.near || []) {
+    const pin = document.createElement("span");
+    pin.className = "near-pin";
+    pin.textContent = `📍 ${n.name}`;
+    pin.title = `Inside your favourite location “${n.name}”`;
+    meta.appendChild(pin);
+  }
   if (a.translated_from) bits.push("🌐 translated from " + a.translated_from.toUpperCase());
   if ((a.categories || []).length) bits.push(a.categories.slice(0, 3).join(" · "));
   if (mode === "focus") bits.push("⤢ event");
@@ -1352,6 +1361,225 @@ function adminUserRow(u) {
 
   row.appendChild(acts);
   return row;
+}
+
+/* ---------- favourite locations ----------
+   A place plus a radius. Anything reported inside it is flagged wherever it
+   appears, and each location gets a feed of its own. Place lookup is served by
+   the built-in gazetteer, so no third-party geocoder ever sees what the user
+   is watching; anywhere the gazetteer doesn't know can be dropped as a pin. */
+let LOCATIONS = [];
+
+const LocationsPanel = {
+  map: null,
+  marker: null,
+  circle: null,
+  point: null,        // {lat, lon} currently being placed
+  editing: null,      // location being edited, if any
+
+  async open() {
+    el("locations-panel").hidden = false;
+    this._initMap();
+    await this.refresh();
+    // Leaflet measures the container; it was display:none until a moment ago.
+    setTimeout(() => this.map && this.map.invalidateSize(), 60);
+  },
+
+  close() { el("locations-panel").hidden = true; },
+
+  _initMap() {
+    if (this.map) return;
+    this.map = L.map("loc-map", { worldCopyJump: true }).setView([25, 10], 2);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(this.map);
+    this.saved = L.featureGroup().addTo(this.map);
+    this.map.on("click", (e) => this.setPoint(e.latlng.lat, e.latlng.lng));
+  },
+
+  setPoint(lat, lon, name) {
+    this.point = { lat, lon };
+    if (name && !el("loc-name").value.trim()) el("loc-name").value = name;
+    el("loc-coords").textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+    el("btn-loc-save").disabled = false;
+    this._drawPending();
+    this.map.setView([lat, lon], Math.max(this.map.getZoom(), 6));
+  },
+
+  radiusKm() { return Number(el("loc-radius").value) || 25; },
+
+  _drawPending() {
+    if (!this.map) return;
+    if (this.marker) this.marker.remove();
+    if (this.circle) this.circle.remove();
+    if (!this.point) return;
+    const { lat, lon } = this.point;
+    this.marker = L.marker([lat, lon]).addTo(this.map);
+    this.circle = L.circle([lat, lon], {
+      radius: this.radiusKm() * 1000, color: "#d4af37", weight: 2, fillOpacity: 0.08,
+    }).addTo(this.map);
+  },
+
+  async refresh() {
+    try { LOCATIONS = await API.locations(); }
+    catch (e) { this.showError(e.message); return; }
+    this.renderList();
+    this.renderSaved();
+  },
+
+  renderSaved() {
+    if (!this.saved) return;
+    this.saved.clearLayers();
+    for (const loc of LOCATIONS) {
+      L.circle([loc.lat, loc.lon], {
+        radius: loc.radius_km * 1000, color: "#4caf50", weight: 1.5,
+        fillOpacity: 0.06, interactive: false,
+      }).addTo(this.saved);
+    }
+  },
+
+  renderList() {
+    const box = el("loc-list");
+    box.innerHTML = "";
+    if (!LOCATIONS.length) {
+      box.appendChild(feedEmpty("None yet — search for a place or click the map."));
+      return;
+    }
+    for (const loc of LOCATIONS) {
+      const row = document.createElement("div");
+      row.className = "pn-row";
+      const name = document.createElement("span");
+      name.className = "pn-name";
+      name.textContent = `📍 ${loc.name}`;
+      const meta = document.createElement("span");
+      meta.className = "s-meta";
+      meta.textContent = `${loc.radius_km} km`
+        + (loc.pantheon_id ? ` · shared by ${loc.shared_by || "a member"}` : "");
+      row.append(name, meta);
+
+      const show = document.createElement("button");
+      show.className = "btn small";
+      show.textContent = "Show";
+      show.title = "Centre the map here";
+      show.onclick = () => this.map.setView([loc.lat, loc.lon], 8);
+      row.appendChild(show);
+
+      // Shared copies belong to the Pantheon; only the owner edits them.
+      if (loc.mine && !loc.pantheon_id) {
+        const edit = document.createElement("button");
+        edit.className = "btn small";
+        edit.textContent = "Edit";
+        edit.onclick = () => this.startEdit(loc);
+        row.appendChild(edit);
+
+        if (PANTHEONS.length) {
+          const share = toolBtn("🏛", `Share ${loc.name} with a Pantheon`, (e) =>
+            pantheonPickMenu(e.currentTarget, async (p) => {
+              try {
+                await API.shareLocation(loc.id, p.id);
+                toast("Location shared", `“${loc.name}” now flags news for ${p.name}.`);
+                await this.refresh();
+              } catch (err) { this.showError(err.message); }
+            }));
+          row.appendChild(share);
+        }
+        const del = toolBtn("🗑", `Delete ${loc.name}`, async () => {
+          if (!confirm(`Delete “${loc.name}”? Its feed goes too.`)) return;
+          await API.deleteLocation(loc.id);
+          await this.refresh();
+          await refreshFeeds();
+        });
+        row.appendChild(del);
+      }
+      box.appendChild(row);
+    }
+  },
+
+  startEdit(loc) {
+    this.editing = loc;
+    el("loc-name").value = loc.name;
+    el("loc-radius").value = loc.radius_km;
+    el("loc-radius-val").textContent = `${loc.radius_km} km`;
+    el("btn-loc-save").textContent = "Save changes";
+    el("btn-loc-cancel").hidden = false;
+    this.setPoint(loc.lat, loc.lon);
+  },
+
+  cancelEdit() {
+    this.editing = null;
+    this.point = null;
+    el("loc-name").value = "";
+    el("loc-coords").textContent = "";
+    el("btn-loc-save").textContent = "Save location";
+    el("btn-loc-save").disabled = true;
+    el("btn-loc-cancel").hidden = true;
+    this.clearError();
+    this._drawPending();
+  },
+
+  async save() {
+    this.clearError();
+    const name = el("loc-name").value.trim();
+    if (!name) { this.showError("Give the location a name."); el("loc-name").focus(); return; }
+    if (!this.point) { this.showError("Pick a point — search for a place or click the map."); return; }
+    const body = { name, lat: this.point.lat, lon: this.point.lon, radius_km: this.radiusKm() };
+    try {
+      if (this.editing) {
+        await API.updateLocation(this.editing.id, body);
+        toast("Location updated", `“${name}” and its feed now cover ${body.radius_km} km.`);
+      } else {
+        await API.createLocation(body);
+        toast("Location saved", `News within ${body.radius_km} km of “${name}” is now flagged, `
+              + "and it has a feed of its own.");
+      }
+      this.cancelEdit();
+      await this.refresh();
+      await refreshFeeds();
+    } catch (e) { this.showError(e.message); }
+  },
+
+  showError(msg) { const b = el("loc-error"); b.textContent = msg; b.hidden = false; },
+  clearError() { const b = el("loc-error"); b.textContent = ""; b.hidden = true; },
+};
+
+function wireLocations() {
+  el("btn-locations").onclick = () => LocationsPanel.open();
+  el("btn-close-locations").onclick = () => LocationsPanel.close();
+  el("btn-loc-save").onclick = () => LocationsPanel.save();
+  feedback(el("btn-loc-save"), "Saving…");
+  el("btn-loc-cancel").onclick = () => LocationsPanel.cancelEdit();
+
+  el("loc-radius").addEventListener("input", () => {
+    el("loc-radius-val").textContent = `${LocationsPanel.radiusKm()} km`;
+    LocationsPanel._drawPending();
+  });
+
+  let searchTimer;
+  el("loc-search").addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(async () => {
+      const q = el("loc-search").value.trim();
+      const box = el("loc-results");
+      if (q.length < 2) { box.hidden = true; box.innerHTML = ""; return; }
+      let hits = [];
+      try { hits = await API.placeSearch(q); } catch (e) { return; }
+      box.innerHTML = "";
+      box.hidden = hits.length === 0;
+      for (const h of hits) {
+        const b = document.createElement("button");
+        b.className = "loc-result";
+        b.textContent = `${h.kind === "country" ? "🌐" : "🏙"} ${h.name}`
+          + (h.kind === "city" && h.country ? ` · ${COUNTRY_NAMES.get(h.country) || h.country}` : "");
+        b.onclick = () => {
+          LocationsPanel.setPoint(h.lat, h.lon, h.name);
+          box.hidden = true;
+          el("loc-search").value = "";
+        };
+        box.appendChild(b);
+      }
+    }, 220);
+  });
 }
 
 /* ---------- Pantheon create / manage modal ----------

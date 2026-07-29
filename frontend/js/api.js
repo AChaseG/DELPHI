@@ -203,6 +203,15 @@ const API = {
   adminResetPassword: (id, password) => api(`/api/admin/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
   adminDeleteUser: (id) => api(`/api/admin/users/${id}`, { method: "DELETE" }),
 
+  locations: () => api("/api/locations"),
+  createLocation: (body) => api("/api/locations", { method: "POST", body: JSON.stringify(body) }),
+  updateLocation: (id, body) => api(`/api/locations/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteLocation: (id, keepFeed = false) =>
+    api(`/api/locations/${id}?keep_feed=${keepFeed ? "true" : "false"}`, { method: "DELETE" }),
+  shareLocation: (id, pantheonId) =>
+    api(`/api/locations/${id}/share`, { method: "POST", body: JSON.stringify({ pantheon_id: pantheonId }) }),
+  placeSearch: (q) => api(`/api/geo/search?q=${encodeURIComponent(q)}`),
+
   hello: () => api("/api/session/hello", { method: "POST" }),
   checkUpdates: () => api("/api/session/check-updates", { method: "POST" }),
   getSettings: () => api("/api/session/settings"),

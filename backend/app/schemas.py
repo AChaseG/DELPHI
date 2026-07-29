@@ -25,7 +25,8 @@ class Criteria(BaseModel):
     # threshold (set in Settings). Display-only: clustering still attaches
     # new similar articles to hidden events, which then resurface.
     hide_stale: bool = False
-    geo: dict | None = None
+    geo: dict | None = None          # legacy single area (still honoured)
+    geos: list[dict] = Field(default_factory=list)   # any number of areas, OR'd
     # When true, saving the feed/alert also ensures a Google News tracker
     # source exists for the query/keywords, so worldwide press coverage of
     # the topic is ingested rather than only what the catalog publishes.

@@ -5,6 +5,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -195,6 +196,33 @@ class PantheonInvite(Base):
     pantheon_id: Mapped[int] = mapped_column(ForeignKey("pantheons.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)  # invitee
     invited_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class FavoriteLocation(Base):
+    """A place the user cares about, with a radius around it.
+
+    Any article tagged inside the radius is flagged wherever it appears, and a
+    dedicated feed is created alongside so the location has a board of its own.
+    Shared into a Pantheon it flags articles for every member.
+    """
+    __tablename__ = "favorite_locations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    # Set when shared with a Pantheon; shared_by names the sharer for attribution.
+    pantheon_id: Mapped[int | None] = mapped_column(ForeignKey("pantheons.id"),
+                                                    nullable=True, index=True, default=None)
+    shared_by: Mapped[str] = mapped_column(String(32), default="")
+    name: Mapped[str] = mapped_column(String(120))
+    lat: Mapped[float] = mapped_column(Float)
+    lon: Mapped[float] = mapped_column(Float)
+    radius_km: Mapped[float] = mapped_column(Float, default=25.0)
+    # Colour used for its pin and the badge on flagged articles.
+    color: Mapped[str] = mapped_column(String(16), default="gold")
+    # The feed created for this location, so deleting the location can clean up.
+    feed_id: Mapped[int | None] = mapped_column(ForeignKey("feeds.id"),
+                                                nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

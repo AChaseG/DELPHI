@@ -47,6 +47,8 @@
       <span class="rail-icon">📡</span><span class="rail-label">Sources</span></button>
     <button id="btn-pantheons" class="btn rail-btn bell" title="Pantheons — organizations that share feeds and alerts">
       <span class="rail-icon">🏛</span><span class="rail-label">Pantheons</span><span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
+    <button id="btn-locations" class="btn rail-btn" title="Favourite locations — flag news near places you care about">
+      <span class="rail-icon">📍</span><span class="rail-label">Locations</span></button>
     <button id="btn-refresh" class="btn rail-btn" title="Poll all sources now">
       <span class="rail-icon">⟳</span><span class="rail-label">Refresh</span></button>
     <button id="btn-alerts-panel" class="btn rail-btn bell" title="Alerts">
@@ -304,6 +306,20 @@
              disable any auto-discovered source you don't want.</p>
           <p>For matching, each new article's page is fetched once and reduced to text,
              so criteria see the whole story, not just the headline.</p>
+          <p><b>📍 Favourite locations.</b> Open <b>📍 Locations</b> in the rail to
+             keep a list of places that matter to you. Search for a place by name
+             (or click the map for anywhere the search doesn't know), set a radius,
+             and save. From then on any article tagged inside that radius carries a
+             📍 badge <i>everywhere it appears</i>, a feed for that location is
+             created automatically, and you can share the location with a Pantheon
+             so it flags news for every member. Place search runs against Delphi's
+             own gazetteer — no third-party geocoder sees what you're watching.</p>
+
+          <p><b>Several areas in one feed.</b> The map step of the feed/alert wizard
+             accepts as many shapes as you like — draw three cities and the feed
+             matches an article in any of them. Use the delete tool on the map to
+             remove one.</p>
+
           <p><b>Paywalled outlets.</b> Mark a source <b>🔒 paywalled</b> when adding or
              editing it (the article page is behind a paywall, but the RSS feed's
              headlines and summaries usually aren't). Delphi then ingests those
@@ -551,6 +567,44 @@
       <button class="btn btn-primary" id="btn-add-source">Add source</button>
     </div>
     <div id="sources-list"></div>
+  </aside>
+
+  <!-- Favourite locations -->
+  <aside id="locations-panel" class="side-panel wide" hidden>
+    <div class="side-panel-head">
+      <h2>📍 Locations</h2>
+      <button class="icon-btn" id="btn-close-locations" aria-label="Close locations">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="set-note">Places you want to keep an eye on. Anything reported inside
+         the radius is flagged 📍 wherever it appears, and each location gets a feed
+         of its own.</p>
+
+      <div class="loc-search">
+        <input id="loc-search" type="search" autocomplete="off"
+               placeholder="Find a place — city or country…" aria-label="Find a place">
+        <span class="s-meta">…or click the map</span>
+      </div>
+      <div id="loc-results" class="loc-results" hidden></div>
+
+      <div id="loc-map" class="loc-map"></div>
+
+      <div class="loc-form">
+        <input id="loc-name" type="text" maxlength="120" placeholder="Name this location">
+        <label class="loc-radius">
+          <span>Radius <strong id="loc-radius-val">25 km</strong></span>
+          <input type="range" id="loc-radius" min="1" max="500" step="1" value="25">
+        </label>
+        <span id="loc-coords" class="s-meta"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-loc-cancel" hidden>Cancel</button>
+        <button class="btn btn-primary" id="btn-loc-save" disabled>Save location</button>
+      </div>
+      <p id="loc-error" class="builder-error" role="alert" hidden></p>
+
+      <h3 class="set-h">Saved locations</h3>
+      <div id="loc-list"></div>
+    </div>
   </aside>
 
   <!-- Pantheons side panel -->

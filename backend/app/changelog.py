@@ -13,6 +13,26 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-07-29",
+        "title": "Favourite locations, and feeds that watch several areas",
+        "items": [
+            "📍 Locations: keep a list of places you care about. Find one by "
+            "name or drop a pin on the map, set a radius, and anything reported "
+            "inside it is flagged 📍 wherever it appears — in every feed and "
+            "alert, not just its own. Each location also gets a feed of its "
+            "own automatically, and you can share a location with a Pantheon "
+            "so it flags news for the whole group. Place lookup uses Delphi's "
+            "built-in gazetteer, so nothing about the places you watch is sent "
+            "to an outside service.",
+            "Feeds and alerts can now hold several map areas instead of one — "
+            "draw as many as you need and they match as OR, so a single feed "
+            "can watch three cities at once. Existing feeds keep working "
+            "unchanged.",
+            "Every feed column gained a ⟳ to refresh just that column, instead "
+            "of re-polling every source.",
+        ],
+    },
+    {
         "date": "2026-07-21",
         "title": "Pantheons outlive their founders",
         "items": [

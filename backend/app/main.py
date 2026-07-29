@@ -28,11 +28,11 @@ from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
 from .clustering import assign_events, rebuild_events
 from .database import Base, SessionLocal, engine, get_db
 from .events import broadcaster
-from .geo import load_gazetteer
+from .geo import load_gazetteer, places_match_geo, search_places
 from .matching import query_articles
-from .models import (Alert, AlertEvent, Article, Event, Feed, Pantheon,
-                     PantheonInvite, PantheonMember, Source, Translation,
-                     User, ViewedEvent, utcnow)
+from .models import (Alert, AlertEvent, Article, Event, FavoriteLocation, Feed,
+                     Pantheon, PantheonInvite, PantheonMember, Source,
+                     Translation, User, ViewedEvent, utcnow)
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
 from .scoring import STANDARD_CATEGORIES, classify_categories
 
@@ -243,7 +243,8 @@ def _viewed_events(db: Session, user_id: str, articles: list[Article]) -> set[in
 
 
 def _article_json(a: Article, tr: dict | None = None,
-                  viewed: set[int] | None = None) -> dict:
+                  viewed: set[int] | None = None,
+                  near: dict | None = None) -> dict:
     """Serialize an article; `tr` is a {article_id: {title, summary}} map of
     translations into the requester's language."""
     t = (tr or {}).get(a.id)
@@ -251,6 +252,9 @@ def _article_json(a: Article, tr: dict | None = None,
         "id": a.id,
         "event_id": a.event_id,
         "viewed": a.event_id in (viewed or set()),
+        # Favourite locations this article falls inside, so every feed and
+        # alert can badge it wherever it appears.
+        "near": (near or {}).get(a.id, []),
         "title": t["title"] if t else a.title,
         "summary": (t["summary"] if t else a.summary)[:400],
         "translated_from": a.language if t else None,
@@ -805,7 +809,8 @@ async def search_articles(
     articles = _drop_stale(articles, criteria, stale)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
-    return [_article_json(a, tr, viewed) for a in articles]
+    near = _flag_locations(articles, _visible_locations(db, user_id))
+    return [_article_json(a, tr, viewed, near) for a in articles]
 
 
 @app.post("/api/query/validate")
@@ -891,7 +896,8 @@ async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
     articles = _drop_stale(articles, feed.criteria, stale)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
-    return [_article_json(a, tr, viewed) for a in articles]
+    near = _flag_locations(articles, _visible_locations(db, user_id))
+    return [_article_json(a, tr, viewed, near) for a in articles]
 
 
 async def _grouped_response(db: Session, articles: list[Article], lang: str, limit: int,
@@ -1718,6 +1724,171 @@ def _reject_invalid_query(criteria):
             err = validate_query(q)
             if err:
                 raise HTTPException(422, f"Invalid boolean query “{q}”: {err}")
+
+
+# ---------- favourite locations ----------
+
+@app.get("/api/geo/search")
+def geo_search(q: str = Query(default=""), user_id: str = Depends(user_id_header)):
+    """Place lookup for the location picker, served from the built-in
+    gazetteer — no external geocoder, so it works offline and the user's
+    places of interest never leave this server."""
+    return search_places(q)
+
+
+def _location_json(loc: FavoriteLocation, mine: bool = True) -> dict:
+    return {
+        "id": loc.id, "name": loc.name,
+        "lat": loc.lat, "lon": loc.lon, "radius_km": loc.radius_km,
+        "color": loc.color, "feed_id": loc.feed_id,
+        "pantheon_id": loc.pantheon_id, "shared_by": loc.shared_by,
+        "mine": mine,
+    }
+
+
+def _visible_locations(db: Session, user_id: str) -> list[FavoriteLocation]:
+    """The caller's own locations plus any shared into a Pantheon they're in."""
+    pantheon_ids = list(db.scalars(select(PantheonMember.pantheon_id).where(
+        PantheonMember.user_id == _acct_id(user_id))))
+    clause = FavoriteLocation.user_id == user_id
+    if pantheon_ids:
+        clause = or_(clause, FavoriteLocation.pantheon_id.in_(pantheon_ids))
+    return list(db.scalars(select(FavoriteLocation).where(clause)
+                           .order_by(FavoriteLocation.name)))
+
+
+def _location_circle(loc: FavoriteLocation) -> dict:
+    return {"type": "Circle", "center": [loc.lat, loc.lon], "radius_km": loc.radius_km}
+
+
+def _flag_locations(articles: list[Article], locations: list[FavoriteLocation]) -> dict:
+    """Map article id -> the favourite locations it falls inside.
+
+    Runs over the page being served rather than the whole corpus, and only when
+    the account actually has locations, so it costs nothing for users who don't
+    use the feature."""
+    if not locations or not articles:
+        return {}
+    out: dict[int, list[dict]] = {}
+    for article in articles:
+        hits = [loc for loc in locations
+                if places_match_geo(article.places or [], article.country,
+                                    _location_circle(loc))]
+        if hits:
+            out[article.id] = [{"id": h.id, "name": h.name, "color": h.color} for h in hits]
+    return out
+
+
+@app.get("/api/locations")
+def list_locations(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    return [_location_json(loc, mine=loc.user_id == user_id)
+            for loc in _visible_locations(db, user_id)]
+
+
+@app.post("/api/locations", status_code=201)
+def create_location(body: dict, user_id: str = Depends(user_id_header),
+                    db: Session = Depends(get_db)):
+    """Save a favourite location and give it a feed of its own."""
+    name = (body.get("name") or "").strip()
+    if not 1 <= len(name) <= 120:
+        raise HTTPException(422, "Give the location a name")
+    try:
+        lat, lon = float(body.get("lat")), float(body.get("lon"))
+        radius = float(body.get("radius_km") or 25)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "A latitude, longitude, and radius are required")
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise HTTPException(422, "That point isn't on the map")
+    if not 0 < radius <= 5000:
+        raise HTTPException(422, "Radius must be between 0 and 5000 km")
+
+    loc = FavoriteLocation(user_id=user_id, name=name, lat=lat, lon=lon,
+                           radius_km=radius, color=(body.get("color") or "gold")[:16])
+    db.add(loc)
+    db.flush()
+    # Its own board, so the location is somewhere you can read as well as a
+    # marker on other feeds.
+    if body.get("create_feed", True):
+        max_pos = db.scalar(select(func.max(Feed.position)).where(Feed.user_id == user_id))
+        feed = Feed(user_id=user_id, name=f"📍 {name}",
+                    criteria={"geos": [_location_circle(loc)]},
+                    sort="newest", position=(max_pos + 1) if max_pos is not None else 0)
+        db.add(feed)
+        db.flush()
+        loc.feed_id = feed.id
+    db.commit()
+    return _location_json(loc)
+
+
+@app.patch("/api/locations/{loc_id}")
+def update_location(loc_id: int, body: dict, user_id: str = Depends(user_id_header),
+                    db: Session = Depends(get_db)):
+    loc = db.get(FavoriteLocation, loc_id)
+    if not loc or loc.user_id != user_id:
+        raise HTTPException(404, "Location not found")
+    if "name" in body:
+        name = (body["name"] or "").strip()
+        if not 1 <= len(name) <= 120:
+            raise HTTPException(422, "Give the location a name")
+        loc.name = name
+    for key in ("lat", "lon", "radius_km"):
+        if key in body:
+            try:
+                setattr(loc, key, float(body[key]))
+            except (TypeError, ValueError):
+                raise HTTPException(422, f"{key} must be a number")
+    if "color" in body:
+        loc.color = (body["color"] or "gold")[:16]
+    # Keep the location's own feed pointing at the area it now covers.
+    if loc.feed_id:
+        feed = db.get(Feed, loc.feed_id)
+        if feed:
+            feed.name = f"📍 {loc.name}"
+            feed.criteria = {**(feed.criteria or {}), "geos": [_location_circle(loc)]}
+    db.commit()
+    return _location_json(loc)
+
+
+@app.delete("/api/locations/{loc_id}", status_code=204)
+def delete_location(loc_id: int, keep_feed: bool = Query(default=False),
+                    user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    loc = db.get(FavoriteLocation, loc_id)
+    if not loc or loc.user_id != user_id:
+        raise HTTPException(404, "Location not found")
+    if loc.feed_id and not keep_feed:
+        feed = db.get(Feed, loc.feed_id)
+        if feed:
+            db.delete(feed)
+    db.delete(loc)
+    db.commit()
+
+
+@app.post("/api/locations/{loc_id}/share", status_code=201)
+def share_location(loc_id: int, body: dict, user_id: str = Depends(user_id_header),
+                   db: Session = Depends(get_db)):
+    """Copy a location into a Pantheon so it flags articles for every member."""
+    loc = db.get(FavoriteLocation, loc_id)
+    if not loc or loc.user_id != user_id:
+        raise HTTPException(404, "Location not found")
+    if loc.pantheon_id is not None:
+        raise HTTPException(422, "This location is already a shared copy")
+    pantheon_id = int(body.get("pantheon_id") or 0)
+    pantheon, member = _require_membership(db, pantheon_id, user_id)
+    if not _pantheon_allows(pantheon, member, "share"):
+        raise HTTPException(403, "This Pantheon lets only admins share items")
+    if db.scalar(select(FavoriteLocation).where(
+            FavoriteLocation.pantheon_id == pantheon_id,
+            FavoriteLocation.name == loc.name,
+            FavoriteLocation.user_id == user_id)):
+        raise HTTPException(409, f"You already shared “{loc.name}” with this Pantheon")
+    me = db.get(User, _acct_id(user_id))
+    copy = FavoriteLocation(
+        user_id=user_id, pantheon_id=pantheon_id,
+        shared_by=(me.username if me else ""), name=loc.name,
+        lat=loc.lat, lon=loc.lon, radius_km=loc.radius_km, color=loc.color)
+    db.add(copy)
+    db.commit()
+    return _location_json(copy)
 
 
 # ---------- admin / operator console ----------

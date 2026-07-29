@@ -188,6 +188,47 @@ def point_in_geo(lat: float, lon: float, geo: dict) -> bool:
     return False
 
 
+def search_places(query: str, limit: int = 12) -> list[dict]:
+    """Look up a place name in the built-in gazetteer.
+
+    Deliberately local: no third-party geocoder is called, so adding a favourite
+    location works offline, costs nothing, needs no API key, and sends the
+    user's places of interest nowhere. The trade-off is coverage — roughly 480
+    cities and 154 countries — so the map also accepts a dropped pin for
+    anywhere that isn't listed.
+
+    Exact matches first, then prefix, then substring; aliases (native-script
+    names) are searched too.
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    exact, prefix, contains = [], [], []
+    for city in _merged_cities():
+        names = [city["name"]] + list(city.get("aliases") or [])
+        low = [n.lower() for n in names]
+        hit = {"name": city["name"], "country": city.get("country", ""),
+               "lat": city["lat"], "lon": city["lon"], "kind": "city"}
+        if any(n == q for n in low):
+            exact.append(hit)
+        elif any(n.startswith(q) for n in low):
+            prefix.append(hit)
+        elif any(q in n for n in low):
+            contains.append(hit)
+    for iso, c in countries_index().items():
+        name = c.get("name", "")
+        low = name.lower()
+        hit = {"name": name, "country": iso, "lat": c["lat"], "lon": c["lon"],
+               "kind": "country"}
+        if low == q:
+            exact.append(hit)
+        elif low.startswith(q):
+            prefix.append(hit)
+        elif q in low:
+            contains.append(hit)
+    return (exact + prefix + contains)[:limit]
+
+
 def places_match_geo(places: list[dict], country: str, geo: dict) -> bool:
     """True if any tagged place (or the article's country centroid) is inside geo."""
     for p in places or []:
