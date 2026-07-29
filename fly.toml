@@ -20,5 +20,16 @@ primary_region = 'ams'
   min_machines_running = 1
 
 [[vm]]
-  size = 'shared-cpu-1x'
-  memory = '1024mb'
+  # Delphi's poller is a *sustained* workload — it never idles — and Fly
+  # throttles shared CPUs hard once the burst allowance is spent, which is what
+  # made the dashboard crawl on shared-cpu-1x. Two shared vCPUs and 2 GB give
+  # ingestion room to run while the app stays responsive.
+  #
+  # Still not fast enough? Change size to 'performance-1x' for a *dedicated*
+  # core with no throttling (costs several times more, but it is the right
+  # answer for continuous ingestion at this catalog size).
+  #
+  # Keep count at 1 — the scheduler, SQLite database, and rate limiter are all
+  # in-process. Scale this machine up, never out.
+  size = 'shared-cpu-2x'
+  memory = '2048mb'

@@ -95,9 +95,24 @@ paced into a steady drip instead of a burst. Knobs:
 
 ### Resources
 
-512 MB is tight once ~500 city feeds, full-text content extraction, and
-translation run together. Use **1 GB** (already set in `fly.toml`); bump higher
-for a large user base. On Fly: `fly scale memory 1024`.
+Ingestion runs continuously, so this is a **sustained** workload, not a bursty
+one. That matters on Fly: shared CPUs get a burst allowance and are throttled
+once it's spent, which shows up as a dashboard that takes many seconds to do
+anything while the poller works.
+
+`fly.toml` ships **shared-cpu-2x / 2 GB**, which handles ~500 city feeds plus
+content extraction and clustering. If the app still feels slow, move to
+**`performance-1x`** — a dedicated core with no throttling — by editing the
+`[[vm]]` block. Set the size **in `fly.toml`, not with `fly scale vm`**: the
+config wins on the next deploy and would silently undo a CLI change.
+
+Cheaper than scaling up: cut the work. `NEWS_CONTENT_FETCH=0` skips fetching
+article bodies (the largest single cost, and it shrinks the database, which
+also speeds up search), `NEWS_RETENTION_DAYS=14` keeps the corpus smaller, and
+raising `NEWS_CITY_INTERVAL` polls city feeds less often.
+
+Never raise the machine **count** — the scheduler, SQLite database, and rate
+limiter are all in-process. Scale up, never out.
 
 ### Backups
 
