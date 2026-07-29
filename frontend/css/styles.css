@@ -10,6 +10,9 @@
   /* Width of the collapsed action rail; the board reserves this much on the
      right so the last feed column is never hidden underneath it. */
   --rail-w: 52px;
+  /* Width of a decorative Greek column. The right-hand one sits inboard of the
+     rail, so the board has to clear both — see the board's padding. */
+  --pillar-w: 58px;
   --page: #0c0e0c;
   --surface: #151815;
   --surface-2: #1e231e;
@@ -178,7 +181,7 @@ button { font: inherit; }
 
 /* ---------- Greek columns framing the board (SVG artwork) ---------- */
 .pillar {
-  position: fixed; top: 57px; bottom: 0; width: 58px;
+  position: fixed; top: 57px; bottom: 0; width: var(--pillar-w);
   z-index: 1; pointer-events: none;
   display: flex; flex-direction: column;
   filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.45));
@@ -348,8 +351,22 @@ button { font: inherit; }
 /* While dragging, the cursor stays a resize cursor everywhere and nothing
    selects — the pointer routinely leaves the 8px handle mid-drag. */
 body.col-resizing { cursor: col-resize; user-select: none; }
+/* Wide enough for the decorative columns, which are drawn over the board.
+   The right-hand pillar sits inboard of the action rail, so the board has to
+   reserve both — a flat 70px left the last feed column 40px underneath the
+   pillar with no scroll left to pull it clear. Because this is padding on a
+   scroll container it extends the scrollable width too, so the last column can
+   always be brought fully into the open. */
 @media (min-width: 1281px) {
-  .board, .empty-state { padding-left: 70px; padding-right: 70px; }
+  .board, .empty-state {
+    padding-left: calc(var(--pillar-w) + 12px);
+    padding-right: calc(var(--rail-w) + var(--pillar-w) + 12px);
+  }
+  /* The bar runs under the board, so the pillars cover its ends too. */
+  .board-scroll {
+    margin-left: calc(var(--pillar-w) + 12px);
+    margin-right: calc(var(--rail-w) + var(--pillar-w) + 12px);
+  }
 }
 .feed-col {
   position: relative;   /* the resize grips anchor to the column's edges */

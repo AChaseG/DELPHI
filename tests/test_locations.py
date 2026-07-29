@@ -1,9 +1,10 @@
-"""Favourite locations: multiple geofences, flagging, auto-feed, sharing."""
+"""Favourite locations: multiple geofences, flagging, the shared feed, sharing."""
 
 import pytest
+from sqlalchemy import select
 
 from backend.app.matching import CriteriaMatcher, query_articles
-from backend.app.models import Article, Source, utcnow
+from backend.app.models import Article, FavoriteLocation, Feed, Source, User, utcnow
 
 TOKYO = (35.68, 139.69)
 LONDON = (51.51, -0.13)
@@ -60,18 +61,26 @@ def test_legacy_geo_and_geos_combine(db, corpus):
     assert {a.title for a in got} == {"Tokyo story", "Lima story"}
 
 
-def test_create_location_makes_its_own_feed(client, register):
+def test_locations_share_one_feed(client, register):
+    """Every location the account owns is covered by a single column, not one
+    each — a handful of watched places used to bury the rest of the board."""
     hdr = register("loc1")
-    r = client.post("/api/locations", json={
-        "name": "Home", "lat": TOKYO[0], "lon": TOKYO[1], "radius_km": 40}, headers=hdr)
-    assert r.status_code == 201, r.text
-    loc = r.json()
-    assert loc["feed_id"], "a location should come with a feed"
+    made = []
+    for name, point, radius in (("Home", TOKYO, 40), ("Office", LONDON, 25),
+                                ("Site", LIMA, 80)):
+        r = client.post("/api/locations", json={
+            "name": name, "lat": point[0], "lon": point[1], "radius_km": radius},
+            headers=hdr)
+        assert r.status_code == 201, r.text
+        made.append(r.json())
 
+    assert len({loc["feed_id"] for loc in made}) == 1, "all three share one feed"
     feeds = client.get("/api/feeds", headers=hdr).json()
-    mine = [f for f in feeds if f["id"] == loc["feed_id"]][0]
-    assert mine["name"] == "📍 Home"
-    assert mine["criteria"]["geos"][0]["radius_km"] == 40
+    assert len(feeds) == 1, [f["name"] for f in feeds]
+    assert feeds[0]["name"] == "📍 Favourite Locations"
+    # One area per location, matched as OR.
+    radii = sorted(g["radius_km"] for g in feeds[0]["criteria"]["geos"])
+    assert radii == [25, 40, 80]
 
 
 def test_articles_inside_a_location_are_flagged(client, register, db, corpus):
@@ -85,24 +94,41 @@ def test_articles_inside_a_location_are_flagged(client, register, db, corpus):
     assert by_title["London story"]["near"] == []
 
 
-def test_editing_a_location_moves_its_feed(client, register):
+def test_editing_a_location_moves_the_shared_feed(client, register):
     hdr = register("loc3")
-    loc = client.post("/api/locations", json={
+    a = client.post("/api/locations", json={
         "name": "Desk", "lat": TOKYO[0], "lon": TOKYO[1], "radius_km": 30}, headers=hdr).json()
-    client.patch(f"/api/locations/{loc['id']}",
+    client.post("/api/locations", json={
+        "name": "Other", "lat": LIMA[0], "lon": LIMA[1], "radius_km": 15}, headers=hdr)
+    client.patch(f"/api/locations/{a['id']}",
                  json={"name": "Desk 2", "radius_km": 90}, headers=hdr)
-    feed = [f for f in client.get("/api/feeds", headers=hdr).json()
-            if f["id"] == loc["feed_id"]][0]
-    assert feed["name"] == "📍 Desk 2"
-    assert feed["criteria"]["geos"][0]["radius_km"] == 90
+    feeds = client.get("/api/feeds", headers=hdr).json()
+    assert len(feeds) == 1
+    # The feed keeps its own name — it is not any one location's — and the
+    # edited area moves while the other is left alone.
+    assert feeds[0]["name"] == "📍 Favourite Locations"
+    assert sorted(g["radius_km"] for g in feeds[0]["criteria"]["geos"]) == [15, 90]
 
 
-def test_deleting_a_location_removes_its_feed(client, register):
+def test_deleting_one_location_keeps_the_feed_for_the_rest(client, register):
     hdr = register("loc4")
-    loc = client.post("/api/locations", json={
+    a = client.post("/api/locations", json={
         "name": "Temp", "lat": 0, "lon": 0, "radius_km": 10}, headers=hdr).json()
+    client.post("/api/locations", json={
+        "name": "Stays", "lat": TOKYO[0], "lon": TOKYO[1], "radius_km": 50}, headers=hdr)
+
+    assert client.delete(f"/api/locations/{a['id']}", headers=hdr).status_code == 204
+    feeds = client.get("/api/feeds", headers=hdr).json()
+    assert len(feeds) == 1, "the feed survives while another location needs it"
+    assert [g["radius_km"] for g in feeds[0]["criteria"]["geos"]] == [50]
+
+
+def test_deleting_the_last_location_removes_the_feed(client, register):
+    hdr = register("loc4b")
+    loc = client.post("/api/locations", json={
+        "name": "Only", "lat": 0, "lon": 0, "radius_km": 10}, headers=hdr).json()
     assert client.delete(f"/api/locations/{loc['id']}", headers=hdr).status_code == 204
-    assert loc["feed_id"] not in [f["id"] for f in client.get("/api/feeds", headers=hdr).json()]
+    assert client.get("/api/feeds", headers=hdr).json() == []
 
 
 def test_deleting_can_keep_the_feed(client, register):
@@ -155,3 +181,42 @@ def test_place_search_is_local(client, register):
     assert hits and hits[0]["name"] == "Tokyo" and hits[0]["country"] == "JP"
     # Native-script names resolve too.
     assert client.get("/api/geo/search?q=東京", headers=hdr).json()[0]["name"] == "Tokyo"
+
+
+def test_old_per_location_feeds_are_folded_into_one(client, register, db):
+    """Accounts created before locations shared a feed carry one column each.
+    Startup consolidation has to merge them without losing an area, and has to
+    be safe to run again."""
+    from backend.app.main import LOCATIONS_FEED_NAME, _consolidate_location_feeds
+
+    hdr = register("legacy")
+    uid = "acct:%d" % db.scalar(select(User.id).where(User.username == "legacy"))
+
+    # Rebuild the old shape by hand: three locations, three feeds.
+    made = []
+    for i, (name, point, radius) in enumerate((("A", TOKYO, 10), ("B", LONDON, 20),
+                                               ("C", LIMA, 30))):
+        loc = FavoriteLocation(user_id=uid, name=name, lat=point[0], lon=point[1],
+                               radius_km=radius, color="gold")
+        db.add(loc)
+        db.flush()
+        feed = Feed(user_id=uid, name=f"📍 {name}", sort="newest", position=i,
+                    criteria={"geos": [{"type": "Circle", "center": list(point),
+                                        "radius_km": radius}]})
+        db.add(feed)
+        db.flush()
+        loc.feed_id = feed.id
+        made.append(feed.id)
+    db.commit()
+    assert len(client.get("/api/feeds", headers=hdr).json()) == 3
+
+    assert _consolidate_location_feeds(db) == 1
+    feeds = client.get("/api/feeds", headers=hdr).json()
+    assert len(feeds) == 1, [f["name"] for f in feeds]
+    assert feeds[0]["name"] == LOCATIONS_FEED_NAME
+    assert sorted(g["radius_km"] for g in feeds[0]["criteria"]["geos"]) == [10, 20, 30]
+    assert feeds[0]["id"] in made, "an existing column is reused, not replaced"
+
+    # Running it again changes nothing.
+    assert _consolidate_location_feeds(db) == 0
+    assert len(client.get("/api/feeds", headers=hdr).json()) == 1

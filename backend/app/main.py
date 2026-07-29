@@ -151,6 +151,10 @@ async def lifespan(app: FastAPI):
     db = next(get_db())
     try:
         _purge_demo_data(db)
+        merged = _consolidate_location_feeds(db)
+        if merged:
+            logging.getLogger("catalog").info(
+                "merged per-location feeds into one for %d account(s)", merged)
         seed_sources(db)
         if os.environ.get("NEWS_SEED_CITIES", "1") != "0":
             added = seed_city_sources(db)
@@ -1761,6 +1765,76 @@ def _location_circle(loc: FavoriteLocation) -> dict:
     return {"type": "Circle", "center": [loc.lat, loc.lon], "radius_km": loc.radius_km}
 
 
+LOCATIONS_FEED_NAME = "📍 Favourite Locations"
+
+
+def _sync_locations_feed(db: Session, user_id: str, keep_empty: bool = False,
+                         also: int | None = None):
+    """Keep one feed covering every location the account owns.
+
+    Each location used to get a column of its own, which turned a handful of
+    watched places into a board nobody could read. They now share a single feed
+    whose areas are OR'd, so it carries news near any of them. Called after
+    every change to a location; also folds the old per-location feeds together,
+    which is what migrates an existing account the first time it is touched.
+    """
+    locs = list(db.scalars(select(FavoriteLocation).where(
+        FavoriteLocation.user_id == user_id,
+        FavoriteLocation.pantheon_id.is_(None)).order_by(FavoriteLocation.name)))
+
+    # Any feed a location still points at is a candidate; the first survives and
+    # the rest — the per-location columns from before this change — are removed.
+    # `also` carries the feed of a location just deleted, which nothing points
+    # at any more but which still has to be cleaned up.
+    feed_ids = list(dict.fromkeys(
+        [loc.feed_id for loc in locs if loc.feed_id] + ([also] if also else [])))
+    feed = next((f for f in (db.get(Feed, fid) for fid in feed_ids) if f), None)
+    for extra_id in feed_ids:
+        if feed is not None and extra_id == feed.id:
+            continue
+        extra = db.get(Feed, extra_id)
+        if extra is not None:
+            db.delete(extra)
+
+    if not locs:
+        if feed is not None and not keep_empty:
+            db.delete(feed)
+        return None
+
+    if feed is None:
+        max_pos = db.scalar(select(func.max(Feed.position)).where(Feed.user_id == user_id))
+        feed = Feed(user_id=user_id, name=LOCATIONS_FEED_NAME, criteria={},
+                    sort="newest", position=(max_pos + 1) if max_pos is not None else 0)
+        db.add(feed)
+        db.flush()
+
+    feed.name = LOCATIONS_FEED_NAME
+    feed.criteria = {**(feed.criteria or {}), "geos": [_location_circle(l) for l in locs],
+                     "geo": None}
+    for loc in locs:
+        loc.feed_id = feed.id
+    return feed
+
+
+def _consolidate_location_feeds(db: Session) -> int:
+    """Startup migration: fold each account's per-location feeds into one.
+    Idempotent — an account already holding a single feed is left alone."""
+    user_ids = [u for (u,) in db.execute(
+        select(FavoriteLocation.user_id).where(
+            FavoriteLocation.pantheon_id.is_(None)).distinct())]
+    changed = 0
+    for user_id in user_ids:
+        before = {loc.feed_id for loc in db.scalars(select(FavoriteLocation).where(
+            FavoriteLocation.user_id == user_id,
+            FavoriteLocation.pantheon_id.is_(None)))}
+        feed = _sync_locations_feed(db, user_id)
+        if len(before) > 1 or (feed is not None and feed.id not in before):
+            changed += 1
+    if changed:
+        db.commit()
+    return changed
+
+
 def _flag_locations(articles: list[Article], locations: list[FavoriteLocation]) -> dict:
     """Map article id -> the favourite locations it falls inside.
 
@@ -1788,7 +1862,7 @@ def list_locations(user_id: str = Depends(user_id_header), db: Session = Depends
 @app.post("/api/locations", status_code=201)
 def create_location(body: dict, user_id: str = Depends(user_id_header),
                     db: Session = Depends(get_db)):
-    """Save a favourite location and give it a feed of its own."""
+    """Save a favourite location; the account's locations feed covers it."""
     name = (body.get("name") or "").strip()
     if not 1 <= len(name) <= 120:
         raise HTTPException(422, "Give the location a name")
@@ -1806,16 +1880,10 @@ def create_location(body: dict, user_id: str = Depends(user_id_header),
                            radius_km=radius, color=(body.get("color") or "gold")[:16])
     db.add(loc)
     db.flush()
-    # Its own board, so the location is somewhere you can read as well as a
-    # marker on other feeds.
+    # One board for every watched place, so the locations are somewhere you
+    # can read as well as markers on other feeds.
     if body.get("create_feed", True):
-        max_pos = db.scalar(select(func.max(Feed.position)).where(Feed.user_id == user_id))
-        feed = Feed(user_id=user_id, name=f"📍 {name}",
-                    criteria={"geos": [_location_circle(loc)]},
-                    sort="newest", position=(max_pos + 1) if max_pos is not None else 0)
-        db.add(feed)
-        db.flush()
-        loc.feed_id = feed.id
+        _sync_locations_feed(db, user_id)
     db.commit()
     return _location_json(loc)
 
@@ -1839,12 +1907,8 @@ def update_location(loc_id: int, body: dict, user_id: str = Depends(user_id_head
                 raise HTTPException(422, f"{key} must be a number")
     if "color" in body:
         loc.color = (body["color"] or "gold")[:16]
-    # Keep the location's own feed pointing at the area it now covers.
-    if loc.feed_id:
-        feed = db.get(Feed, loc.feed_id)
-        if feed:
-            feed.name = f"📍 {loc.name}"
-            feed.criteria = {**(feed.criteria or {}), "geos": [_location_circle(loc)]}
+    # Keep the locations feed pointing at the areas it now covers.
+    _sync_locations_feed(db, user_id)
     db.commit()
     return _location_json(loc)
 
@@ -1855,11 +1919,12 @@ def delete_location(loc_id: int, keep_feed: bool = Query(default=False),
     loc = db.get(FavoriteLocation, loc_id)
     if not loc or loc.user_id != user_id:
         raise HTTPException(404, "Location not found")
-    if loc.feed_id and not keep_feed:
-        feed = db.get(Feed, loc.feed_id)
-        if feed:
-            db.delete(feed)
+    orphan = loc.feed_id
     db.delete(loc)
+    db.flush()
+    # The feed covers whatever is left; it only goes when nothing is, and
+    # keep_feed holds on to an emptied one.
+    _sync_locations_feed(db, user_id, keep_empty=keep_feed, also=orphan)
     db.commit()
 
 

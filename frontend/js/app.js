@@ -1771,7 +1771,7 @@ function adminUserRow(u) {
 
 /* ---------- favourite locations ----------
    A place plus a radius. Anything reported inside it is flagged wherever it
-   appears, and each location gets a feed of its own. Place lookup is served by
+   appears, and every location shares one feed. Place lookup is served by
    the built-in gazetteer, so no third-party geocoder ever sees what the user
    is watching; anywhere the gazetteer doesn't know can be dropped as a pin. */
 let LOCATIONS = [];
@@ -1891,7 +1891,8 @@ const LocationsPanel = {
           row.appendChild(share);
         }
         const del = toolBtn("🗑", `Delete ${loc.name}`, async () => {
-          if (!confirm(`Delete “${loc.name}”? Its feed goes too.`)) return;
+          if (!confirm(`Delete “${loc.name}”? Your 📍 Favourite Locations feed stops `
+                       + "covering it.")) return;
           await API.deleteLocation(loc.id);
           await this.refresh();
           await refreshFeeds();
@@ -1933,11 +1934,11 @@ const LocationsPanel = {
     try {
       if (this.editing) {
         await API.updateLocation(this.editing.id, body);
-        toast("Location updated", `“${name}” and its feed now cover ${body.radius_km} km.`);
+        toast("Location updated", `“${name}” now covers ${body.radius_km} km.`);
       } else {
         await API.createLocation(body);
-        toast("Location saved", `News within ${body.radius_km} km of “${name}” is now flagged, `
-              + "and it has a feed of its own.");
+        toast("Location saved", `News within ${body.radius_km} km of “${name}” is now `
+              + "flagged, and appears in your 📍 Favourite Locations feed.");
       }
       this.cancelEdit();
       await this.refresh();

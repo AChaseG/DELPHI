@@ -13,6 +13,26 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-02",
+        "title": "One column for every place you watch",
+        "items": [
+            "📍 Favourite locations now share a single feed instead of each "
+            "creating one. Watching a dozen places used to mean a dozen columns "
+            "and no room for anything else; they are now one “📍 Favourite "
+            "Locations” column carrying news near any of them. Existing "
+            "per-location feeds are merged automatically the first time the "
+            "server starts, keeping every area — nothing to redo, and no "
+            "location's coverage is lost. Deleting a location narrows the feed "
+            "rather than removing it; only the last one takes it away.",
+            "Fixed the last feed column being cut off on wide screens. The "
+            "decorative pillar sits inboard of the action rail, and the board "
+            "reserved too little room for both, so 40px of the rightmost column "
+            "stayed under the pillar with no scroll left to reach it. The board "
+            "now scrolls far enough to bring it fully into the open, at any "
+            "window width and any column width.",
+        ],
+    },
+    {
         "date": "2026-08-01",
         "title": "Boards that are already loaded when you get there",
         "items": [
