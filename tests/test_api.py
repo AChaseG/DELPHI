@@ -109,3 +109,26 @@ def test_index_assets_are_absolute():
     html = pathlib.Path("frontend/index.html").read_text()
     for asset in ('js/app.js', 'js/api.js', 'css/styles.css'):
         assert f'"/{asset}"' in html, f"{asset} should be referenced absolutely"
+
+
+def test_blank_names_are_rejected_with_a_reason(client, register):
+    """A nameless feed/alert used to be accepted, so the board grew items the
+    user couldn't tell apart. The rejection must name the field."""
+    hdr = register("namer")
+    for path in ("/api/alerts", "/api/feeds"):
+        r = client.post(path, json={"name": "   ", "criteria": {}}, headers=hdr)
+        assert r.status_code == 422, f"{path} -> {r.status_code}"
+        detail = r.json()["detail"]
+        # FastAPI returns validation errors as a list of {loc, msg}; the client
+        # formats these for display, so the field must be identifiable.
+        assert isinstance(detail, list) and detail
+        assert "name" in detail[0]["loc"]
+        assert "name" in detail[0]["msg"].lower()
+
+
+def test_names_are_trimmed(client, register):
+    hdr = register("trimmer")
+    r = client.post("/api/alerts", json={"name": "  Tokyo watch  ", "criteria": {}}, headers=hdr)
+    assert r.status_code == 201
+    alerts = client.get("/api/alerts", headers=hdr).json()
+    assert alerts[0]["name"] == "Tokyo watch"

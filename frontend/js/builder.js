@@ -34,6 +34,7 @@ const Builder = {
   LAST_STEP: 3,
 
   showStep(n) {
+    this.clearError();   // a previous rejection doesn't apply once you move on
     this.step = Math.max(0, Math.min(this.LAST_STEP, n));
     for (const s of document.querySelectorAll(".wiz-step"))
       s.hidden = +s.dataset.step !== this.step;
@@ -276,7 +277,10 @@ const Builder = {
       auto_coverage: el("b-coverage").checked,
     };
     const sort = document.querySelector('input[name="b-sort"]:checked').value;
-    return { name: el("b-name").value.trim() || "Untitled", criteria, sort };
+    // No "Untitled" fallback: a silently auto-named alert is one the user
+    // can't recognize later, and it also made the server's name rule
+    // unreachable. save() asks for a name instead.
+    return { name: el("b-name").value.trim(), criteria, sort };
   },
 
   async preview() {
@@ -292,6 +296,14 @@ const Builder = {
 
   async save() {
     const body = this.collect();
+    if (!body.name) {
+      // Caught here rather than on the server so the answer is instant and
+      // points at the field that needs filling in.
+      this.showStep(0);   // clears the error, so set it after moving
+      this.showError(`Give this ${this.mode} a name first.`);
+      el("b-name").focus();
+      return;
+    }
     // Converting = editing an item while the toggle points at the other kind.
     // Criteria are shared between feeds and alerts, so the new item is created
     // first (with everything carried over) and the old one deleted only after
@@ -320,8 +332,25 @@ const Builder = {
       this.close();
       if (this.onSaved) this.onSaved(this.mode, converting);
     } catch (e) {
-      alert("Could not save: " + e.message);
+      // Keep the wizard open with everything the user typed intact, and say
+      // what was wrong next to the Save button. A native alert() can be
+      // suppressed by the browser ("don't show more dialogs"), which leaves a
+      // failed save looking like a button that did nothing.
+      this.showError(e.message || "Could not save.");
     }
+  },
+
+  showError(msg) {
+    const box = el("builder-error");
+    if (!box) return;
+    box.textContent = msg;
+    box.hidden = false;
+    box.scrollIntoView({ block: "nearest" });
+  },
+
+  clearError() {
+    const box = el("builder-error");
+    if (box) { box.textContent = ""; box.hidden = true; }
   },
 
   async remove() {

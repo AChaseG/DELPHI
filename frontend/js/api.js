@@ -73,6 +73,28 @@ const Session = {
    Generous by design: slow is not the same as dead. */
 const API_TIMEOUT_MS = 30000;
 
+/* Turn any error payload into a sentence a person can act on.
+
+   Endpoint errors are plain strings, but request-validation failures come back
+   as FastAPI's list of {loc, msg} objects. Passing that straight to Error()
+   stringifies it as "[object Object]", which is how a rejected save ends up
+   telling the user nothing at all. */
+function errorText(detail, status = 0) {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    return detail.map((d) => {
+      // loc is like ["body", "name"] — the last entry names the offending field.
+      const field = Array.isArray(d.loc)
+        ? d.loc.filter((p) => p !== "body" && typeof p === "string").pop()
+        : null;
+      const msg = (d.msg || "is invalid").replace(/^Value error,\s*/, "");
+      return field ? `${field}: ${msg}` : msg;
+    }).join("; ");
+  }
+  if (detail && typeof detail === "object" && detail.msg) return String(detail.msg);
+  return status ? `Request failed (HTTP ${status})` : "Request failed";
+}
+
 async function api(path, options = {}) {
   const headers = {
     "Content-Type": "application/json",
@@ -101,8 +123,8 @@ async function api(path, options = {}) {
   }
   if (!resp.ok) {
     let detail = resp.statusText;
-    try { detail = (await resp.json()).detail || detail; } catch (e) { /* not json */ }
-    throw new Error(detail);
+    try { detail = (await resp.json()).detail ?? detail; } catch (e) { /* not json */ }
+    throw new Error(errorText(detail, resp.status));
   }
   if (resp.status === 204) return null;
   return resp.json();

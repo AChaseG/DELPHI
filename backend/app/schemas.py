@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Criteria(BaseModel):
@@ -32,7 +32,22 @@ class Criteria(BaseModel):
     auto_coverage: bool = False
 
 
-class FeedIn(BaseModel):
+class _Named(BaseModel):
+    """Shared name rule. Without it a blank name is accepted and the item shows
+    up on the board as an untitled column the user can't tell apart."""
+
+    @field_validator("name", check_fields=False)
+    @classmethod
+    def _name_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("give it a name so you can recognize it later")
+        if len(v) > 200:
+            raise ValueError("name is too long (200 characters max)")
+        return v
+
+
+class FeedIn(_Named):
     name: str
     criteria: Criteria = Field(default_factory=Criteria)
     sort: str = "newest"
@@ -50,7 +65,7 @@ class FeedOut(FeedIn):
         from_attributes = True
 
 
-class AlertIn(BaseModel):
+class AlertIn(_Named):
     name: str
     criteria: Criteria = Field(default_factory=Criteria)
     active: bool = True
