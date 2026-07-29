@@ -753,9 +753,54 @@ function safeUrl(url) {
   return /^https?:\/\//i.test(url || "") ? url : "";
 }
 
+/* Last successfully loaded items per column.
+
+   The board is rebuilt from scratch whenever the view changes, so without this
+   every switch between Home, My feeds, and a Pantheon threw away news that had
+   already been fetched and left empty columns until the network answered again.
+   Keeping the last good result lets a column paint instantly from memory and
+   refresh behind that — and lets a failed refresh keep showing what it had
+   rather than replacing real news with an error. Cleared on reload; the server
+   remains the source of truth. */
+const FEED_CACHE = new Map();
+
+const feedCacheKey = (feed) => (feed.home ? "home:" + feed.home : "feed:" + feed.id);
+
+function renderFeedItems(body, feed, items) {
+  body.innerHTML = "";
+  if (!items.length) {
+    body.innerHTML = '<div class="feed-empty">No matching articles yet. ' +
+      "Open the feed (✎) and use <b>Preview matches</b> while removing one filter " +
+      "at a time to see which criterion is limiting it. If the feed has a query or " +
+      "keywords, make sure <b>🔍 Automatically ingest worldwide coverage</b> is " +
+      "checked and re-save — D.E.L.P.H.I. only searches articles its sources publish, " +
+      "and that option adds a source pulling in press coverage of your query.</div>";
+    return;
+  }
+  if (feed.group_events) for (const g of items) body.appendChild(eventGroup(g));
+  else for (const a of items) body.appendChild(articleRow(a, "focus"));
+}
+
+/* A quiet strip at the top of a column saying its contents are the last known
+   good ones. Not an error state: the news below is still real, just not fresh. */
+function staleNotice(body, message) {
+  const old = body.querySelector(".feed-stale");
+  if (old) old.remove();
+  const note = document.createElement("div");
+  note.className = "feed-stale";
+  note.textContent = message;
+  body.prepend(note);
+}
+
 async function loadFeedArticles(feed) {
   const body = document.querySelector(`#feed-${feed.id ?? feed.home} .feed-body`);
   if (!body) return;
+  const key = feedCacheKey(feed);
+  const cached = FEED_CACHE.get(key);
+  // Paint what we already have before waiting on the network, so switching
+  // views shows news immediately instead of an empty column.
+  if (cached && !body.querySelector(".article, .event-group"))
+    renderFeedItems(body, feed, cached);
   try {
     let items;
     if (feed.home) {  // Delphi-generated Home column: ad-hoc criteria search
@@ -765,20 +810,18 @@ async function loadFeedArticles(feed) {
     } else {
       items = feed.group_events ? await API.feedEvents(feed.id) : await API.feedArticles(feed.id);
     }
-    body.innerHTML = "";
-    if (!items.length) {
-      body.innerHTML = '<div class="feed-empty">No matching articles yet. ' +
-        "Open the feed (✎) and use <b>Preview matches</b> while removing one filter " +
-        "at a time to see which criterion is limiting it. If the feed has a query or " +
-        "keywords, make sure <b>🔍 Automatically ingest worldwide coverage</b> is " +
-        "checked and re-save — D.E.L.P.H.I. only searches articles its sources publish, " +
-        "and that option adds a source pulling in press coverage of your query.</div>";
-      return;
-    }
-    if (feed.group_events) for (const g of items) body.appendChild(eventGroup(g));
-    else for (const a of items) body.appendChild(articleRow(a, "focus"));
+    FEED_CACHE.set(key, items);
+    renderFeedItems(body, feed, items);
   } catch (e) {
-    body.replaceChildren(feedEmpty("Failed to load: " + e.message));
+    // Never trade real articles for an error message. Only a column with
+    // nothing to show falls back to reporting the failure.
+    if (cached && cached.length) {
+      if (!body.querySelector(".article, .event-group"))
+        renderFeedItems(body, feed, cached);
+      staleNotice(body, `Couldn't refresh (${e.message}) — showing the last update.`);
+    } else {
+      body.replaceChildren(feedEmpty("Failed to load: " + e.message));
+    }
   }
 }
 
