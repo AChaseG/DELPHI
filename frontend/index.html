@@ -560,14 +560,8 @@
       <p class="set-note">A Pantheon is an organization: create one, invite other accounts,
          and share feeds and alerts with everyone in it. Each Pantheon gets its own board
          beside 🏠 Home and 📋 My feeds.</p>
-      <h3 class="set-h">Create a Pantheon</h3>
       <div class="pn-create">
-        <input id="pn-name" type="text" maxlength="80" placeholder="Name — e.g. Aegean Watch Desk">
-        <select id="pn-visibility">
-          <option value="private">🔒 Private — invitation only</option>
-          <option value="public">🌐 Public — anyone can join</option>
-        </select>
-        <button class="btn btn-primary" id="btn-create-pantheon">Create</button>
+        <button class="btn btn-primary" id="btn-create-pantheon">🏛 New Pantheon</button>
       </div>
       <div id="pn-invites-section" hidden>
         <h3 class="set-h">Invitations</h3>
@@ -773,6 +767,76 @@
   </div>
 
   <!-- Boolean search builder -->
+  <!-- Pantheon create / manage modal — same shape as the feed & alert builder:
+       tabs across the top, one working area, actions along the bottom. -->
+  <div id="pn-backdrop" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pn-modal-title">
+      <div class="modal-head">
+        <h2 id="pn-modal-title">New Pantheon</h2>
+        <nav class="wiz-nav" id="pn-tabs">
+          <button data-tab="details" class="active">Details</button>
+          <button data-tab="members">Members</button>
+          <button data-tab="access">Access</button>
+        </nav>
+        <button class="icon-btn" id="btn-close-pn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <section class="pn-tab" data-tab="details">
+          <label class="set-row"><span>Name</span>
+            <input id="pn-f-name" type="text" maxlength="80"
+                   placeholder="e.g. Aegean Watch Desk">
+          </label>
+          <label class="set-row"><span>Description <em>(optional)</em></span>
+            <input id="pn-f-desc" type="text" maxlength="500"
+                   placeholder="What this group watches">
+          </label>
+          <label class="set-row"><span>Visibility</span>
+            <select id="pn-f-visibility">
+              <option value="private">🔒 Private — invitation only</option>
+              <option value="public">🌐 Public — anyone can join</option>
+            </select>
+          </label>
+          <p class="set-note">Members share feeds and alerts here. A Pantheon gets its
+             own board beside 🏠 Home and 📋 My feeds, and shared alerts fire for
+             everyone in it.</p>
+        </section>
+
+        <section class="pn-tab" data-tab="members" hidden>
+          <div class="pn-row" id="pn-invite-row">
+            <input id="pn-f-invite" type="text" placeholder="Invite by username or email">
+            <button class="btn small" id="btn-pn-invite">Invite</button>
+          </div>
+          <div id="pn-members"></div>
+          <div id="pn-pending" class="s-meta"></div>
+        </section>
+
+        <section class="pn-tab" data-tab="access" hidden>
+          <label class="set-row"><span>Who can invite people</span>
+            <select id="pn-f-invitepol">
+              <option value="members">All members</option>
+              <option value="admins">Admins only</option>
+            </select>
+          </label>
+          <label class="set-row"><span>Who can share feeds &amp; alerts</span>
+            <select id="pn-f-sharepol">
+              <option value="members">All members</option>
+              <option value="admins">Admins only</option>
+            </select>
+          </label>
+          <p class="set-note" id="pn-access-note">Only the owner and admins can change these.</p>
+        </section>
+      </div>
+      <div class="modal-foot">
+        <button class="btn danger" id="btn-pn-delete" hidden>Delete Pantheon</button>
+        <button class="btn danger" id="btn-pn-leave" hidden>Leave</button>
+        <span id="pn-error" class="builder-error" role="alert" hidden></span>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-pn-board" hidden>Open board</button>
+        <button class="btn btn-primary" id="btn-pn-save">Create</button>
+      </div>
+    </div>
+  </div>
+
   <div id="qb-backdrop" class="modal-backdrop" hidden>
     <div class="modal qb-modal" role="dialog" aria-modal="true">
       <div class="modal-head">

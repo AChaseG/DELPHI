@@ -590,6 +590,22 @@ button { font: inherit; }
   z-index: 2;
 }
 
+/* ---------- Pantheon modal ---------- */
+.pn-tab { display: block; }
+.pn-tab[hidden] { display: none; }
+.pn-tab .set-row { padding: 8px 0; }
+#pn-members { margin-top: 10px; }
+#pn-members:empty::after {
+  content: "No members yet.";
+  color: var(--ink-muted); font-size: 12.5px;
+}
+#pn-pending:not(:empty) { margin-top: 10px; }
+#pn-invite-row input { flex: 1; min-width: 0; }
+/* Read-only fields for members without admin rights: legible, clearly inert. */
+.pn-tab input:disabled, .pn-tab select:disabled {
+  opacity: 0.75; cursor: not-allowed;
+}
+
 /* Why a save was rejected, shown in the wizard footer beside Save. */
 .builder-error[hidden] { display: none; }
 .builder-error {

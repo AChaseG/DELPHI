@@ -1129,19 +1129,8 @@ function wirePantheons() {
     renderPantheonsPanel();
   };
   el("btn-close-pantheons").onclick = () => { el("pantheons-panel").hidden = true; };
-  el("btn-create-pantheon").onclick = async () => {
-    const name = el("pn-name").value.trim();
-    if (!name) { toast("Name needed", "Give your Pantheon a name first."); return; }
-    try {
-      await API.createPantheon({ name, visibility: el("pn-visibility").value });
-      el("pn-name").value = "";
-      await refreshPantheons();
-      renderPantheonsPanel();
-      renderBoard();  // feed columns gain their 🏛 share buttons
-      toast("Pantheon founded", `“${name}” is ready — invite members from its card below.`);
-    } catch (e) { toast("Could not create", e.message); }
-  };
-  feedback(el("btn-create-pantheon"), "Creating…");
+  wirePantheonModal();
+  el("btn-create-pantheon").onclick = () => PantheonModal.open();
 }
 
 /* ---------- board scrollbar ----------
@@ -1344,6 +1333,239 @@ function adminUserRow(u) {
   return row;
 }
 
+/* ---------- Pantheon create / manage modal ----------
+   Same shape as the feed & alert builder: tabs, one working area, actions along
+   the bottom. Replaces the inline form and the accordion that used to live in
+   the side panel, where members, invites, and access settings were stacked into
+   a narrow column. */
+const PantheonModal = {
+  id: null,          // null = creating
+  detail: null,      // server detail while managing
+  tab: "details",
+
+  open(pantheon = null) {
+    this.id = pantheon ? pantheon.id : null;
+    this.detail = null;
+    this.clearError();
+    el("pn-modal-title").textContent = pantheon ? `🏛 ${pantheon.name}` : "New Pantheon";
+    el("pn-f-name").value = pantheon ? pantheon.name : "";
+    el("pn-f-desc").value = pantheon ? pantheon.description || "" : "";
+    el("pn-f-visibility").value = pantheon ? pantheon.visibility : "private";
+    el("btn-pn-save").textContent = pantheon ? "Save changes" : "Create";
+    // Members and Access only mean something once the Pantheon exists.
+    for (const b of el("pn-tabs").querySelectorAll("button"))
+      b.hidden = !pantheon && b.dataset.tab !== "details";
+    el("btn-pn-board").hidden = !pantheon;
+    el("btn-pn-delete").hidden = true;
+    el("btn-pn-leave").hidden = true;
+    this.showTab("details");
+    el("pn-backdrop").hidden = false;
+    el("pn-f-name").focus();
+    if (pantheon) this.loadDetail();
+  },
+
+  close() { el("pn-backdrop").hidden = true; },
+
+  showTab(tab) {
+    this.tab = tab;
+    for (const s of document.querySelectorAll(".pn-tab"))
+      s.hidden = s.dataset.tab !== tab;
+    for (const b of el("pn-tabs").querySelectorAll("button"))
+      b.classList.toggle("active", b.dataset.tab === tab);
+  },
+
+  async loadDetail() {
+    try {
+      const d = await API.pantheonDetail(this.id);
+      this.detail = d;
+      const admin = d.role === "owner" || d.role === "admin";
+      el("btn-pn-delete").hidden = d.role !== "owner";
+      el("btn-pn-leave").hidden = d.role === "owner";
+      // Owners and admins edit the identity fields; everyone else reads them.
+      for (const id of ["pn-f-name", "pn-f-desc", "pn-f-visibility"])
+        el(id).disabled = !admin;
+      el("btn-pn-save").hidden = !admin;
+      this.renderMembers(d);
+      this.renderAccess(d);
+    } catch (e) {
+      this.showError(e.message);
+    }
+  },
+
+  renderMembers(d) {
+    const box = el("pn-members");
+    box.innerHTML = "";
+    const admin = d.role === "owner" || d.role === "admin";
+    const mayInvite = admin || (d.settings && d.settings.who_can_invite === "members");
+    el("pn-invite-row").hidden = !mayInvite;
+
+    for (const m of d.members) {
+      const row = document.createElement("div");
+      row.className = "pn-row";
+      const name = document.createElement("span");
+      name.className = "pn-name";
+      name.textContent =
+        `${m.role === "owner" ? "👑" : m.role === "admin" ? "🛡" : "👤"} ${m.username}`;
+      const meta = document.createElement("span");
+      meta.className = "s-meta";
+      meta.textContent = m.role;
+      row.append(name, meta);
+
+      if (d.role === "owner" && m.role !== "owner") {
+        const promote = document.createElement("button");
+        promote.className = "btn small";
+        promote.textContent = m.role === "admin" ? "Demote" : "Make admin";
+        promote.onclick = async () => {
+          await API.setMemberRole(d.id, m.user_id, m.role === "admin" ? "member" : "admin");
+          await this.loadDetail();
+        };
+        feedback(promote);
+        row.appendChild(promote);
+      }
+      if (admin && m.role !== "owner" && (d.role === "owner" || m.role === "member")) {
+        const kick = document.createElement("button");
+        kick.className = "icon-btn";
+        kick.textContent = "✕";
+        kick.title = `Remove ${m.username}`;
+        kick.setAttribute("aria-label", `Remove ${m.username}`);
+        kick.onclick = async () => {
+          if (!confirm(`Remove ${m.username} from ${d.name}?`)) return;
+          await API.removeMember(d.id, m.user_id);
+          await this.loadDetail();
+          refreshPantheons();
+        };
+        feedback(kick);
+        row.appendChild(kick);
+      }
+      box.appendChild(row);
+    }
+    const pending = el("pn-pending");
+    pending.textContent = (d.pending_invites && d.pending_invites.length)
+      ? "Invited, not yet accepted: " + d.pending_invites.join(", ") : "";
+  },
+
+  renderAccess(d) {
+    const admin = d.role === "owner" || d.role === "admin";
+    const s = d.settings || {};
+    el("pn-f-invitepol").value = s.who_can_invite || "members";
+    el("pn-f-sharepol").value = s.who_can_share || "members";
+    el("pn-f-invitepol").disabled = !admin;
+    el("pn-f-sharepol").disabled = !admin;
+    el("pn-access-note").textContent = admin
+      ? "Applies to everyone in this Pantheon."
+      : "Only the owner and admins can change these.";
+  },
+
+  showError(msg) {
+    const box = el("pn-error");
+    box.textContent = msg;
+    box.hidden = false;
+  },
+  clearError() {
+    const box = el("pn-error");
+    if (box) { box.textContent = ""; box.hidden = true; }
+  },
+
+  async save() {
+    this.clearError();
+    const name = el("pn-f-name").value.trim();
+    if (!name) {
+      this.showTab("details");
+      this.showError("Give the Pantheon a name.");
+      el("pn-f-name").focus();
+      return;
+    }
+    const body = {
+      name,
+      description: el("pn-f-desc").value.trim(),
+      visibility: el("pn-f-visibility").value,
+    };
+    try {
+      if (this.id) {
+        await API.updatePantheon(this.id, {
+          ...body,
+          settings: {
+            who_can_invite: el("pn-f-invitepol").value,
+            who_can_share: el("pn-f-sharepol").value,
+          },
+        });
+        toast("Saved", `${name} updated.`);
+      } else {
+        const created = await API.createPantheon(body);
+        toast("Pantheon founded", `“${name}” is ready — invite members from the Members tab.`);
+        this.open(created);   // stay open so the user can invite straight away
+        await refreshPantheons();
+        renderPantheonsPanel();
+        renderBoard();
+        return;
+      }
+      await refreshPantheons();
+      renderPantheonsPanel();
+      renderBoard();
+      this.close();
+    } catch (e) {
+      this.showError(e.message);
+    }
+  },
+};
+
+function wirePantheonModal() {
+  el("btn-close-pn").onclick = () => PantheonModal.close();
+  el("pn-backdrop").addEventListener("mousedown", (e) => {
+    if (e.target === el("pn-backdrop")) PantheonModal.close();
+  });
+  for (const b of el("pn-tabs").querySelectorAll("button"))
+    b.onclick = () => PantheonModal.showTab(b.dataset.tab);
+
+  el("btn-pn-save").onclick = () => PantheonModal.save();
+  feedback(el("btn-pn-save"), "Saving…");
+
+  el("btn-pn-board").onclick = () => {
+    const id = PantheonModal.id;
+    PantheonModal.close();
+    el("pantheons-panel").hidden = true;
+    if (id) setView("pantheon:" + id);
+  };
+
+  el("btn-pn-invite").onclick = async () => {
+    const who = el("pn-f-invite").value.trim();
+    if (!who) return;
+    try {
+      const r = await API.invitePantheon(PantheonModal.id, who);
+      el("pn-f-invite").value = "";
+      toast("Invitation sent", `${r.username} can accept it from their 🏛 panel.`);
+      await PantheonModal.loadDetail();
+    } catch (e) { PantheonModal.showError(e.message); }
+  };
+  feedback(el("btn-pn-invite"), "Inviting…");
+
+  el("btn-pn-delete").onclick = async () => {
+    const d = PantheonModal.detail;
+    if (!d || !confirm(`Delete ${d.name} for everyone, including its shared feeds and alerts?`)) return;
+    try {
+      await API.deletePantheon(d.id);
+      PantheonModal.close();
+      await refreshPantheons();
+      renderPantheonsPanel();
+      if (VIEW === "pantheon:" + d.id) setView("home");
+    } catch (e) { PantheonModal.showError(e.message); }
+  };
+  feedback(el("btn-pn-delete"), "Deleting…");
+
+  el("btn-pn-leave").onclick = async () => {
+    const d = PantheonModal.detail;
+    if (!d || !confirm(`Leave ${d.name}?`)) return;
+    try {
+      await API.leavePantheon(d.id);
+      PantheonModal.close();
+      await refreshPantheons();
+      renderPantheonsPanel();
+      if (VIEW === "pantheon:" + d.id) setView("home");
+    } catch (e) { PantheonModal.showError(e.message); }
+  };
+  feedback(el("btn-pn-leave"), "Leaving…");
+}
+
 /* Small anchored chooser: pick one of my Pantheons. */
 function pantheonPickMenu(anchor, onPick) {
   const old = document.querySelector(".pop-menu");
@@ -1466,152 +1688,11 @@ function pantheonCard(p) {
   openBtn.onclick = () => { el("pantheons-panel").hidden = true; setView("pantheon:" + p.id); };
   const detailBtn = document.createElement("button");
   detailBtn.className = "btn small"; detailBtn.textContent = "Manage";
+  detailBtn.title = "Members, invitations, and access settings";
+  detailBtn.onclick = () => PantheonModal.open(p);
   head.append(label, meta, openBtn, detailBtn);
   card.appendChild(head);
-  const detail = document.createElement("div");
-  detail.className = "pn-detail";
-  detail.hidden = true;
-  card.appendChild(detail);
-  detailBtn.onclick = async () => {
-    if (!detail.hidden) { detail.hidden = true; return; }
-    detail.hidden = false;
-    detail.innerHTML = '<div class="feed-empty">Loading…</div>';
-    try { renderPantheonDetail(detail, await API.pantheonDetail(p.id)); }
-    catch (e) { detail.replaceChildren(feedEmpty(e.message)); }
-  };
-  feedback(detailBtn);
   return card;
-}
-
-function renderPantheonDetail(box, d) {
-  box.innerHTML = "";
-  const admin = d.role === "owner" || d.role === "admin";
-
-  const members = document.createElement("div");
-  for (const m of d.members) {
-    const row = document.createElement("div");
-    row.className = "pn-row";
-    const name = document.createElement("span");
-    name.className = "pn-name";
-    name.textContent = `${m.role === "owner" ? "👑" : m.role === "admin" ? "🛡" : "👤"} ${m.username}`;
-    const meta = document.createElement("span");
-    meta.className = "s-meta"; meta.textContent = m.role;
-    row.append(name, meta);
-    if (d.role === "owner" && m.role !== "owner") {
-      const promote = document.createElement("button");
-      promote.className = "btn small";
-      promote.textContent = m.role === "admin" ? "Demote" : "Make admin";
-      promote.onclick = async () => {
-        await API.setMemberRole(d.id, m.user_id, m.role === "admin" ? "member" : "admin")
-          .catch(e => toast("Could not change role", e.message));
-        renderPantheonDetail(box, await API.pantheonDetail(d.id));
-      };
-      feedback(promote);
-      row.appendChild(promote);
-    }
-    if (admin && m.role !== "owner" && (d.role === "owner" || m.role === "member")) {
-      const kick = document.createElement("button");
-      kick.className = "icon-btn"; kick.textContent = "✕"; kick.title = `Remove ${m.username}`;
-      kick.onclick = async () => {
-        if (!confirm(`Remove ${m.username} from ${d.name}?`)) return;
-        await API.removeMember(d.id, m.user_id).catch(e => toast("Could not remove", e.message));
-        renderPantheonDetail(box, await API.pantheonDetail(d.id));
-        refreshPantheons();
-      };
-      feedback(kick);
-      row.appendChild(kick);
-    }
-    members.appendChild(row);
-  }
-  box.appendChild(members);
-
-  // invite box (visibility governed by the Pantheon's who_can_invite setting)
-  const mayInvite = admin || (d.settings && d.settings.who_can_invite === "members");
-  if (mayInvite) {
-    const invRow = document.createElement("div");
-    invRow.className = "pn-row";
-    const input = document.createElement("input");
-    input.type = "text"; input.placeholder = "Invite by username or email";
-    const btn = document.createElement("button");
-    btn.className = "btn small"; btn.textContent = "Invite";
-    btn.onclick = async () => {
-      const who = input.value.trim();
-      if (!who) return;
-      try {
-        const r = await API.invitePantheon(d.id, who);
-        input.value = "";
-        toast("Invitation sent", `${r.username} can accept it from their 🏛 panel.`);
-        renderPantheonDetail(box, await API.pantheonDetail(d.id));
-      } catch (e) { toast("Could not invite", e.message); }
-    };
-    feedback(btn);
-    invRow.append(input, btn);
-    box.appendChild(invRow);
-  }
-  if (admin && d.pending_invites && d.pending_invites.length) {
-    const pend = document.createElement("div");
-    pend.className = "s-meta";
-    pend.textContent = "Pending: " + d.pending_invites.join(", ");
-    box.appendChild(pend);
-  }
-
-  // settings (owner/admin)
-  if (admin) {
-    const mkSetting = (labelText, key, options, current, onChange) => {
-      const row = document.createElement("div");
-      row.className = "pn-row";
-      const lab = document.createElement("span");
-      lab.className = "s-meta"; lab.textContent = labelText;
-      const sel = document.createElement("select");
-      for (const [v, t] of options) sel.appendChild(new Option(t, v));
-      sel.value = current;
-      sel.onchange = () => onChange(sel.value);
-      row.append(lab, sel);
-      return row;
-    };
-    box.appendChild(mkSetting("Visibility", "visibility",
-      [["private", "🔒 Private — invitation only"], ["public", "🌐 Public — anyone can join"]],
-      d.visibility,
-      async (v) => { await API.updatePantheon(d.id, { visibility: v }).catch(e => toast("Failed", e.message)); refreshPantheons(); }));
-    box.appendChild(mkSetting("Who can invite", "who_can_invite",
-      [["members", "All members"], ["admins", "Admins only"]],
-      d.settings.who_can_invite,
-      async (v) => { await API.updatePantheon(d.id, { settings: { who_can_invite: v } }).catch(e => toast("Failed", e.message)); }));
-    box.appendChild(mkSetting("Who can share feeds/alerts", "who_can_share",
-      [["members", "All members"], ["admins", "Admins only"]],
-      d.settings.who_can_share,
-      async (v) => { await API.updatePantheon(d.id, { settings: { who_can_share: v } }).catch(e => toast("Failed", e.message)); }));
-  }
-
-  // leave / delete
-  const foot = document.createElement("div");
-  foot.className = "pn-row";
-  if (d.role === "owner") {
-    const del = document.createElement("button");
-    del.className = "btn small danger"; del.textContent = "Delete Pantheon";
-    del.onclick = async () => {
-      if (!confirm(`Delete ${d.name} for everyone, including its shared feeds and alerts?`)) return;
-      await API.deletePantheon(d.id).catch(e => toast("Could not delete", e.message));
-      await refreshPantheons();
-      renderPantheonsPanel();
-      if (VIEW === "pantheon:" + d.id) setView("home");
-    };
-    feedback(del);
-    foot.appendChild(del);
-  } else {
-    const leave = document.createElement("button");
-    leave.className = "btn small danger"; leave.textContent = "Leave Pantheon";
-    leave.onclick = async () => {
-      if (!confirm(`Leave ${d.name}?`)) return;
-      await API.leavePantheon(d.id).catch(e => toast("Could not leave", e.message));
-      await refreshPantheons();
-      renderPantheonsPanel();
-      if (VIEW === "pantheon:" + d.id) setView("home");
-    };
-    feedback(leave);
-    foot.appendChild(leave);
-  }
-  box.appendChild(foot);
 }
 
 /* ---------- alerts ---------- */
@@ -1941,7 +2022,11 @@ function feedback(btn, label = "") {
       // discards the node — only restore it if it's still on the page.
       if (btn.isConnected) {
         btn.disabled = wasDisabled;
-        if (label) btn.textContent = text;
+        // Restore the old label only if the handler didn't set its own. A
+        // handler may legitimately relabel the button it was invoked from
+        // (Create -> Save changes); putting the previous text back would undo
+        // that, and the button would then lie about what it does.
+        if (label && btn.textContent === label) btn.textContent = text;
         btn.classList.remove("working");
       }
     }
