@@ -49,7 +49,8 @@
       <span class="rail-icon">🏛</span><span class="rail-label">Pantheons</span><span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
     <button id="btn-locations" class="btn rail-btn" title="Favourite locations — flag news near places you care about">
       <span class="rail-icon">📍</span><span class="rail-label">Locations</span></button>
-    <button id="btn-refresh" class="btn rail-btn" title="Poll all sources now">
+    <button id="btn-refresh" class="btn rail-btn"
+            title="Poll every news wire now, plus the local city feeds that are due">
       <span class="rail-icon">⟳</span><span class="rail-label">Refresh</span></button>
     <button id="btn-alerts-panel" class="btn rail-btn bell" title="Alerts">
       <span class="rail-icon">🔔</span><span class="rail-label">Alerts</span><span id="bell-count" class="bell-count" hidden>0</span></button>
@@ -131,51 +132,440 @@
       </label>
       <h3 class="set-h">Help</h3>
       <div class="set-row">
-        <span>New here, or wondering how something works?</span>
-        <button class="btn small" id="btn-open-faq">❓ FAQ &amp; tutorial</button>
+        <span>Step-by-step instructions, and answers to the common questions</span>
+        <button class="btn small" id="btn-open-faq">❓ How to &amp; FAQ</button>
       </div>
       <div class="set-row">
         <span>See everything that has shipped, by date</span>
         <button class="btn small" id="btn-whats-new">🆕 What's new</button>
       </div>
       <p class="set-note">Settings are saved to your account and follow you to any browser
-         or device — change the theme here, see it after signing in anywhere.</p>
+         or device — change the theme here and you'll find it applied after signing in
+         anywhere else.</p>
     </div>
   </aside>
 
-  <!-- FAQ / tutorial modal -->
+  <!-- Help modal: two tabs. "How to" is procedure — do this, then this. "FAQ"
+       is explanation — what a thing is and why it behaves as it does. They were
+       one accordion, which meant every question dragged its instructions along
+       with it and neither read well. -->
   <div id="faq-backdrop" class="modal-backdrop" hidden>
-    <div class="modal faq-modal" role="dialog" aria-modal="true">
+    <div class="modal faq-modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
       <div class="modal-head">
-        <h2>❓ D.E.L.P.H.I. — FAQ &amp; tutorial</h2>
-        <button class="icon-btn" id="btn-close-faq" aria-label="Close faq">✕</button>
+        <h2 id="help-title">❓ D.E.L.P.H.I. — Help</h2>
+        <nav class="wiz-nav" id="help-tabs" role="tablist">
+          <button data-tab="howto" class="active">📖 How to</button>
+          <button data-tab="faq">❓ FAQ</button>
+        </nav>
+        <button class="icon-btn" id="btn-close-faq" aria-label="Close help">✕</button>
       </div>
-      <div class="modal-body faq-body">
+
+      <!-- ===================== HOW TO ===================== -->
+      <div class="modal-body faq-body help-tab" data-tab="howto">
+        <p class="wiz-guide">Every task in D.E.L.P.H.I., step by step. Open a heading
+           to see the steps. For what something <em>is</em>, or why it behaves the way
+           it does, switch to the <b>❓ FAQ</b> tab.</p>
 
         <details open>
-          <summary>🚀 Getting started — a two-minute tour</summary>
+          <summary>🚀 First five minutes</summary>
           <ol>
-            <li><b>Home</b> is your situational overview: columns curated by D.E.L.P.H.I.
-              (top events, breaking, conflict, politics, business, sci-tech, social pulse),
-              generated live from everything ingested. Scroll the board sideways; each
-              column scrolls its own articles vertically.</li>
-            <li>Click any <b>event card or article row</b> to open <b>Event Focus</b> —
-              synopsis, map, cross-source timeline, outlets (each links to its article),
-              and related events. Every story is an event, even single-source ones.
-              Viewed events dim so you can see what you've already triaged.</li>
-            <li>Press <b>📌</b> on a Home column to copy it into <b>📋 My feeds</b>, or
-              <b>+ Create</b> to build your own with the four-step wizard: Topic
-              (keywords/Boolean searches), Where (countries or a shape drawn on the map),
-              Refine (categories, platforms, importance…), Review (summary + live match
-              count).</li>
-            <li>The <b>📋 Feed / 🔔 Alert toggle</b> at the top of the wizard decides
-              what you're making: a feed is a column you read, an alert notifies you
-              live. Create an alert for anything you must know about the moment it
-              happens.</li>
-            <li>Add sources or track new topics in <b>Sources</b>; tune appearance,
-              language, timestamps, and notifications in <b>⚙ Settings</b>.</li>
+            <li>Sign in. You land on <b>🏠 Home</b>, a board of columns D.E.L.P.H.I.
+              curates for you from everything it has ingested.</li>
+            <li>Drag the board sideways, or use the bar beneath it, to reach the
+              columns off-screen. Each column scrolls its own articles vertically.</li>
+            <li>Click any headline to open <b>Event Focus</b> — the story's summary,
+              a map, every outlet covering it, and related events.</li>
+            <li>Found a Home column you want to keep and edit? Press <b>📌</b> in its
+              header to copy it to <b>📋 My feeds</b>.</li>
+            <li>Press <b>＋ Create</b> in the rail on the right to build your own feed,
+              or turn on an alert that tells you the moment something matches.</li>
           </ol>
+          <p>The rail on the right edge holds everything else. Click <b>‹</b> at its
+             top to expand it into labelled buttons and reveal the search box, or press
+             <b>\</b> (backslash) any time you aren't typing in a field.</p>
         </details>
+
+        <details>
+          <summary>👤 Signing in, verifying, and resetting a password</summary>
+          <p><b>Create an account:</b> on the sign-in card choose <b>Create one</b>,
+             then give a username (3–32 characters — letters, digits, <code>_ . -</code>),
+             an email address, and a password of at least 8 characters. D.E.L.P.H.I.
+             emails you a verification link; open it and you're verified.</p>
+          <p><b>Sign in:</b> username <em>or</em> email address, plus your password.
+             Press Enter in the password field instead of reaching for the button.</p>
+          <p><b>Forgot your password:</b> choose <b>Forgot password?</b>, enter your
+             account's email address, and open the link that arrives. It takes you
+             straight to a "set a new password" card. Reset links expire, so request a
+             fresh one rather than reusing an old email.</p>
+          <p><b>Sign out:</b> <b>👤</b> at the bottom of the rail.</p>
+          <p>No verification email? Check spam first. If it still hasn't arrived, the
+             server may have no mail configured — see <b>Troubleshooting</b> in the FAQ.</p>
+        </details>
+
+        <details>
+          <summary>🧭 Moving around the board</summary>
+          <p><b>Switch boards</b> with the buttons at the top left: <b>🏠 Home</b> (Delphi's
+             curated columns), <b>📋 My feeds</b> (the ones you built), and one button per
+             <b>🏛 Pantheon</b> you belong to.</p>
+          <p><b>Scroll sideways</b> by dragging the gold bar under the board, clicking
+             anywhere on its track to jump, or rolling a mouse wheel over the board. The
+             bar hides itself when every column already fits.</p>
+          <p><b>Search everything</b> from the box at the top of the expanded rail: type
+             and press Enter and the results arrive as a temporary column at the left of
+             the board. It accepts plain words or full Boolean syntax. Press <b>✕</b> in
+             that column's header to dismiss it, or empty the box and press Enter.</p>
+          <p><b>Read the tiles</b> along the top: articles in the last 24 hours, countries
+             covered in the last 24 hours, how many sources polled cleanly, and how many
+             alert hits you haven't looked at yet.</p>
+        </details>
+
+        <details>
+          <summary>📰 Reading an article row</summary>
+          <p>Each row carries the headline, then a line of markers:</p>
+          <ul>
+            <li>An <b>importance chip</b> — ▲ Critical, ◆ High, ● Notable or ○ Routine —
+              carrying the score itself.</li>
+            <li>The <b>outlet</b>, the <b>country</b> the story is about, and when it was
+              published, in whichever timestamp format you chose in Settings.</li>
+            <li>Its <b>categories</b>, and <b>⤢ event</b> — the whole story is one click
+              away.</li>
+            <li><b>📍 a place name</b> when the article falls inside one of your
+              favourite locations.</li>
+            <li><b>🌐 translated from XX</b> when it was written in another language.</li>
+            <li><b>🔓 archive.ph</b> on a paywalled outlet, which opens a readable
+              snapshot instead of the paywall.</li>
+          </ul>
+          <p>Clicking the row opens Event Focus; the links inside that panel take you to
+             the outlet's own page.</p>
+        </details>
+
+        <details>
+          <summary>🌱 Starting from an empty board</summary>
+          <p>A brand-new account has nothing in <b>📋 My feeds</b>, and the board offers
+             two ways out:</p>
+          <ul>
+            <li><b>Create your first feed</b> opens the wizard.</li>
+            <li><b>Add starter feeds</b> builds four ready-made columns — Top events
+              worldwide, Conflict &amp; disasters, Business &amp; economy, and Science
+              &amp; technology — so you have something to read, and something to take
+              apart, while you learn the wizard. They are ordinary feeds: rename,
+              retune, or delete them freely.</li>
+          </ul>
+          <p>The third option is to browse <b>🏠 Home</b> and press <b>📌</b> on any
+             column you like the look of, which copies it to My feeds as your own.</p>
+        </details>
+
+        <details>
+          <summary>📋 Creating a feed</summary>
+          <p>Press <b>＋ Create</b> in the rail. Make sure the toggle at the top of the
+             wizard reads <b>📋 Feed</b>, then work through the four steps — you can jump
+             between them with the numbered tabs, and everything except the name is
+             optional.</p>
+          <ol>
+            <li><b>Topic.</b> Name the feed (this is the column header, so make it one
+              you'll recognize). Add <b>keywords</b> — press Enter after each; an article
+              matching <em>any</em> of them qualifies. Add <b>exclude keywords</b> to drop
+              matches containing them. For anything more precise, write a <b>Boolean
+              search</b>, or press <b>🪄 build</b> beside the row to assemble one from
+              boxes. <b>+ Add another Boolean search</b> gives the feed a second, separate
+              search — matches from all of them fill the same column.</li>
+            <li><b>Where.</b> Pick countries (Ctrl or ⌘-click for several; none means
+              everywhere), and/or press <b>Draw area on map</b> and draw a polygon,
+              rectangle or circle. Draw as many areas as you like — an article inside
+              <em>any</em> of them matches.</li>
+            <li><b>Refine.</b> Categories, source scope, platforms, languages, a recency
+              window, an explicit date range, a minimum importance, and
+              <b>Pull only from specific sources</b>.</li>
+            <li><b>Review.</b> Read the summary of everything you set, press
+              <b>Preview matches</b> for a live count, choose <b>newest first</b> or
+              <b>importance</b>, and optionally tick <b>🧵 Group similar articles into
+              events</b> and <b>🕰 Hide events with no recent updates</b>. Press
+              <b>Save</b>.</li>
+          </ol>
+          <p>The new column appears at the end of <b>📋 My feeds</b>.</p>
+        </details>
+
+        <details>
+          <summary>🔔 Creating an alert</summary>
+          <p>Press <b>＋ Create</b> and set the toggle to <b>🔔 Alert</b>. Steps 1–3 are
+             identical to a feed — an alert is the same set of criteria, watching instead
+             of waiting. Step 4 offers different options:</p>
+          <ul>
+            <li><b>Alert active</b> — untick to silence it without deleting it.</li>
+            <li><b>✉️ Email me when this fires</b> — one digest per batch of matches, to
+              your account's address.</li>
+            <li><b>🔗 Webhook URL</b> — matching hits are POSTed as JSON, for Slack,
+              Discord, or anything of your own. It must start with
+              <code>http://</code> or <code>https://</code>.</li>
+          </ul>
+          <p>Keep alerts narrow. A broad alert fires constantly and stops meaning
+             anything; that's what a feed is for.</p>
+        </details>
+
+        <details>
+          <summary>✎ Editing, converting, and deleting a feed or alert</summary>
+          <p><b>Edit:</b> press <b>✎</b> in a feed's column header, or <b>✎</b> beside an
+             alert in the <b>🔔</b> panel. The wizard reopens with everything filled in;
+             change what you want and press <b>Save changes</b>.</p>
+          <p><b>Convert:</b> while editing, flip the <b>📋 Feed / 🔔 Alert</b> toggle at
+             the top. Every criterion carries over and saving completes the conversion —
+             a feed you keep checking becomes an alert that checks for you, or the
+             reverse.</p>
+          <p><b>Delete:</b> the red <b>Delete</b> button at the bottom of the wizard, or
+             <b>🗑</b> beside an alert in the 🔔 panel. Deleting a feed doesn't touch the
+             articles — they belong to the shared database, not to your column.</p>
+        </details>
+
+        <details>
+          <summary>↔ Arranging the board</summary>
+          <p><b>Reorder:</b> <b>◀</b> and <b>▶</b> in a column's header move it left and
+             right. The order is saved to your account.</p>
+          <p><b>Resize:</b> drag either <b>edge</b> of a column — a gold line marks the
+             edge when your pointer is on it — anywhere between 240 and 1000 pixels
+             wide. <b>Double-click</b> an edge to return that column to the default
+             width. <b>⇔</b> in the header flips between the standard and wide widths in
+             one click.</p>
+          <p><b>Resize from the keyboard:</b> Tab to a column edge and use <b>←</b> and
+             <b>→</b> (hold Shift for larger steps), or <b>Home</b> to reset it.</p>
+          <p><b>Refresh one column:</b> <b>⟳</b> in its header re-runs just that feed's
+             search. <b>⟳ Refresh</b> in the rail is the heavier one — it polls every
+             source.</p>
+          <p><b>Copy a column you don't own:</b> <b>📌</b> on a Home column or on anything
+             shared with a Pantheon puts an editable copy in 📋 My feeds.</p>
+        </details>
+
+        <details>
+          <summary>🧵 Reading a story in Event Focus</summary>
+          <ol>
+            <li>Click any headline or grouped event card.</li>
+            <li>The panel opens with the story's summary, its importance and category
+              badges, and a map of the places it mentions.</li>
+            <li><b>Timeline</b> lists every report on the story, newest first — each
+              links out to the original article.</li>
+            <li><b>Covered by</b> lists the outlets reporting it; click one to read its
+              version.</li>
+            <li><b>Related events</b> links to stories D.E.L.P.H.I. considers adjacent.</li>
+          </ol>
+          <p>Opening an event marks it read: it dims everywhere it appears, straight
+             away and on every device you sign in from, so a second pass over the board
+             shows you only what you haven't triaged. Hover a dimmed event to read it at
+             full strength.</p>
+        </details>
+
+        <details>
+          <summary>🪄 Building a Boolean search from boxes</summary>
+          <ol>
+            <li>In the wizard's <b>Topic</b> step, press <b>🪄 build</b> beside a search row.</li>
+            <li>Under <b>Must include</b>, each row is a requirement — every row must be
+              satisfied. Put alternatives in the same row and any one of them counts
+              ("Tokyo, Osaka, Kyoto" in one row, "earthquake" in another).</li>
+            <li><b>+ AND another requirement</b> adds another row that must also be met.</li>
+            <li><b>Near each other</b> pairs two words that must appear close together,
+              with the distance you choose.</li>
+            <li><b>Must NOT include</b> takes the words that disqualify an article.</li>
+            <li>Watch <b>Generated search</b> build itself as you type, and the status
+              line confirm it's valid.</li>
+            <li>Press <b>Use this search</b> to drop it into the row you started from.</li>
+          </ol>
+          <p>You can edit the generated text afterwards — the builder is a starting
+             point, not a cage.</p>
+        </details>
+
+        <details>
+          <summary>🗺 Drawing areas on the map</summary>
+          <ol>
+            <li>In the wizard's <b>Where</b> step, press <b>Draw area on map</b>.</li>
+            <li>Choose a shape from the tools at the top left of the map — polygon,
+              rectangle, or circle — and draw it. For a polygon, click each corner and
+              click the first point again to close it.</li>
+            <li>Draw more shapes if you want. They combine as "or": an article inside any
+              one of them matches. The summary beside the button counts them.</li>
+            <li>To remove one, use the map's delete tool and click the shape. <b>Clear
+              area</b> removes all of them at once.</li>
+          </ol>
+          <p>The map needs internet access for its background tiles. Without it you'll
+             get a message instead of a map — every other filter still works.</p>
+        </details>
+
+        <details>
+          <summary>📍 Keeping a list of favourite locations</summary>
+          <p><b>Add one:</b> open <b>📍 Locations</b> in the rail, type a place name in
+             the search box and pick it from the results — or click the map anywhere the
+             search doesn't know. Set the <b>radius</b> with the slider, give it a name,
+             and press <b>Save location</b>.</p>
+          <p>From then on, any article D.E.L.P.H.I. places inside that radius carries a
+             <b>📍</b> badge <em>everywhere it appears</em> — in every feed and alert, not
+             only the location's own. A feed for the location is created for you at the
+             same time.</p>
+          <p><b>Edit one:</b> press <b>Edit</b> beside it in <b>Saved locations</b>, change
+             the name, the point, or the radius, and save. Its feed follows the change.</p>
+          <p><b>Share one:</b> press <b>🏛</b> beside it and pick a Pantheon — the location
+             then flags news for every member of that group.</p>
+          <p><b>Delete one:</b> <b>🗑</b> beside it. Its automatic feed goes with it.</p>
+        </details>
+
+        <details>
+          <summary>📡 Managing sources</summary>
+          <p>Open <b>📡 Sources</b> in the rail. The list runs to hundreds of outlets, so
+             start by typing in the <b>filter box</b> — it matches name, country, language,
+             platform, scope, category, who added it, and health, and every word you type
+             narrows the list further.</p>
+          <p><b>Add an outlet by hand:</b> press <b>➕ Add source</b>. Give it a name and
+             the URL of its RSS or Atom feed, then set the platform, scope, country,
+             language and categories that feeds and alerts filter on, and tick
+             <b>🔒 Paywalled</b> if its articles are locked. Press <b>Add source</b>.</p>
+          <p><b>Track a topic:</b> type it in the <b>Track a topic…</b> box and press
+             <b>📰 Press</b> for worldwide press coverage, or <b>💬 Social</b> for Reddit
+             and Mastodon feeds on it.</p>
+          <p><b>Edit one:</b> <b>✎</b> on its row opens every field in place.
+             <b>⏸</b> pauses polling without deleting it (<b>▶</b> resumes), and
+             <b>🗑</b> deletes the source and its articles.</p>
+          <p><b>Fix a broken one:</b> a red dot means the last poll failed — hover it for
+             the exact error. Press <b>🔧</b> to make D.E.L.P.H.I. hunt for the outlet's
+             real feed and switch to it.</p>
+          <p>Sources are shared by everyone on this server. Adding, editing, or deleting
+             one affects every account here.</p>
+        </details>
+
+        <details>
+          <summary>📡 Restricting a feed or alert to chosen outlets</summary>
+          <ol>
+            <li>In the wizard's <b>Refine</b> step, open <b>Pull only from specific
+              sources</b>.</li>
+            <li>Search for an outlet by name, country, language, platform or scope.</li>
+            <li>Tick the ones you want. They appear as chips above the list and stay
+              there when you change or clear the search.</li>
+            <li><b>Select shown</b> takes everything currently matching your search —
+              the way to grab a whole group, such as every Japanese outlet, at once.
+              <b>Clear</b> empties the selection.</li>
+          </ol>
+          <p>A restricted feed carries a <b>📡</b> badge in its header naming the outlets.
+             Leave the selection empty and the feed considers everything.</p>
+        </details>
+
+        <details>
+          <summary>🔔 Working through alert hits</summary>
+          <p>Open the <b>🔔</b> panel in the rail. The number on the button counts hits
+             you haven't seen.</p>
+          <ul>
+            <li>Each alert lists its recent hits, newest first, with a thumbnail and its
+              importance. Click one to read the article. The alert's own header counts
+              how many you haven't seen.</li>
+            <li><b>👁</b> marks every hit on that alert as seen, clearing its counter
+              once you've triaged it.</li>
+            <li><b>🗺 Map</b> at the top plots where hits happened, against the areas the
+              alerts watch.</li>
+            <li><b>✎</b> edits the alert, <b>🏛</b> shares it with a Pantheon, and
+              <b>🗑</b> deletes it.</li>
+          </ul>
+        </details>
+
+        <details>
+          <summary>🏛 Setting up a Pantheon</summary>
+          <p><b>Create one:</b> open <b>🏛 Pantheons</b> in the rail, press
+             <b>🏛 New Pantheon</b>, name it, optionally describe it, choose
+             <b>🔒 Private</b> (invitation only) or <b>🌐 Public</b> (anyone can join), and
+             press <b>Create</b>.</p>
+          <p><b>Invite people:</b> reopen it, go to the <b>Members</b> tab, and enter a
+             username or email address. They accept from the 🏛 panel on their own
+             account.</p>
+          <p><b>Accept an invitation:</b> the 🏛 button shows a count when you have one.
+             Open the panel and press <b>Accept</b> under <b>Invitations</b>.</p>
+          <p><b>Join a public one:</b> find it under <b>Public Pantheons</b> and press
+             <b>Join</b>.</p>
+          <p><b>Share something:</b> press <b>🏛</b> on any of your feeds, alerts, or
+             favourite locations and pick the Pantheon. A copy appears on that
+             Pantheon's board for every member, tagged with your name. Your original
+             stays yours.</p>
+          <p><b>Manage roles:</b> on the <b>Members</b> tab, an owner can promote members
+             to admin, or transfer ownership by promoting someone to owner. The
+             <b>Access</b> tab restricts who may invite and who may share.</p>
+          <p><b>Leave or delete:</b> <b>Leave</b> at the bottom of the dialog for members
+             and admins; owners must transfer ownership first, or use <b>Delete
+             Pantheon</b> to close it for everyone.</p>
+        </details>
+
+        <details>
+          <summary>⚙ Setting up how Delphi looks and behaves</summary>
+          <p>Open <b>⚙ Settings</b> in the rail. Everything here is saved to your account
+             and follows you to any browser or device.</p>
+          <ul>
+            <li><b>Theme</b> — dark, light, or match your system.</li>
+            <li><b>Compact mode</b> — hides summaries and thumbnails to fit more
+              headlines on screen.</li>
+            <li><b>Reading language</b> — articles in other languages are translated into
+              it. Choose "Original languages" to switch translation off.</li>
+            <li><b>Timestamp format</b> — relative ("2h ago"), local time, UTC, or a
+              military date-time group.</li>
+            <li><b>Hide events with no updates for</b> — the staleness threshold used by
+              feeds that tick 🕰.</li>
+            <li><b>Toast position</b> — which corner notifications appear in.</li>
+            <li><b>Alert sound volume</b> — 0 silences it. <b>🔔 Test notification</b>
+              plays one so you can set the level.</li>
+            <li><b>Desktop notifications</b> — alert pop-ups from your browser while this
+              tab is in the background. Your browser will ask permission the first
+              time.</li>
+          </ul>
+          <p>The <b>Help</b> section at the bottom reopens this dialog, and
+             <b>🆕 What's new</b> shows the full release history, newest first — the same
+             list that appears by itself when something has shipped since your last
+             visit.</p>
+        </details>
+
+        <details>
+          <summary>⟳ Pulling news in now</summary>
+          <p><b>⟳ Refresh</b> in the rail polls every news wire immediately, plus a
+             bounded slice of the local city feeds. Use it after adding a source or a
+             topic tracker.</p>
+          <p><b>⟳</b> in a column header re-runs that one feed's search against what has
+             already been ingested. It is instant, and it's what you want when you've
+             just changed a feed's criteria.</p>
+          <p>Neither is normally necessary. Sources refresh continuously on their own
+             cadence, and the board updates itself.</p>
+        </details>
+
+        <details>
+          <summary>🛠 Operator console</summary>
+          <p>Operators — accounts named in the server's <code>NEWS_ADMIN_USERS</code>
+             setting, or promoted by another operator — get a <b>🛠 Admin</b> button in
+             the rail. It lists every account on this instance.</p>
+          <ul>
+            <li>Search by username or email.</li>
+            <li><b>Verify</b> forces an email address to verified when the mail never
+              arrived.</li>
+            <li><b>Make operator</b> grants operator access; <b>Demote</b> takes it
+              away. The last operator can't be demoted, and neither can you demote
+              yourself.</li>
+            <li><b>Suspend</b> blocks an account from signing in and ends the session it
+              already has; <b>Reinstate</b> restores it.</li>
+            <li><b>Reset password</b> sets a new one for someone locked out.</li>
+            <li><b>Delete</b> removes the account with its feeds and alerts. Pantheons it
+              owned pass to the next most senior member rather than being destroyed.</li>
+          </ul>
+          <p>Accounts designated in <code>NEWS_ADMIN_USERS</code> can't be suspended or
+             deleted from here — change the server setting instead.</p>
+        </details>
+
+        <details>
+          <summary>⌨ Keyboard</summary>
+          <ul>
+            <li><b>\</b> — expand or collapse the action rail (whenever you aren't typing
+              in a field).</li>
+            <li><b>Enter</b> — in the search box, run the search; in the sign-in and
+              add-source forms, submit them; in a keyword box, add the keyword.</li>
+            <li><b>Esc</b> — close the add-source dialog.</li>
+            <li><b>Tab</b> — move between controls. Whatever has focus is outlined in
+              gold.</li>
+            <li><b>← → Home</b> — resize the column whose edge has focus.</li>
+          </ul>
+        </details>
+      </div>
+
+      <!-- ===================== FAQ ===================== -->
+      <div class="modal-body faq-body help-tab" data-tab="faq" hidden>
+        <p class="wiz-guide">What the parts of D.E.L.P.H.I. are, and why they behave the
+           way they do. For the steps to actually do something, switch to the
+           <b>📖 How to</b> tab.</p>
 
         <details>
           <summary>📋 Feeds vs 🔔 Alerts — what's the difference?</summary>
@@ -203,33 +593,31 @@
         </details>
 
         <details>
-          <summary>↔ Resizing feed columns</summary>
-          <p>Drag either <b>edge of a column</b> to make it as wide or as narrow as you
-             want (240–1000px) — a gold line marks the edge when you're on it. Wide
-             suits a feed you read in full; narrow suits one you're only monitoring, and
-             fits more columns on screen at once. <b>⇔</b> in the column's toolbar flips
-             between the standard and wide widths in one click, and
-             <b>double-clicking an edge</b> puts the column back to the default.
-             The edges are keyboard-reachable too: Tab to one and use ← / → (hold Shift
-             for bigger steps), Home to reset.</p>
-          <p>Widths are saved <em>to your account</em>, not to the feed, so they follow
-             you between browsers and devices — and resizing a column on a Pantheon's
-             shared board changes it only for you, never for the rest of the group.</p>
+          <summary>↔ Where column widths are stored, and why it matters</summary>
+          <p>A column's width is a reading preference, not a property of the feed, so it
+             is kept on your account alongside the theme and the timestamp format. Two
+             consequences follow. It travels with you to any browser or device you sign
+             in from. And widening a column on a Pantheon's shared board widens it for
+             you alone — nobody else's layout moves, even though you are all reading the
+             same shared feed.</p>
+          <p>Widths run from 240 to 1000 pixels. Below 240 a headline stops fitting on
+             two lines; above 1000 a column stops being a column.</p>
         </details>
 
         <details>
-          <summary>📡 Pulling from specific sources only</summary>
-          <p>By default a feed or alert considers everything D.E.L.P.H.I. ingests. To
-             narrow it to particular outlets, open <b>"Pull only from specific sources"</b>
-             in the wizard's Refine step. Search by name, country, language, platform or
-             scope, tick the ones you want, and they appear as chips above the list —
-             the selection survives changing or clearing the search. <b>Select shown</b>
-             takes everything currently matching your search, which is how you grab a
-             group at once ("all Japanese outlets") without clicking through them.</p>
-          <p>A restricted feed carries a <b>📡</b> badge in its column header naming the
-             outlets. Restricting sources is a filter like any other — it combines with
-             keywords, countries and the rest, so an empty column usually means the
-             criteria are narrower than the news, not that something is broken.</p>
+          <summary>📡 What restricting a feed to specific sources does</summary>
+          <p>By default a feed or alert considers everything D.E.L.P.H.I. has ingested.
+             Naming sources turns that around: only those outlets are searched. It is a
+             filter like any other, so it <em>combines</em> with the rest rather than
+             overriding them — a feed restricted to three outlets and asking for the
+             keyword "flood" returns flood coverage from those three outlets, not
+             everything they publish.</p>
+          <p>That makes an over-restricted feed the commonest cause of an empty column.
+             If a feed you've narrowed to a handful of outlets stays quiet, it usually
+             means those outlets haven't published anything matching, not that ingestion
+             is broken.</p>
+          <p>If a source is later deleted, feeds pointing at it simply stop matching it;
+             they don't silently widen to everything.</p>
         </details>
 
         <details>
@@ -306,32 +694,33 @@
 
         <details>
           <summary>🌍 Where the news comes from</summary>
-          <p>A catalog of 85+ curated sources across every continent — international
-             wires, national outlets, local papers — plus the social platforms with open
-             feeds: Reddit, Bluesky, Mastodon, YouTube (X/Facebook/Instagram expose no
-             open feeds). Feeds/alerts can filter by platform.</p>
+          <p>A hand-curated catalog of around ninety sources across every continent —
+             international wires, national outlets, local papers — plus the social
+             platforms that publish open feeds: Reddit, Bluesky, Mastodon and YouTube.
+             X, Facebook and Instagram publish none, so they can't be ingested. Feeds
+             and alerts can filter by platform.</p>
           <p><b>Local coverage for ~500 major cities worldwide.</b> Each city has a
-             local-news source (its own Google News city edition, in the country's
-             language), so filtering to a place or drawing it on the map surfaces
-             genuinely local reporting. Auto-discovery then grows each city's real
-             outlets — its newspapers and stations — into first-class sources over time.
-             Sources are polled by a continuous <b>rolling poller</b>: news wires refresh
-             every few minutes, the ~500 city feeds every hour or two (and less often when a
-             city is quiet), with requests to shared hosts paced so nothing bursts.
-             (Self-hosting? <code>NEWS_SEED_CITIES=0</code> skips city feeds;
-             <code>NEWS_CITY_INTERVAL</code> and <code>NEWS_POLL_TICK</code> tune the cadence.)</p>
+             local-news source of its own — that city's Google News edition, in the
+             country's language — so filtering to a place, or drawing it on the map,
+             surfaces genuinely local reporting rather than the national view of it.
+             Auto-discovery then grows each city's real outlets, its newspapers and
+             stations, into first-class sources over time.</p>
+          <p><b>Polling is continuous, not one big sweep.</b> News wires refresh every
+             few minutes and the city feeds every hour or two, less often for a city
+             that has been quiet, with requests to any shared host paced so nothing
+             arrives in a burst. Self-hosting? <code>NEWS_SEED_CITIES=0</code> skips the
+             city feeds, and <code>NEWS_CITY_INTERVAL</code> and
+             <code>NEWS_POLL_TICK</code> tune the cadence.</p>
           <p>Saving a feed or alert with queries/keywords also creates a <b>Google News
              tracker</b> (the 🔍 checkbox) that ingests worldwide press coverage of your
              topic, so matches aren't limited to the catalog. Track topics manually in
              <b>Sources</b> (📰 Press / 💬 Social), edit sources in place, and watch
              their health dots: green = last poll OK, red = the error is in the
              tooltip.</p>
-          <p><b>Adding an outlet by hand.</b> <b>➕ Add source</b> in the Sources panel
-             opens a dialog for one: its name and the URL of its RSS or Atom feed, plus
-             the platform, scope, country, language and categories that feeds and alerts
-             filter on, and whether it's 🔒 paywalled. Delphi then polls it on its own
-             schedule. If the URL turns out not to be a feed the source stays in the
-             list marked broken, and 🔧 on its row hunts for the outlet's real feed.</p>
+          <p><b>Anyone can add an outlet</b> whose RSS or Atom feed they know, and it
+             is polled on the same schedule as everything else. A URL that turns out not
+             to be a feed doesn't disappear: the source stays in the list marked broken,
+             where repair can work on it.</p>
           <p><b>The catalog grows itself.</b> Google News coverage names the outlet
              behind every story; when a cycle sees an outlet Delphi doesn't have, it
              looks for that outlet's own feed (homepage autodiscovery, then common feed
@@ -342,19 +731,12 @@
              disable any auto-discovered source you don't want.</p>
           <p>For matching, each new article's page is fetched once and reduced to text,
              so criteria see the whole story, not just the headline.</p>
-          <p><b>📍 Favourite locations.</b> Open <b>📍 Locations</b> in the rail to
-             keep a list of places that matter to you. Search for a place by name
-             (or click the map for anywhere the search doesn't know), set a radius,
-             and save. From then on any article tagged inside that radius carries a
-             📍 badge <i>everywhere it appears</i>, a feed for that location is
-             created automatically, and you can share the location with a Pantheon
-             so it flags news for every member. Place search runs against Delphi's
-             own gazetteer — no third-party geocoder sees what you're watching.</p>
-
-          <p><b>Several areas in one feed.</b> The map step of the feed/alert wizard
-             accepts as many shapes as you like — draw three cities and the feed
-             matches an article in any of them. Use the delete tool on the map to
-             remove one.</p>
+          <p><b>📍 Favourite locations</b> are a standing interest rather than a filter.
+             A place plus a radius marks matching articles <i>everywhere they appear</i>
+             — in every feed and alert, not only the location's own — so a story you
+             would otherwise have skimmed past in a general column announces itself.
+             Place lookup is answered by Delphi's own gazetteer rather than a
+             third-party geocoder, so the places you watch never leave this server.</p>
 
           <p><b>Paywalled outlets.</b> Mark a source <b>🔒 paywalled</b> when adding or
              editing it (the article page is behind a paywall, but the RSS feed's
@@ -370,15 +752,20 @@
         </details>
 
         <details>
-          <summary>🗺 Drawing areas on the map</summary>
-          <p>In the wizard's "Where" step, draw a polygon, rectangle, or circle. Only
-             news geolocated inside the shape matches — via places mentioned in the
-             article, falling back to the country of the outlet. Geotagging covers every
-             country plus <b>~480 major world cities</b> (including native-script names,
-             so 東京 or القاهرة are recognized too); a city without exact coordinates
-             sits at its country's centre, so geofencing is always country-correct.
-             Works identically for alerts: "alert me on anything Critical inside this
-             box" is the classic use.</p>
+          <summary>🗺 What a map area actually matches</summary>
+          <p>An area is the strictest filter D.E.L.P.H.I. offers: only news it can
+             geolocate <em>inside</em> the shape matches. Location comes from the places
+             named in the article, falling back to the outlet's own country when the
+             text names nowhere in particular.</p>
+          <p>Geotagging covers all 154 countries plus <b>~480 major world cities</b>,
+             native-script names included, so 東京 and القاهرة are recognized as readily
+             as their English spellings. (That figure is separate from the ~500 city
+             <em>sources</em> above: one is what Delphi can recognize in an article, the
+             other is what it subscribes to.) A city with no exact coordinates sits at
+             its country's centre — approximate on the map, but never in the wrong
+             country.</p>
+          <p>Areas work identically for alerts, which is where they earn their keep:
+             "tell me about anything Critical inside this box" is the classic use.</p>
         </details>
 
         <details>
@@ -396,16 +783,16 @@
 
         <details>
           <summary>🏛 Pantheons — organizations that share feeds and alerts</summary>
-          <p>A <b>Pantheon</b> is a group: create one from the 🏛 panel, name it, and
-             invite other accounts by username or email (invitees accept from their own
-             🏛 panel). Every Pantheon gets <b>its own board</b> in the view switcher,
-             right beside 🏠 Home and 📋 My feeds.</p>
-          <p><b>Sharing:</b> press 🏛 on any of your feeds (in 📋 My feeds) or alerts
-             (🔔 panel) and pick a Pantheon — a shared copy appears on that Pantheon's
-             board for every member, tagged with who shared it. Your personal original
-             stays yours. Shared alerts fire live for <em>all</em> members, and the
-             alert history (including mark-as-seen) is shared triage. Any member can 📌
-             a shared feed to copy it back into their own board.</p>
+          <p>A <b>Pantheon</b> is an organization inside Delphi — a named group of
+             accounts with a board of its own, sitting in the view switcher beside
+             🏠 Home and 📋 My feeds.</p>
+          <p><b>Sharing copies rather than moves.</b> Sharing a feed, alert, or
+             favourite location puts a copy on the Pantheon's board for every member,
+             tagged with who shared it; your original stays yours and the two are
+             independent from then on. Shared alerts fire live for <em>all</em> members,
+             and their history — including what has been marked seen — is shared triage
+             rather than one person's. Any member can 📌 a shared feed to take an
+             editable copy back to their own board.</p>
           <p><b>Visibility & access limits:</b> a Pantheon is 🔒 <b>private</b>
              (invitation only) or 🌐 <b>public</b> (listed in the panel's directory,
              anyone can join). Owner and admins can also restrict <em>who can
@@ -427,9 +814,10 @@
         </details>
 
         <details>
-          <summary>🆕 Staying current — automatic FAQ and the What's-new popup</summary>
-          <p>This FAQ opens by itself on your <b>first visit</b>, and again whenever you
-             return after <b>a week or more away</b> — a quick refresher costs nothing.</p>
+          <summary>🆕 Staying current — the automatic guide and the What's-new popup</summary>
+          <p>This dialog opens by itself on your <b>first visit</b>, and again whenever
+             you return after <b>a week or more away</b>, showing the <b>📖 How to</b>
+             tab — a quick refresher costs nothing.</p>
           <p>If anything shipped since you last saw it, a <b>🆕 What's new</b> popup
              lists every update you missed, <b>grouped by date</b> (miss three updates,
              see all three). This works <b>live</b>: sessions that are already open —
@@ -446,8 +834,9 @@
              removing one filter at a time — the culprit is usually an over-tight
              combination. For niche topics make sure the 🔍 worldwide-coverage box is
              ticked, then hit ⟳ and give it a cycle or two.</p>
-          <p><b>⟳ says a poll is already running:</b> the scheduled 5-minute cycle is
-             mid-flight; results land when it finishes.</p>
+          <p><b>⟳ says a poll is already running:</b> the rolling poller is mid-cycle.
+             Only one cycle runs at a time, so results land when the one in flight
+             finishes — usually within seconds.</p>
           <p><b>A source shows a red dot:</b> hover it in Sources for the exact error,
              and note that Delphi tries to fix these itself. After two failed polls with
              a permanent-looking error (403/404, "not a feed", parse errors), it hunts
@@ -552,8 +941,8 @@
     <h2>Your dashboard is empty</h2>
     <p>Create a feed to start monitoring news — filter by country, category, keywords,
        Boolean searches, importance, or an area you draw on the map.
-       Or flip to <b>🏠 Home</b> for Delphi's curated overview and 📌 any column there
-       to make it yours.</p>
+       Or open <b>🏠 Home</b> for Delphi's curated overview, and press 📌 on any column
+       there to make a copy of it your own.</p>
     <button class="btn btn-primary" id="btn-empty-new-feed">Create your first feed</button>
     <button class="btn" id="btn-starter-pack">Add starter feeds</button>
   </div>
@@ -586,7 +975,7 @@
       <button class="btn" id="btn-track-topic" title="Worldwide press coverage via Google News search">📰 Press</button>
       <button class="btn" id="btn-track-social" title="Reddit search + Mastodon hashtag feeds for this topic">💬 Social</button>
       <button class="btn btn-primary" id="btn-open-add-source"
-              title="Add an outlet by its RSS/Atom feed URL">➕ Add source</button>
+              title="Add an outlet by the URL of its RSS or Atom feed">➕ Add source</button>
     </div>
     <div id="sources-list"></div>
   </aside>
@@ -636,7 +1025,7 @@
       <button class="icon-btn" id="btn-close-pantheons" aria-label="Close pantheons">✕</button>
     </div>
     <div class="settings-body">
-      <p class="set-note">A Pantheon is an organization: create one, invite other accounts,
+      <p class="set-note">A Pantheon is an organization inside Delphi: create one, invite other accounts,
          and share feeds and alerts with everyone in it. Each Pantheon gets its own board
          beside 🏠 Home and 📋 My feeds.</p>
       <div class="pn-create">
@@ -657,11 +1046,12 @@
   <aside id="admin-panel" class="side-panel wide" hidden>
     <div class="side-panel-head">
       <h2>🛠 Operator console</h2>
-      <button class="icon-btn" id="btn-close-admin" aria-label="Close admin">✕</button>
+      <button class="icon-btn" id="btn-close-admin" aria-label="Close the operator console">✕</button>
     </div>
     <div class="settings-body">
-      <p class="set-note">Every account on this instance. Operators are set with the
-        <code>NEWS_ADMIN_USERS</code> secret (built-in, can't be removed here) or promoted below.</p>
+      <p class="set-note">Every account on this instance. An operator is either named in the
+        server's <code>NEWS_ADMIN_USERS</code> setting — those accounts can't be demoted,
+        suspended, or deleted from here — or promoted by another operator below.</p>
       <div class="source-tools">
         <input id="admin-search" type="search" placeholder="Search username or email…">
         <span id="admin-summary" class="set-note"></span>
@@ -691,8 +1081,10 @@
       <div class="modal-body">
 
         <section class="wiz-step" data-step="0">
-          <p class="wiz-guide">What should this watch for? A name plus keywords is enough —
-             the Boolean search is optional power. Everything can stay empty to match all news.</p>
+          <p class="wiz-guide">What should this watch for? A name and a couple of keywords are
+             enough to start; Boolean searches are there when you need to be precise.
+             Only the name is required — leave the rest empty and the feed matches all
+             the news there is.</p>
           <label class="field">
             <span>Name</span>
             <input id="b-name" type="text" placeholder="e.g. East Africa security">
@@ -779,7 +1171,7 @@
             </div>
           </div>
           <div class="field">
-            <span>Date range <em>(optional — inclusive; overrides nothing, combines with the recency window)</em></span>
+            <span>Date range <em>(optional — both ends included; narrows further alongside the recency window rather than replacing it)</em></span>
             <div class="check-row">
               <label>from <input type="date" id="b-date-from"></label>
               <label>to <input type="date" id="b-date-to"></label>
@@ -899,7 +1291,8 @@
         <label class="set-row"><span>Categories <em>(optional, comma-separated)</em></span>
           <input id="src-categories" type="text" placeholder="world, business">
         </label>
-        <label class="check-inline" title="See the FAQ: Paywalled outlets">
+        <label class="check-inline"
+               title="FAQ → Where the news comes from → Paywalled outlets">
           <input type="checkbox" id="src-paywall"> 🔒 Paywalled
         </label>
         <p class="set-note">Delphi polls the feed on its own schedule and adds whatever it
@@ -987,7 +1380,7 @@
     <div class="modal qb-modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h2>🪄 Build a Boolean search</h2>
-        <button class="icon-btn" id="btn-close-qb" aria-label="Close qb">✕</button>
+        <button class="icon-btn" id="btn-close-qb" aria-label="Close the search builder">✕</button>
       </div>
       <div class="modal-body">
         <p class="wiz-guide">Boolean searching uses operators to define relationships between

@@ -93,7 +93,7 @@ const Builder = {
     const ids = [...this.chosenSources];
     if (label) {
       label.textContent = ids.length
-        ? `(${ids.length} source${ids.length === 1 ? "" : "s"})`
+        ? `(${ids.length} source${plural(ids.length)})`
         : "(optional — all sources)";
     }
     if (!chosen) return;
@@ -145,8 +145,16 @@ const Builder = {
     if (c.keywords.length) lines.push(["Keywords (any)", c.keywords.join(", ")]);
     if (c.exclude_keywords.length) lines.push(["Excluding", c.exclude_keywords.join(", ")]);
     if (names.length) lines.push(["Countries", names.join(", ")]);
-    if (c.geo) lines.push(["Map area", c.geo.type === "Circle"
-      ? `circle, ${c.geo.radius_km.toFixed(0)} km radius` : "drawn shape"]);
+    // Both keys: collect() writes `geos`, but an item saved before multiple
+    // areas existed still carries a single `geo`. Reading only `geo` left every
+    // drawn area out of the summary the user checks before saving.
+    const areas = [...(c.geos || []), ...(c.geo ? [c.geo] : [])];
+    if (areas.length) {
+      const describe = (g) => (g.type === "Circle"
+        ? `circle, ${g.radius_km.toFixed(0)} km radius` : g.type.toLowerCase());
+      lines.push([areas.length > 1 ? `Map areas (any of ${areas.length})` : "Map area",
+                  areas.map(describe).join(" · ")]);
+    }
     if (c.categories.length) lines.push(["Categories", c.categories.join(", ")]);
     if (c.scopes.length) lines.push(["Scope", c.scopes.join(", ")]);
     if (c.platforms.length) lines.push(["Platforms", c.platforms.join(", ")]);
@@ -754,6 +762,10 @@ const QueryBuilder = {
 
 /* ----- small shared helpers ----- */
 function el(id) { return document.getElementById(id); }
+
+/* The "s" on a count. Written out everywhere it's needed rather than falling
+   back to "article(s)", which reads like a form. */
+function plural(n, suffix = "s") { return n === 1 ? "" : suffix; }
 
 function selectedValues(sel) { return [...sel.selectedOptions].map(o => o.value); }
 function selectValues(sel, values) {

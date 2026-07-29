@@ -13,6 +13,26 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-07-31",
+        "title": "A proper manual",
+        "items": [
+            "📖 Help is now two tabs. “How to” is instructions — step by step, for "
+            "every part of Delphi, from creating an account to running the operator "
+            "console — and “FAQ” is what things are and why they behave as they do. "
+            "It used to be one list where every question dragged its instructions "
+            "along with it. Open it from ⚙ Settings → Help; it still appears by "
+            "itself on a first visit.",
+            "New sections cover what each marker on an article row means, what to "
+            "do with an empty board, resizing and rearranging columns, restricting "
+            "a feed to chosen outlets, working through alert hits, and the keyboard "
+            "shortcuts.",
+            "A pass over every message in the system fixed wording that no longer "
+            "matched what the software does — the wizard's review step was leaving "
+            "drawn map areas out of its summary entirely, and a feed watching "
+            "several areas showed no badge for them.",
+        ],
+    },
+    {
         "date": "2026-07-30",
         "title": "Columns you can resize, and feeds you can point at one outlet",
         "items": [

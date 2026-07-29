@@ -54,10 +54,12 @@ async function boot() {
   setInterval(checkForUpdates, UPDATE_POLL_MS);
   // First run on an empty database: pull the catalog once in the background.
   if (META.stats.total_articles === 0) {
-    toast("Fetching news", "First run — polling all sources. This can take a minute…");
+    toast("Fetching news", "First run — polling the news wires and the first of the "
+          + "local city feeds. This can take a minute…");
     API.runIngest().then(async (r) => {
-      const found = r.discovered ? ` · discovered ${r.discovered} new source${r.discovered === 1 ? "" : "s"}` : "";
-      toast("Ingest complete", `${r.new_articles} articles from ${r.sources_ok}/${r.sources_total} sources${found}`);
+      const found = r.discovered ? ` · discovered ${r.discovered} new source${plural(r.discovered)}` : "";
+      toast("Ingest complete", `${r.new_articles} article${plural(r.new_articles)} from `
+        + `${r.sources_ok}/${r.sources_total} sources${found}`);
       renderStats(await API.meta());
       refreshFeeds();
     }).catch(() => {});
@@ -87,7 +89,7 @@ function renderViewSwitch() {
     b.className = "view-pantheon";
     b.dataset.view = "pantheon:" + p.id;
     b.textContent = "🏛 " + (p.name.length > 16 ? p.name.slice(0, 15) + "…" : p.name);
-    b.title = `${p.name} — shared board · ${p.member_count} member${p.member_count === 1 ? "" : "s"}`;
+    b.title = `${p.name} — shared board · ${p.member_count} member${plural(p.member_count)}`;
     b.onclick = () => setView("pantheon:" + p.id);
     sw.appendChild(b);
   }
@@ -193,8 +195,9 @@ function wireTopbar() {
     toast("Refreshing", "Polling news wires now… (local city feeds refresh in the background)");
     try {
       const r = await API.runIngest();
-      const found = r.discovered ? ` · discovered ${r.discovered} new source${r.discovered === 1 ? "" : "s"}` : "";
-      toast("Ingest complete", `${r.new_articles} new articles (${r.sources_ok}/${r.sources_total} polled ok)${found}`);
+      const found = r.discovered ? ` · discovered ${r.discovered} new source${plural(r.discovered)}` : "";
+      toast("Ingest complete", `${r.new_articles} new article${plural(r.new_articles)} `
+        + `(${r.sources_ok}/${r.sources_total} polled ok)${found}`);
       renderStats(await API.meta());
       await refreshFeeds();
     } catch (e) {
@@ -364,9 +367,9 @@ function desktopNotify(title, body) {
   }
 }
 
-/* ---------- onboarding: first-visit FAQ + what's-new-while-away popup ----- */
+/* ---------- onboarding: first-visit guide + what's-new-while-away popup ---- */
 
-let FAQ_AFTER_UPDATES = false;  // chain: close What's-new → open the FAQ
+let FAQ_AFTER_UPDATES = false;  // chain: close What's-new → open the guide
 
 function showUpdates(entries, note = "") {
   const box = el("updates-body");
@@ -398,8 +401,27 @@ function closeUpdates() {
   el("updates-backdrop").hidden = true;
   if (FAQ_AFTER_UPDATES) {
     FAQ_AFTER_UPDATES = false;
-    el("faq-backdrop").hidden = false;
+    openHelp("howto");
   }
+}
+
+/* ---------- help ----------
+   Two tabs: How to (procedure) and FAQ (explanation). Anyone who opens help
+   without asking for a particular tab wants the instructions, so that's what
+   they get; the tab is not remembered, because the next visit is a new
+   question and rarely the same kind. */
+function showHelpTab(tab) {
+  for (const s of document.querySelectorAll(".help-tab")) s.hidden = s.dataset.tab !== tab;
+  for (const b of el("help-tabs").querySelectorAll("button"))
+    b.classList.toggle("active", b.dataset.tab === tab);
+}
+
+function openHelp(tab = "howto") {
+  showHelpTab(tab);
+  el("faq-backdrop").hidden = false;
+  // A reopened dialog should start at the top, not where it was left scrolled.
+  const body = document.querySelector(`.help-tab[data-tab="${tab}"]`);
+  if (body) body.scrollTop = 0;
 }
 
 /* Live what's-new: open sessions learn about updates without a re-login.
@@ -423,21 +445,25 @@ async function runOnboarding() {
   if (h.updates && h.updates.length) {
     const days = Math.floor(h.away_days || 0);
     showUpdates(h.updates, days >= 1
-      ? `Shipped during the ${days} day${days === 1 ? "" : "s"} you were away.`
+      ? `Shipped during the ${days} day${plural(days)} you were away.`
       : "Shipped since your last visit.");
     FAQ_AFTER_UPDATES = !!h.faq_due;   // FAQ follows once this is dismissed
   } else if (h.faq_due) {
-    el("faq-backdrop").hidden = false; // first visit, or a week+ away
+    openHelp("howto");   // first visit, or a week or more away
   }
 }
 
 function wireSettings() {
   el("btn-settings").onclick = () => { el("settings-panel").hidden = false; };
   el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
-  el("btn-open-faq").onclick = () => { el("faq-backdrop").hidden = false; };
+  el("btn-open-faq").onclick = () => openHelp("howto");
   el("btn-close-faq").onclick = () => { el("faq-backdrop").hidden = true; };
   el("faq-backdrop").addEventListener("mousedown", (e) => {
     if (e.target === el("faq-backdrop")) el("faq-backdrop").hidden = true;
+  });
+  el("help-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (b) showHelpTab(b.dataset.tab);
   });
   el("btn-whats-new").onclick = async () => {
     try { showUpdates(await API.changelog(), "The full release history, newest first."); }
@@ -704,7 +730,7 @@ function feedColumn(feed, readonly = false) {
     tools.append(
       toolBtn("◀", "Move left", () => moveFeed(feed.id, -1)),
       toolBtn("▶", "Move right", () => moveFeed(feed.id, +1)),
-      toolBtn("⇔", "Toggle between the standard and wide width (or drag either edge)",
+      toolBtn("⇔", "Switch between the standard and wide width — or drag either edge",
               () => toggleWidth(feed, col)),
       toolBtn("✎", "Edit feed", () => Builder.open("feed", feed)),
     );
@@ -1052,7 +1078,7 @@ function eventGroup(g) {
   const meta = document.createElement("div");
   meta.className = "event-open-hint";
   const srcs = g.source_count > 1 ? `${g.source_count} sources` : "1 source";
-  meta.textContent = `🧵 ${g.total_count} report${g.total_count > 1 ? "s" : ""} · ${srcs} — open event ⤢`;
+  meta.textContent = `🧵 ${g.total_count} report${plural(g.total_count)} · ${srcs} — open event ⤢`;
   wrap.appendChild(meta);
   wrap.onclick = () => openEventFocus(g.event_id);
   return wrap;
@@ -1085,7 +1111,7 @@ async function openEventFocus(eventId) {
     s.className = "tag"; s.textContent = txt;
     badges.appendChild(s);
   };
-  tag(`🧵 ${d.article_count} report${d.article_count > 1 ? "s" : ""} · ${d.sources.length} source${d.sources.length > 1 ? "s" : ""}`);
+  tag(`🧵 ${d.article_count} report${plural(d.article_count)} · ${d.sources.length} source${plural(d.sources.length)}`);
   for (const iso of (d.countries || []).slice(0, 5)) tag(`${flagEmoji(iso)} ${COUNTRY_NAMES.get(iso) || iso}`);
   for (const c of (d.categories || []).slice(0, 4)) tag(c);
   tag("first seen " + timeAgo(d.first_seen));
@@ -1101,7 +1127,7 @@ async function openEventFocus(eventId) {
 
   const tl = el("ev-timeline");
   tl.innerHTML = "";
-  el("ev-count").textContent = `— ${d.articles.length} update${d.articles.length > 1 ? "s" : ""}, newest first`;
+  el("ev-count").textContent = `— ${d.articles.length} update${plural(d.articles.length)}, newest first`;
   for (const a of d.articles) tl.appendChild(articleRow(a));
 
   // Each outlet chip links to that outlet's report of this event.
@@ -1145,7 +1171,7 @@ async function openEventFocus(eventId) {
     title.textContent = r.title;
     const why = document.createElement("span");
     why.className = "ev-dim";
-    why.textContent = `${r.why} · ${r.article_count} report${r.article_count > 1 ? "s" : ""} · ${timeAgo(r.updated_at)}`;
+    why.textContent = `${r.why} · ${r.article_count} report${plural(r.article_count)} · ${timeAgo(r.updated_at)}`;
     row.append(head, title, why);
     row.onclick = () => openEventFocus(r.id);
     rel.appendChild(row);
@@ -1469,7 +1495,7 @@ async function renderAdminUsers(q = "") {
   catch (e) { box.textContent = ""; toast("Admin", e.message); return; }
   ADMIN_ME = data.me;
   el("admin-summary").textContent =
-    `${data.users.length} account${data.users.length === 1 ? "" : "s"} · ${data.admin_count} operator${data.admin_count === 1 ? "" : "s"}`;
+    `${data.users.length} account${plural(data.users.length)} · ${data.admin_count} operator${plural(data.admin_count)}`;
   box.innerHTML = "";
   if (!data.users.length) { box.textContent = "No matching accounts."; return; }
   for (const u of data.users) box.appendChild(adminUserRow(u));
@@ -1500,8 +1526,8 @@ function adminUserRow(u) {
   const meta = document.createElement("div");
   meta.className = "admin-meta";
   const seen = u.last_seen_at ? "last seen " + timeAgo(u.last_seen_at) : "never signed in";
-  meta.textContent = `${u.email || "no email"} · ${u.feeds} feed${u.feeds === 1 ? "" : "s"}, `
-    + `${u.alerts} alert${u.alerts === 1 ? "" : "s"}, ${u.pantheons} pantheon${u.pantheons === 1 ? "" : "s"} · ${seen}`;
+  meta.textContent = `${u.email || "no email"} · ${u.feeds} feed${plural(u.feeds)}, `
+    + `${u.alerts} alert${plural(u.alerts)}, ${u.pantheons} pantheon${plural(u.pantheons)} · ${seen}`;
   row.appendChild(meta);
 
   const acts = document.createElement("div");
@@ -2045,7 +2071,7 @@ async function renderPantheonsPanel() {
     const label = document.createElement("span");
     label.className = "pn-name";
     label.textContent = `🏛 ${inv.name}`;
-    label.title = `Invited by ${inv.invited_by} · ${inv.member_count} member(s)`;
+    label.title = `Invited by ${inv.invited_by} · ${inv.member_count} member${plural(inv.member_count)}`;
     const meta = document.createElement("span");
     meta.className = "s-meta";
     meta.textContent = `from ${inv.invited_by}`;
@@ -2098,7 +2124,7 @@ async function renderPantheonsPanel() {
       label.title = p.description || p.name;
       const meta = document.createElement("span");
       meta.className = "s-meta";
-      meta.textContent = `${p.member_count} member${p.member_count === 1 ? "" : "s"}`;
+      meta.textContent = `${p.member_count} member${plural(p.member_count)}`;
       const join = document.createElement("button");
       join.className = "btn small"; join.textContent = "Join";
       join.onclick = async () => {
@@ -2127,7 +2153,7 @@ function pantheonCard(p) {
   label.textContent = `${p.visibility === "public" ? "🌐" : "🔒"} ${p.name}`;
   const meta = document.createElement("span");
   meta.className = "s-meta";
-  meta.textContent = `${p.role} · ${p.member_count} member${p.member_count === 1 ? "" : "s"} · ${p.feed_count}📋 ${p.alert_count}🔔`;
+  meta.textContent = `${p.role} · ${p.member_count} member${plural(p.member_count)} · ${p.feed_count}📋 ${p.alert_count}🔔`;
   const openBtn = document.createElement("button");
   openBtn.className = "btn small"; openBtn.textContent = "Board";
   openBtn.title = "Open this Pantheon's shared board";
@@ -2301,7 +2327,7 @@ async function renderSourcesPanel() {
   if (count) {
     count.textContent = needle
       ? `${shown.length} of ${SOURCES.length}`
-      : `${SOURCES.length} source${SOURCES.length === 1 ? "" : "s"}`;
+      : `${SOURCES.length} source${plural(SOURCES.length)}`;
   }
   if (!shown.length) {
     box.appendChild(feedEmpty(needle
@@ -2334,7 +2360,9 @@ async function renderSourcesPanel() {
         try {
           const r = await API.repairSource(s.id);
           if (!r.repaired) toast("Could not repair", r.detail || r.status);
-          else if (r.changed) toast("Source repaired", `Feed switched to ${r.rss_url} — ${r.new_articles} article(s) pulled.`);
+          else if (r.changed) toast("Source repaired",
+                       `Feed switched to ${r.rss_url} — ${r.new_articles} `
+                       + `article${plural(r.new_articles)} pulled.`);
           else toast("Source recovered", "The existing feed URL works again.");
         } catch (err) { toast("Repair failed", err.message); }
         await reloadSources();
@@ -2385,7 +2413,7 @@ function sourceEditor(s) {
   const paywallField = document.createElement("label");
   paywallField.className = "check-inline";
   // Just the label — what it does is explained in the FAQ, not squeezed in here.
-  paywallField.title = "See the FAQ: Paywalled outlets";
+  paywallField.title = "FAQ → Where the news comes from → Paywalled outlets";
   paywallField.append(paywall, document.createTextNode(" 🔒 Paywalled"));
   form.append(
     field("Name", name), field("Feed URL", url),

@@ -357,7 +357,7 @@ def require_admin(user_id: str = Depends(user_id_header),
     if user is None:
         raise HTTPException(401, "Account no longer exists")
     if user.disabled:
-        raise HTTPException(403, "This account is suspended")
+        raise HTTPException(403, "This account has been suspended by an operator")
     if not _is_admin(user):
         raise HTTPException(403, "Operator access required")
     if not user.is_admin and _is_configured_admin(user):
@@ -534,7 +534,7 @@ def me(authorization: str = Header(default=""), db: Session = Depends(get_db)):
     raw = authorization[7:].strip() if authorization.startswith("Bearer ") else ""
     uid = auth.parse_token(raw) if raw else None
     if uid is None:
-        raise HTTPException(401, "Not signed in")
+        raise HTTPException(401, "Authentication required — sign in")
     user = db.get(User, uid)
     if not user:
         raise HTTPException(401, "Account no longer exists")
@@ -636,7 +636,7 @@ def save_user_settings(body: dict, user_id: str = Depends(user_id_header),
         raise HTTPException(401, "Account no longer exists")
     settings = body.get("settings")
     if not isinstance(settings, dict):
-        raise HTTPException(422, "settings must be an object")
+        raise HTTPException(422, "Settings must be an object")
     raw = json.dumps(settings)
     if len(raw) > 4096:
         raise HTTPException(422, "Settings payload too large")
@@ -1273,7 +1273,7 @@ def invite_to_pantheon(pantheon_id: int, body: dict,
     if not target:
         raise HTTPException(404, f"No account named {handle!r}")
     if target.id == _acct_id(user_id):
-        raise HTTPException(422, "You are already here")
+        raise HTTPException(422, "You are already a member of this Pantheon")
     if db.scalar(select(PantheonMember).where(
             PantheonMember.pantheon_id == pantheon_id, PantheonMember.user_id == target.id)):
         raise HTTPException(409, f"{target.username} is already a member")
@@ -1320,7 +1320,7 @@ def join_pantheon(pantheon_id: int, user_id: str = Depends(user_id_header),
         raise HTTPException(403, "This Pantheon is private — you need an invitation")
     uid = _acct_id(user_id)
     if _membership(db, pantheon_id, user_id):
-        raise HTTPException(409, "Already a member")
+        raise HTTPException(409, "You are already a member of this Pantheon")
     db.execute(sa_delete(PantheonInvite).where(  # a pending invite is now moot
         PantheonInvite.pantheon_id == pantheon_id, PantheonInvite.user_id == uid))
     db.add(PantheonMember(pantheon_id=pantheon_id, user_id=uid, role="member"))
@@ -1663,7 +1663,7 @@ def _shared_item_for_read(db: Session, model, obj_id: int, user_id: str):
         if obj.user_id != user_id:
             raise HTTPException(404, f"{model.__name__} not found")
     elif not _membership(db, obj.pantheon_id, user_id):
-        raise HTTPException(403, "Not a member of this Pantheon")
+        raise HTTPException(403, "You are not a member of this Pantheon")
     return obj
 
 

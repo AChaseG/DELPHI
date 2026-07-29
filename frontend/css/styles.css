@@ -957,7 +957,14 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
 
 /* ---------- FAQ modal ---------- */
 .faq-modal { width: 700px; }
+/* Each tab is its own scrolling body, so switching tabs starts at that tab's
+   own position instead of inheriting the other one's scroll. */
 .faq-modal .modal-body { max-height: 76vh; overflow-y: auto; }
+.help-tab[hidden] { display: none; }
+/* The two tab buttons sit in the head beside the title; on a narrow screen the
+   head wraps and they take their own row rather than squeezing the title out. */
+.faq-modal .modal-head { flex-wrap: wrap; }
+.faq-modal .modal-head .wiz-nav { flex: none; }
 .faq-body details {
   border: 1px solid var(--border);
   border-radius: 5px;
