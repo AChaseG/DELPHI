@@ -125,15 +125,15 @@ async function renderBoard() {
       board.appendChild(note);
     }
     for (const feed of feeds) board.appendChild(feedColumn(feed));
-    await Promise.all(feeds.map(f => loadFeedArticles(f)));
+    await mapLimited(feeds, BOARD_LOAD_CONCURRENCY, loadFeedArticles);
   } else if (VIEW === "home") {
     el("empty-state").hidden = true;
     for (const hf of DELPHI_FEEDS) board.appendChild(feedColumn(hf, /*readonly*/ true));
-    await Promise.all(DELPHI_FEEDS.map(f => loadFeedArticles(f)));
+    await mapLimited(DELPHI_FEEDS, BOARD_LOAD_CONCURRENCY, loadFeedArticles);
   } else {
     el("empty-state").hidden = FEEDS.length > 0;
     for (const feed of FEEDS) board.appendChild(feedColumn(feed));
-    await Promise.all(FEEDS.map(f => loadFeedArticles(f)));
+    await mapLimited(FEEDS, BOARD_LOAD_CONCURRENCY, loadFeedArticles);
   }
 
   syncBoardScrollbar();   // the column count just changed
@@ -759,6 +759,29 @@ function feedEmpty(text) {
    stored before that filter existed). Returns "" for anything unsafe. */
 function safeUrl(url) {
   return /^https?:\/\//i.test(url || "") ? url : "";
+}
+
+/* How many feed columns may be fetching at once.
+
+   Every column is a full search. Firing all of them together (7 on Home, more
+   on a busy board) buries a small server: the requests queue, each one gets
+   slower, and the unlucky ones hit the client timeout and report themselves as
+   failures — even though nothing is actually broken. A small window keeps the
+   server responsive, fills columns progressively instead of all-at-once, and
+   costs little on a fast one. */
+const BOARD_LOAD_CONCURRENCY = 3;
+
+/* Run `fn` over `items`, at most `limit` at a time. Rejections are contained so
+   one failing column can't abandon the rest of the board. */
+async function mapLimited(items, limit, fn) {
+  const queue = items.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      try { await fn(item); } catch (e) { console.error("[board]", e); }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
 /* Last successfully loaded items per column.
@@ -1977,7 +2000,7 @@ function connectStream() {
         lastBoardRefresh = lastStatsRefresh = Date.now();
         renderStats(await API.meta());
         const visible = VIEW === "home" ? DELPHI_FEEDS : FEEDS;
-        await Promise.all(visible.map(loadFeedArticles));
+        await mapLimited(visible, BOARD_LOAD_CONCURRENCY, loadFeedArticles);
       }, wait);
     } else if (msg.type === "alert" && (msg.user_id === Session.userKey()
                || (msg.pantheon_id && PANTHEONS.some(p => p.id === msg.pantheon_id)))) {

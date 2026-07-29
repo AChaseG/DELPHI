@@ -321,3 +321,57 @@ def test_personal_content_is_still_deleted(client, admin_env):
         assert s.query(Feed).filter_by(user_id=acct).count() == 0
         assert s.query(Alert).filter_by(user_id=acct).count() == 0
         assert s.get(User, owner_id) is None
+
+
+# ---------- shared feeds must survive normal Pantheon activity ----------
+
+def test_shared_feeds_survive_membership_changes(client, admin_env):
+    """Reported as 'Pantheons wipe feeds shared to them'. Sharing must copy,
+    not move, and nothing short of deleting the Pantheon may remove the copy."""
+    boss_hdr, _ = _register(client, "boss")
+    owner_hdr, _ = _register(client, "owner")
+    mem_hdr, mem_id = _register(client, "member")
+    pid = _make_pantheon(client, owner_hdr, "Shared Desk")
+    _join(client, owner_hdr, pid, mem_hdr, "member")
+
+    own_feed = client.post("/api/feeds", json={"name": "Wires"}, headers=owner_hdr).json()["id"]
+    assert client.post(f"/api/feeds/{own_feed}/share", json={"pantheon_id": pid},
+                       headers=owner_hdr).status_code in (200, 201)
+
+    def shared_names(hdr):
+        r = client.get(f"/api/pantheons/{pid}/feeds", headers=hdr)
+        assert r.status_code == 200, r.text
+        return [f["name"] for f in r.json()]
+
+    # Visible to both, and the sharer keeps their private original.
+    assert shared_names(owner_hdr) == ["Wires"]
+    assert shared_names(mem_hdr) == ["Wires"]
+    assert [f["name"] for f in client.get("/api/feeds", headers=owner_hdr).json()] == ["Wires"]
+
+    # A member can actually read the shared feed's articles (not just see it).
+    shared_id = client.get(f"/api/pantheons/{pid}/feeds", headers=mem_hdr).json()[0]["id"]
+    assert client.get(f"/api/feeds/{shared_id}/articles", headers=mem_hdr).status_code == 200
+
+    # Routine activity must not remove it.
+    client.post(f"/api/pantheons/{pid}/members/{mem_id}/role",
+                json={"role": "admin"}, headers=owner_hdr)
+    assert shared_names(owner_hdr) == ["Wires"]
+    client.post(f"/api/pantheons/{pid}/members/{mem_id}/role",
+                json={"role": "member"}, headers=owner_hdr)
+    client.patch(f"/api/pantheons/{pid}", json={"name": "Renamed Desk"}, headers=owner_hdr)
+    assert shared_names(owner_hdr) == ["Wires"]
+
+    # A member leaving keeps everyone else's shared content.
+    client.post(f"/api/pantheons/{pid}/leave", headers=mem_hdr)
+    assert shared_names(owner_hdr) == ["Wires"]
+
+
+def test_sharing_the_same_feed_twice_is_refused_not_duplicated(client, admin_env):
+    _register(client, "boss")
+    owner_hdr, _ = _register(client, "owner")
+    pid = _make_pantheon(client, owner_hdr, "Desk")
+    fid = client.post("/api/feeds", json={"name": "Wires"}, headers=owner_hdr).json()["id"]
+    client.post(f"/api/feeds/{fid}/share", json={"pantheon_id": pid}, headers=owner_hdr)
+    again = client.post(f"/api/feeds/{fid}/share", json={"pantheon_id": pid}, headers=owner_hdr)
+    assert again.status_code == 409
+    assert len(client.get(f"/api/pantheons/{pid}/feeds", headers=owner_hdr).json()) == 1
