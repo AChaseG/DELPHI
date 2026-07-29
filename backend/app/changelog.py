@@ -13,6 +13,30 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-01",
+        "title": "Boards that are already loaded when you get there",
+        "items": [
+            "⚡ Once the board you're looking at has finished loading, Delphi "
+            "loads the others behind it, so switching between 🏠 Home, 📋 My "
+            "feeds and a 🏛 Pantheon is instant instead of a wait. The "
+            "background pass never starts before the visible board is done, "
+            "runs one request at a time where the visible board gets two, and "
+            "stops the moment you switch — the board you're actually reading "
+            "always has the server to itself.",
+            "Switching back and forth no longer re-queries columns that were "
+            "loaded seconds ago, which was the largest avoidable load the "
+            "dashboard produced. New articles still arrive by themselves, and "
+            "⟳ on a column, ⟳ Refresh, saving a feed, and changing the "
+            "staleness threshold all re-query immediately.",
+            "⟳ Refresh now refreshes your columns even when it finds a poll "
+            "already in progress; it used to report that and leave the board "
+            "alone.",
+            "Fixed a Pantheon board not picking up newly arrived articles "
+            "between renders — the live refresh was reloading the account's own "
+            "feeds regardless of which board was on screen.",
+        ],
+    },
+    {
         "date": "2026-07-31",
         "title": "A proper manual",
         "items": [

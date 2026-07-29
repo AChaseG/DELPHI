@@ -521,7 +521,11 @@
              already been ingested. It is instant, and it's what you want when you've
              just changed a feed's criteria.</p>
           <p>Neither is normally necessary. Sources refresh continuously on their own
-             cadence, and the board updates itself.</p>
+             cadence, and the board updates itself as articles arrive.</p>
+          <p>Once the board you are looking at has finished loading, D.E.L.P.H.I. quietly
+             loads the other boards behind it — one column at a time, so it never
+             competes with what's on screen — which is why switching between 🏠 Home,
+             📋 My feeds and a 🏛 Pantheon is usually instant.</p>
         </details>
 
         <details>
@@ -618,6 +622,23 @@
              is broken.</p>
           <p>If a source is later deleted, feeds pointing at it simply stop matching it;
              they don't silently widen to everything.</p>
+        </details>
+
+        <details>
+          <summary>⚡ Why switching boards is instant</summary>
+          <p>Delphi keeps the last contents of every column you've seen, and repaints
+             from that the moment you switch, refreshing behind it. So a board you have
+             already read comes back immediately rather than reloading in front of you.</p>
+          <p>It also warms the boards you <em>aren't</em> looking at. When the visible
+             board has finished loading, the others are fetched in the background — one
+             request at a time, where the board on screen gets two, and never before the
+             visible one is done. Switching away stops it. A column fetched in the last
+             couple of minutes is left alone, so moving back and forth between boards
+             costs nothing.</p>
+          <p>This is why a switch can show news a few seconds old. Nothing is hidden by
+             it: new articles push a refresh of the visible board as they arrive, the
+             column's own ⟳ always re-queries, and so do ⟳ Refresh, saving an edit to a
+             feed, and changing the staleness threshold.</p>
         </details>
 
         <details>

@@ -34,6 +34,9 @@ async function boot() {
   COUNTRY_NAMES = new Map(META.countries.map(c => [c.iso2, c.name]));
   Builder.init(META, SOURCES);
   Builder.onSaved = async (mode, converted = false) => {
+    // Whatever was cached for this feed was matched by its previous
+    // criteria, so it has to be thrown away rather than aged out.
+    if (Builder.editing) invalidateFeedCache(Builder.editing);
     // A conversion changes both lists: one side gains, the other loses.
     if (mode === "alert" || converted) await refreshAlerts();
     if (mode === "feed") {
@@ -110,6 +113,94 @@ let BOARD_GENERATION = 0;
    server. Remembering the list lets the board come back immediately and
    reconcile behind that. */
 const PANTHEON_FEEDS = new Map();
+
+/* ---------- warming the boards you aren't looking at ----------
+
+   Once the board on screen has finished loading, the boards behind it are
+   fetched too, so switching to one is instant instead of a wait. Three rules
+   keep this from becoming the load problem it is meant to hide:
+
+     · it never starts until the visible board is done, and it stops the moment
+       you switch — the board you are actually looking at always has the
+       network to itself;
+     · one request at a time, where the foreground gets two, because none of
+       this is urgent;
+     · a column fetched within PREFETCH_FRESH_MS is left alone, so switching
+       back and forth doesn't re-fetch the same feeds over and over.
+
+   Nothing here touches the DOM. It only fills the caches that renderBoard and
+   feedColumn already paint from. */
+const PREFETCH_DELAY_MS = 1200;        // let the visible board settle first
+const PREFETCH_FRESH_MS = 2 * 60 * 1000;
+const FEED_CACHE_AT = new Map();       // cache key -> when it was last fetched
+
+let prefetchTimer = null;
+
+function schedulePrefetch(generation) {
+  clearTimeout(prefetchTimer);
+  prefetchTimer = setTimeout(() => { prefetchOtherBoards(generation); }, PREFETCH_DELAY_MS);
+}
+
+/* Forget what a feed last returned. Ageing an entry out is right when the news
+   may have moved on; dropping it is right when the question itself changed —
+   the feed was edited, or the server will now answer differently. */
+function invalidateFeedCache(feed) {
+  const key = feedCacheKey(feed);
+  FEED_CACHE.delete(key);
+  FEED_CACHE_AT.delete(key);
+}
+
+/* Only the timestamps: the articles stay on screen while every column
+   re-queries, so a forced refresh still never blanks the board. */
+function invalidateAllFeedCaches() {
+  FEED_CACHE_AT.clear();
+}
+
+/* The feeds making up the board currently on screen. */
+function visibleFeeds() {
+  if (VIEW === "home") return DELPHI_FEEDS;
+  if (VIEW.startsWith("pantheon:")) return PANTHEON_FEEDS.get(+VIEW.split(":")[1]) || [];
+  return FEEDS;
+}
+
+/* Every feed that is on a board other than the one being viewed. Pantheon
+   boards need their feed list first; that list is cached too, which is what
+   makes a first switch to a shared board paint immediately. */
+async function feedsOnOtherBoards(stillWanted) {
+  const others = [];
+  if (VIEW !== "home") others.push(...DELPHI_FEEDS);
+  if (VIEW !== "mine") others.push(...FEEDS);
+  for (const p of PANTHEONS) {
+    if (VIEW === "pantheon:" + p.id) continue;
+    let feeds = PANTHEON_FEEDS.get(p.id);
+    if (!feeds) {
+      if (!stillWanted()) return others;
+      try {
+        feeds = await API.pantheonFeeds(p.id);
+        PANTHEON_FEEDS.set(p.id, feeds);
+      } catch (e) { continue; }   // speculative: a failure costs nothing
+    }
+    others.push(...feeds);
+  }
+  return others;
+}
+
+async function prefetchOtherBoards(generation) {
+  const stillWanted = () => generation === BOARD_GENERATION && !document.hidden;
+  if (!stillWanted()) return;
+  const others = await feedsOnOtherBoards(stillWanted);
+  for (const feed of others) {
+    if (!stillWanted()) return;
+    const key = feedCacheKey(feed);
+    if (Date.now() - (FEED_CACHE_AT.get(key) || 0) < PREFETCH_FRESH_MS) continue;
+    try { await fetchFeedItems(feed); } catch (e) { /* speculative */ }
+  }
+}
+
+// A tab that was hidden when its turn came round gets one when it returns.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) schedulePrefetch(BOARD_GENERATION);
+});
 
 /* Swap the board's contents in one operation. Nothing is removed until the
    replacement exists, so there is never a frame with an empty board. The
@@ -199,6 +290,8 @@ async function renderBoard() {
   }
 
   syncBoardScrollbar();   // widths can change as columns fill
+  // The visible board is done; warm the others so switching to one is instant.
+  if (current()) schedulePrefetch(generation);
 }
 
 /* A column that carries a message instead of articles. */
@@ -257,16 +350,21 @@ function wireTopbar() {
   el("btn-refresh").onclick = async () => {
     el("btn-refresh").disabled = true;
     toast("Refreshing", "Polling news wires now… (local city feeds refresh in the background)");
+    // Pressing Refresh means "show me current news", so the board re-queries
+    // whatever the poll does — including when a cycle is already running and
+    // this request is declined. Only the freshness timestamps are dropped; the
+    // articles stay on screen while the columns re-query behind them.
+    invalidateAllFeedCaches();
     try {
       const r = await API.runIngest();
       const found = r.discovered ? ` · discovered ${r.discovered} new source${plural(r.discovered)}` : "";
       toast("Ingest complete", `${r.new_articles} new article${plural(r.new_articles)} `
         + `(${r.sources_ok}/${r.sources_total} polled ok)${found}`);
       renderStats(await API.meta());
-      await refreshFeeds();
     } catch (e) {
       toast(e.message.includes("already running") ? "Refresh" : "Refresh failed", e.message);
     }
+    await refreshFeeds();
     el("btn-refresh").disabled = false;
   };
   el("btn-close-event").onclick = () => { el("event-backdrop").hidden = true; };
@@ -547,7 +645,8 @@ function wireSettings() {
   stale.value = String(Settings.get("stale_hours"));
   stale.onchange = async () => {
     Settings.set("stale_hours", +stale.value);
-    await renderBoard();  // re-filter visible feeds immediately
+    invalidateAllFeedCaches();   // the server applies this, not the client
+    await renderBoard();
   };
   theme.value = Settings.get("theme");
   compact.checked = !!Settings.get("compact");
@@ -768,7 +867,7 @@ function feedColumn(feed, readonly = false) {
   // Every column can be refreshed on its own — the ⟳ in the rail re-polls every
   // source, which is slow and heavy when you only want this one column current.
   tools.append(toolBtn("⟳", "Refresh this feed", async () => {
-    await loadFeedArticles(feed);
+    await loadFeedArticles(feed, /*force*/ true);
   }));
   const pinBtn = () => toolBtn("📌", "Add a copy to My feeds (editable)", async () => {
     await API.createFeed({ name: feed.name.replace(/^[^\w]*\s*/, ""), criteria: feed.criteria,
@@ -1096,7 +1195,30 @@ function staleNotice(body, message) {
   body.prepend(note);
 }
 
-async function loadFeedArticles(feed) {
+/* Fetch one feed's contents and cache them. No DOM: this is also how boards
+   that aren't on screen get warmed, and those have no column to write to. */
+async function fetchFeedItems(feed) {
+  let items;
+  if (feed.home) {  // Delphi-generated Home column: ad-hoc criteria search
+    items = feed.group_events
+      ? await API.searchGrouped(feed.criteria, feed.sort)
+      : await API.search(feed.criteria, feed.sort, 40);
+  } else {
+    items = feed.group_events ? await API.feedEvents(feed.id) : await API.feedArticles(feed.id);
+  }
+  const key = feedCacheKey(feed);
+  FEED_CACHE.set(key, items);
+  FEED_CACHE_AT.set(key, Date.now());
+  return items;
+}
+
+/* A column refreshed this recently is left as it is when a board is re-rendered.
+   Switching away and back used to re-query every column each time, which is the
+   most avoidable load the client generates. New articles don't wait for this:
+   the event stream refreshes the visible board as they arrive. */
+const FOREGROUND_FRESH_MS = 30 * 1000;
+
+async function loadFeedArticles(feed, force = false) {
   const body = document.querySelector(`#feed-${feed.id ?? feed.home} .feed-body`);
   if (!body) return;
   const key = feedCacheKey(feed);
@@ -1105,17 +1227,10 @@ async function loadFeedArticles(feed) {
   // views shows news immediately instead of an empty column.
   if (cached && !body.querySelector(".article, .event-group"))
     renderFeedItems(body, feed, cached);
+  if (!force && cached && Date.now() - (FEED_CACHE_AT.get(key) || 0) < FOREGROUND_FRESH_MS)
+    return;
   try {
-    let items;
-    if (feed.home) {  // Delphi-generated Home column: ad-hoc criteria search
-      items = feed.group_events
-        ? await API.searchGrouped(feed.criteria, feed.sort)
-        : await API.search(feed.criteria, feed.sort, 40);
-    } else {
-      items = feed.group_events ? await API.feedEvents(feed.id) : await API.feedArticles(feed.id);
-    }
-    FEED_CACHE.set(key, items);
-    renderFeedItems(body, feed, items);
+    renderFeedItems(body, feed, await fetchFeedItems(feed));
   } catch (e) {
     // Never trade real articles for an error message. Only a column with
     // nothing to show falls back to reporting the failure.
@@ -2551,8 +2666,12 @@ function connectStream() {
       refreshTimer = setTimeout(async () => {
         lastBoardRefresh = lastStatsRefresh = Date.now();
         renderStats(await API.meta());
-        const visible = VIEW === "home" ? DELPHI_FEEDS : FEEDS;
-        await mapLimited(visible, BOARD_LOAD_CONCURRENCY, loadFeedArticles);
+        // Whatever is actually on screen. This used to refresh the account's
+        // own feeds regardless, so a Pantheon board never picked up new
+        // articles between renders.
+        await mapLimited(visibleFeeds(), BOARD_LOAD_CONCURRENCY,
+                         (f) => loadFeedArticles(f, /*force*/ true));
+        schedulePrefetch(BOARD_GENERATION);   // keep the other boards current too
       }, wait);
     } else if (msg.type === "alert" && (msg.user_id === Session.userKey()
                || (msg.pantheon_id && PANTHEONS.some(p => p.id === msg.pantheon_id)))) {
