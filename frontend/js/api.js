@@ -15,6 +15,11 @@ const Settings = {
     desktop_notif: false, // browser notifications when tab is hidden
     compact: false,       // hide summaries/thumbnails
     stale_hours: 48,      // hide-stale threshold for feeds that opt in (0 = never)
+    // Per-column pixel widths, keyed the same way as the feed cache
+    // ("feed:12" / "home:world"). Kept here rather than on the feed row so a
+    // Pantheon member resizing a shared column doesn't relayout the board for
+    // everyone else, and so Home's built-in columns can be resized at all.
+    col_widths: {},
   },
   _load() {
     try { return { ...this.defaults, ...(JSON.parse(localStorage.getItem("gnd_settings")) || {}) }; }

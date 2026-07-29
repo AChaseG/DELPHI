@@ -320,12 +320,39 @@ button { font: inherit; }
 }
 .board-scroll-thumb:hover { background: var(--gold); }
 .board-scroll-thumb.dragging { background: var(--gold); cursor: grabbing; }
+/* Default width. A column carrying its own width overrides both of these
+   inline (app.js sets width and flex-basis together — flex-basis here would
+   otherwise win over a bare inline width). */
 .board > .feed-col { flex: 0 0 360px; width: 360px; }
-.board > .feed-col.wide { flex: 0 0 734px; width: 734px; }
+
+/* Drag handles on a column's edges. They sit inside the column rather than
+   between columns so the target is the edge you can actually see. */
+.col-grip {
+  position: absolute; top: 0; bottom: 0; width: 8px;
+  cursor: col-resize;
+  background: transparent;
+  /* Above the article list, below anything the column pops out. */
+  z-index: 2;
+}
+.col-grip-left { left: 0; }
+.col-grip-right { right: 0; }
+.col-grip::after {          /* the visible line, only once you're on the edge */
+  content: ""; position: absolute; top: 8px; bottom: 8px; left: 3px;
+  width: 2px; border-radius: 2px;
+  background: transparent;
+  transition: background 90ms linear;
+}
+.col-grip:hover::after, .col-grip:focus-visible::after, .col-grip.dragging::after {
+  background: var(--gold);
+}
+/* While dragging, the cursor stays a resize cursor everywhere and nothing
+   selects — the pointer routinely leaves the 8px handle mid-drag. */
+body.col-resizing { cursor: col-resize; user-select: none; }
 @media (min-width: 1281px) {
   .board, .empty-state { padding-left: 70px; padding-right: 70px; }
 }
 .feed-col {
+  position: relative;   /* the resize grips anchor to the column's edges */
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -537,6 +564,18 @@ button { font: inherit; }
   border-radius: 7px;
   width: 760px; max-width: 100%;
 }
+/* A short form doesn't need the builder's width. */
+.modal.narrow { width: 520px; }
+/* One control width down the whole add-source form. Without this the text
+   fields, the selects and the country list each took their own width and the
+   right-hand edge came out ragged. */
+#src-backdrop .set-row > input,
+#src-backdrop .set-row > select {
+  flex: 0 0 240px; width: 240px; min-width: 0;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px;
+}
+#src-backdrop .set-row > input[type="checkbox"] { flex: none; width: auto; }
 .modal-head, .modal-foot {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 18px;
@@ -578,6 +617,36 @@ button { font: inherit; }
   padding: 2px 8px; border-radius: 999px; font-size: 12px;
 }
 .chip button { background: none; border: none; color: var(--ink-muted); cursor: pointer; padding: 0; }
+
+/* ---------- source picker (builder step 2) ----------
+   A searchable checkbox list. The catalog runs to hundreds of outlets, which
+   a <select multiple> could hold but nobody could work with. */
+.src-pick { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.src-pick-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.src-pick-tools input[type="search"] {
+  flex: 1 1 220px; min-width: 160px; padding: 6px 9px;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 7px;
+}
+.src-pick-chosen { display: flex; flex-wrap: wrap; gap: 5px; }
+.src-pick-chosen .chip { cursor: pointer; }
+.src-pick-list {
+  max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface-2);
+  padding: 4px;
+}
+.src-pick-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 6px; border-radius: 5px;
+  cursor: pointer;
+}
+.src-pick-row:hover { background: var(--surface); }
+.src-pick-row input[type="checkbox"] { flex: none; margin: 0; }
+/* The name takes the slack so the platform/scope/language tail stays right-
+   aligned and can't be pushed off the row by a long outlet name. */
+.src-pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-pick-row .s-meta { flex: none; }
 
 #b-queries { display: flex; flex-direction: column; gap: 6px; }
 .query-row .query-line { display: flex; gap: 6px; align-items: center; }
@@ -950,7 +1019,6 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
 @media (max-width: 900px) {
   .stat-row { order: 3; width: 100%; justify-content: space-between; }
   .builder-grid, .builder-grid.two { grid-template-columns: 1fr; }
-  .feed-col.wide { grid-column: span 1; }
 }
 
 /* Phones: topbar wraps into rows, one feed column fills the screen (swipe
@@ -969,8 +1037,14 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
 
   .board { padding: 14px 12px; gap: 12px; scroll-snap-type: x mandatory;
            padding-right: calc(var(--rail-w) + 10px); }
-  .board > .feed-col,
-  .board > .feed-col.wide { flex: 0 0 86vw; width: 86vw; max-width: 360px; scroll-snap-align: start; }
+  /* One column per screen, whatever width it was dragged to on a desktop —
+     !important because that width is an inline style, which a media query
+     otherwise loses to. Resizing is pointless at this size, so the grips go. */
+  .board > .feed-col {
+    flex: 0 0 86vw !important; width: 86vw !important;
+    max-width: 360px; scroll-snap-align: start;
+  }
+  .col-grip { display: none; }
   .board, .empty-state { padding-left: 12px; }
   .empty-state { padding-right: calc(var(--rail-w) + 10px); }
 

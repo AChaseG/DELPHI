@@ -13,6 +13,32 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-07-30",
+        "title": "Columns you can resize, and feeds you can point at one outlet",
+        "items": [
+            "↔ Feed columns resize: drag either edge to make a column as wide or "
+            "narrow as you like, double-click an edge to reset it, or use ⇔ to "
+            "flip between the standard and wide widths. Widths save to your "
+            "account and follow you between devices — and a column you resize on "
+            "a Pantheon board changes only for you, not for the group.",
+            "📡 Feeds and alerts can be restricted to particular outlets. The "
+            "picker in the wizard's Refine step is searchable — by name, country, "
+            "language, platform or scope — with a “select shown” that takes "
+            "everything currently matching, so you can grab a whole group at once. "
+            "A restricted feed says so in its header.",
+            "➕ Adding a source by hand is now its own dialog instead of a strip "
+            "squeezed into the Sources panel, with room for the language and "
+            "categories fields, and it explains why a save was rejected instead of "
+            "failing quietly.",
+            "Switching between Home, My feeds, and a Pantheon no longer blanks the "
+            "columns after the first few: every column paints the news it already "
+            "has straight away and refreshes behind it.",
+            "The board's horizontal scrollbar now disappears the moment there are "
+            "too few columns to scroll, instead of lingering until the board had "
+            "finished reloading.",
+        ],
+    },
+    {
         "date": "2026-07-29",
         "title": "Favourite locations, and feeds that watch several areas",
         "items": [

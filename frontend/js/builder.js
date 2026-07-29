@@ -26,8 +26,96 @@ const Builder = {
     fill(el("b-countries"), meta.countries, c => c.iso2, c => `${flagEmoji(c.iso2)} ${c.name}`);
     fill(el("b-categories"), meta.categories, c => c, c => c);
     fill(el("b-languages"), meta.languages, l => l, l => l);
-    fill(el("b-sources"), sources, s => s.id, s => `${s.name} (${s.scope}${s.country ? ", " + s.country : ""})`);
+    this._renderSources();
     this._wire();
+  },
+
+  /* ---------- source picker ----------
+     The catalog runs to several hundred outlets, so this is a searchable list
+     of checkboxes rather than a multi-select: with a plain <select multiple>
+     you had to scroll to find an outlet and ctrl-click to keep the ones you
+     already had. Chosen sources are listed above the results so a selection
+     stays visible after the search that found it is cleared. */
+  chosenSources: new Set(),
+
+  _renderSources() {
+    const box = el("b-sources");
+    if (!box) return;
+    const needle = (el("b-src-search")?.value || "").trim();
+    const shown = this.sources.filter(s => sourceMatches(s, needle));
+    box.innerHTML = "";
+    if (!shown.length) {
+      const p = document.createElement("div");
+      p.className = "s-meta";
+      p.textContent = needle ? `No source matches “${needle}”.` : "No sources yet.";
+      box.appendChild(p);
+    }
+    // Cap the rendered rows: an unfiltered catalog is hundreds of checkboxes,
+    // and building them all on every keystroke is what makes a picker feel slow.
+    const LIMIT = 200;
+    for (const s of shown.slice(0, LIMIT)) box.appendChild(this._sourceRow(s));
+    if (shown.length > LIMIT) {
+      const more = document.createElement("div");
+      more.className = "s-meta";
+      more.textContent = `…and ${shown.length - LIMIT} more — narrow the search to see them.`;
+      box.appendChild(more);
+    }
+    this._renderChosenSources();
+  },
+
+  _sourceRow(s) {
+    const row = document.createElement("label");
+    row.className = "src-pick-row";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = String(s.id);
+    cb.checked = this.chosenSources.has(s.id);
+    cb.onchange = () => {
+      if (cb.checked) this.chosenSources.add(s.id);
+      else this.chosenSources.delete(s.id);
+      this._renderChosenSources();
+    };
+    const name = document.createElement("span");
+    name.className = "src-pick-name";
+    name.textContent = `${s.paywall ? "🔒 " : ""}${flagEmoji(s.country)} ${s.name}`;
+    const meta = document.createElement("span");
+    meta.className = "s-meta";
+    meta.textContent = `${s.platform || "news"} · ${s.scope} · ${s.language}`;
+    row.append(cb, name, meta);
+    return row;
+  },
+
+  /* The running selection, plus the summary line on the <summary> element so
+     you can tell a restricted feed from an unrestricted one while it's shut. */
+  _renderChosenSources() {
+    const chosen = el("b-src-chosen");
+    const label = el("b-src-summary");
+    const byId = new Map(this.sources.map(s => [s.id, s]));
+    const ids = [...this.chosenSources];
+    if (label) {
+      label.textContent = ids.length
+        ? `(${ids.length} source${ids.length === 1 ? "" : "s"})`
+        : "(optional — all sources)";
+    }
+    if (!chosen) return;
+    chosen.innerHTML = "";
+    chosen.hidden = !ids.length;
+    for (const id of ids) {
+      const s = byId.get(id);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.textContent = (s ? s.name : `source ${id}`) + " ✕";
+      chip.title = "Remove from the selection";
+      chip.onclick = () => {
+        this.chosenSources.delete(id);
+        this._renderSources();
+      };
+      chosen.appendChild(chip);
+    }
+    // Boxes for rows already on screen have to follow the chips.
+    for (const cb of el("b-sources").querySelectorAll("input[type=checkbox]"))
+      cb.checked = this.chosenSources.has(+cb.value);
+    if (this.step === this.LAST_STEP) this._renderSummary();
   },
 
   step: 0,
@@ -68,7 +156,13 @@ const Builder = {
     if (c.date_from || c.date_to)
       lines.push(["Date range", `${c.date_from || "…"} → ${c.date_to || "…"}`]);
     if (c.hide_stale) lines.push(["Staleness", "hide events with no recent updates (threshold in Settings)"]);
-    if (c.source_ids.length) lines.push(["Sources", `${c.source_ids.length} selected`]);
+    if (c.source_ids.length) {
+      const byId = new Map(this.sources.map(s => [s.id, s.name]));
+      const named = c.source_ids.map(id => byId.get(id) || `source ${id}`);
+      lines.push(["Only these sources", named.length > 6
+        ? `${named.slice(0, 6).join(", ")} +${named.length - 6} more`
+        : named.join(", ")]);
+    }
     if ((c.queries.length || c.keywords.length) && c.auto_coverage)
       lines.push(["Coverage", "ingesting worldwide press for this topic"]);
     const box = el("wiz-summary");
@@ -142,6 +236,23 @@ const Builder = {
     el("btn-clear-dates").onclick = () => {
       el("b-date-from").value = ""; el("b-date-to").value = "";
     };
+
+    let srcTimer;
+    el("b-src-search").addEventListener("input", () => {
+      clearTimeout(srcTimer);
+      srcTimer = setTimeout(() => this._renderSources(), 120);
+    });
+    // "Select shown" acts on the current search, which is the only way to pick
+    // out a group — every Japanese outlet, say — without clicking each one.
+    el("btn-b-src-all").onclick = () => {
+      const needle = el("b-src-search").value.trim();
+      for (const s of this.sources) if (sourceMatches(s, needle)) this.chosenSources.add(s.id);
+      this._renderSources();
+    };
+    el("btn-b-src-none").onclick = () => {
+      this.chosenSources.clear();
+      this._renderSources();
+    };
     // Controls living on the Review step refresh the summary in place.
     for (const sel of ["#b-stale", "#b-group", "#b-active", 'input[name="b-sort"]']) {
       for (const node of document.querySelectorAll(sel)) {
@@ -180,7 +291,12 @@ const Builder = {
     selectValues(el("b-countries"), c.countries || []);
     selectValues(el("b-categories"), c.categories || []);
     selectValues(el("b-languages"), c.languages || []);
-    selectValues(el("b-sources"), (c.source_ids || []).map(String));
+    this.chosenSources = new Set(c.source_ids || []);
+    el("b-src-search").value = "";
+    // Open the picker when the item being edited actually restricts sources,
+    // so a restriction can't sit hidden behind a closed disclosure.
+    el("b-sources-details").open = this.chosenSources.size > 0;
+    this._renderSources();
     for (const cb of el("b-scopes").querySelectorAll("input"))
       cb.checked = (c.scopes || []).includes(cb.value);
     for (const cb of el("b-platforms").querySelectorAll("input"))
@@ -263,7 +379,7 @@ const Builder = {
       platforms,
       categories: selectedValues(el("b-categories")),
       languages: selectedValues(el("b-languages")),
-      source_ids: selectedValues(el("b-sources")).map(Number),
+      source_ids: [...this.chosenSources],
       keywords: [...this.keywords],
       exclude_keywords: [...this.exclude],
       query: "",

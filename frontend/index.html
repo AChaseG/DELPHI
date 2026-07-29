@@ -203,6 +203,36 @@
         </details>
 
         <details>
+          <summary>↔ Resizing feed columns</summary>
+          <p>Drag either <b>edge of a column</b> to make it as wide or as narrow as you
+             want (240–1000px) — a gold line marks the edge when you're on it. Wide
+             suits a feed you read in full; narrow suits one you're only monitoring, and
+             fits more columns on screen at once. <b>⇔</b> in the column's toolbar flips
+             between the standard and wide widths in one click, and
+             <b>double-clicking an edge</b> puts the column back to the default.
+             The edges are keyboard-reachable too: Tab to one and use ← / → (hold Shift
+             for bigger steps), Home to reset.</p>
+          <p>Widths are saved <em>to your account</em>, not to the feed, so they follow
+             you between browsers and devices — and resizing a column on a Pantheon's
+             shared board changes it only for you, never for the rest of the group.</p>
+        </details>
+
+        <details>
+          <summary>📡 Pulling from specific sources only</summary>
+          <p>By default a feed or alert considers everything D.E.L.P.H.I. ingests. To
+             narrow it to particular outlets, open <b>"Pull only from specific sources"</b>
+             in the wizard's Refine step. Search by name, country, language, platform or
+             scope, tick the ones you want, and they appear as chips above the list —
+             the selection survives changing or clearing the search. <b>Select shown</b>
+             takes everything currently matching your search, which is how you grab a
+             group at once ("all Japanese outlets") without clicking through them.</p>
+          <p>A restricted feed carries a <b>📡</b> badge in its column header naming the
+             outlets. Restricting sources is a filter like any other — it combines with
+             keywords, countries and the rest, so an empty column usually means the
+             criteria are narrower than the news, not that something is broken.</p>
+        </details>
+
+        <details>
           <summary>📊 How importance scoring works</summary>
           <p>Every article gets a transparent 0–100 score — no black box. It adds up:</p>
           <ul>
@@ -293,9 +323,15 @@
           <p>Saving a feed or alert with queries/keywords also creates a <b>Google News
              tracker</b> (the 🔍 checkbox) that ingests worldwide press coverage of your
              topic, so matches aren't limited to the catalog. Track topics manually in
-             <b>Sources</b> (📰 Press / 💬 Social), add any RSS/Atom URL, edit sources in
-             place, and watch their health dots: green = last poll OK, red = the error
-             is in the tooltip.</p>
+             <b>Sources</b> (📰 Press / 💬 Social), edit sources in place, and watch
+             their health dots: green = last poll OK, red = the error is in the
+             tooltip.</p>
+          <p><b>Adding an outlet by hand.</b> <b>➕ Add source</b> in the Sources panel
+             opens a dialog for one: its name and the URL of its RSS or Atom feed, plus
+             the platform, scope, country, language and categories that feeds and alerts
+             filter on, and whether it's 🔒 paywalled. Delphi then polls it on its own
+             schedule. If the URL turns out not to be a feed the source stays in the
+             list marked broken, and 🔧 on its row hunts for the outlet's real feed.</p>
           <p><b>The catalog grows itself.</b> Google News coverage names the outlet
              behind every story; when a cycle sees an outlet Delphi doesn't have, it
              looks for that outlet's own feed (homepage autodiscovery, then common feed
@@ -549,26 +585,8 @@
       <input id="topic-query" type="text" placeholder="Track a topic…">
       <button class="btn" id="btn-track-topic" title="Worldwide press coverage via Google News search">📰 Press</button>
       <button class="btn" id="btn-track-social" title="Reddit search + Mastodon hashtag feeds for this topic">💬 Social</button>
-    </div>
-    <div class="source-tools">
-      <input id="src-name" type="text" placeholder="Source name">
-      <input id="src-url" type="text" placeholder="RSS/Atom feed URL">
-    </div>
-    <div class="source-tools">
-      <select id="src-platform">
-        <option value="news">📰 press</option><option value="reddit">reddit</option>
-        <option value="mastodon">mastodon</option><option value="bluesky">bluesky</option>
-        <option value="youtube">youtube</option>
-      </select>
-      <select id="src-scope">
-        <option value="national">national</option><option value="local">local</option>
-        <option value="international">international</option>
-      </select>
-      <select id="src-country"></select>
-      <label class="check-inline" title="See the FAQ: Paywalled outlets">
-        <input type="checkbox" id="src-paywall"> 🔒 Paywalled
-      </label>
-      <button class="btn btn-primary" id="btn-add-source">Add source</button>
+      <button class="btn btn-primary" id="btn-open-add-source"
+              title="Add an outlet by its RSS/Atom feed URL">➕ Add source</button>
     </div>
     <div id="sources-list"></div>
   </aside>
@@ -774,9 +792,22 @@
             <input id="b-importance" type="range" min="0" max="100" step="5" value="0">
           </label>
           <div class="field">
-            <details>
-              <summary>Restrict to specific sources (optional)</summary>
-              <select id="b-sources" multiple size="8"></select>
+            <details id="b-sources-details">
+              <summary>Pull only from specific sources <span id="b-src-summary"
+                       class="s-meta">(optional — all sources)</span></summary>
+              <div class="src-pick">
+                <div class="src-pick-tools">
+                  <input id="b-src-search" type="search" autocomplete="off"
+                         placeholder="Find a source — name, country, language, platform…"
+                         aria-label="Find a source">
+                  <button class="btn small" id="btn-b-src-all" type="button"
+                          title="Select everything currently listed">Select shown</button>
+                  <button class="btn small" id="btn-b-src-none" type="button">Clear</button>
+                </div>
+                <div id="b-src-chosen" class="src-pick-chosen" hidden></div>
+                <div id="b-sources" class="src-pick-list" role="group"
+                     aria-label="Sources to pull from"></div>
+              </div>
             </details>
           </div>
         </section>
@@ -830,6 +861,60 @@
   <!-- Boolean search builder -->
   <!-- Pantheon create / manage modal — same shape as the feed & alert builder:
        tabs across the top, one working area, actions along the bottom. -->
+  <!-- Add a source by hand. Its own dialog rather than a strip inside the
+       Sources panel: it is a form with eight fields, and it was competing for
+       width with the list of several hundred sources behind it. -->
+  <div id="src-backdrop" class="modal-backdrop" hidden>
+    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="src-modal-title">
+      <div class="modal-head">
+        <h2 id="src-modal-title">Add a source</h2>
+        <button class="icon-btn" id="btn-close-src" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="set-row"><span>Name</span>
+          <input id="src-name" type="text" maxlength="200" placeholder="e.g. Kyodo News">
+        </label>
+        <label class="set-row"><span>Feed URL <em>(RSS or Atom)</em></span>
+          <input id="src-url" type="url" placeholder="https://example.com/feed.xml">
+        </label>
+        <label class="set-row"><span>Platform</span>
+          <select id="src-platform">
+            <option value="news">📰 press</option><option value="reddit">reddit</option>
+            <option value="mastodon">mastodon</option><option value="bluesky">bluesky</option>
+            <option value="youtube">youtube</option>
+          </select>
+        </label>
+        <label class="set-row"><span>Scope</span>
+          <select id="src-scope">
+            <option value="national">national</option><option value="local">local</option>
+            <option value="international">international</option>
+          </select>
+        </label>
+        <label class="set-row"><span>Country</span>
+          <select id="src-country"></select>
+        </label>
+        <label class="set-row"><span>Language <em>(code — en, ja, ar…)</em></span>
+          <input id="src-language" type="text" maxlength="10" placeholder="en">
+        </label>
+        <label class="set-row"><span>Categories <em>(optional, comma-separated)</em></span>
+          <input id="src-categories" type="text" placeholder="world, business">
+        </label>
+        <label class="check-inline" title="See the FAQ: Paywalled outlets">
+          <input type="checkbox" id="src-paywall"> 🔒 Paywalled
+        </label>
+        <p class="set-note">Delphi polls the feed on its own schedule and adds whatever it
+           publishes. If the URL turns out not to be a feed, the source is left in place
+           and marked broken — 🔧 in the list tries to find the outlet's real feed.</p>
+      </div>
+      <div class="modal-foot">
+        <span id="src-error" class="builder-error" role="alert" hidden></span>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-src-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-add-source">Add source</button>
+      </div>
+    </div>
+  </div>
+
   <div id="pn-backdrop" class="modal-backdrop" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pn-modal-title">
       <div class="modal-head">

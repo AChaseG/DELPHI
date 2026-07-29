@@ -94,9 +94,16 @@ function renderViewSwitch() {
   updateViewButtons();
 }
 
+/* Bumped by every render. A render that finds the counter moved on has been
+   superseded — it stops fetching rather than spending the (deliberately small)
+   concurrency budget filling columns that are no longer on screen. */
+let BOARD_GENERATION = 0;
+
 async function renderBoard() {
   const board = el("board");
   const searchCol = el("search-col");
+  const generation = ++BOARD_GENERATION;
+  const current = () => generation === BOARD_GENERATION;
   board.innerHTML = "";
   if (searchCol) board.appendChild(searchCol);
   if (VIEW.startsWith("pantheon:")) {
@@ -125,18 +132,21 @@ async function renderBoard() {
       board.appendChild(note);
     }
     for (const feed of feeds) board.appendChild(feedColumn(feed));
-    await mapLimited(feeds, BOARD_LOAD_CONCURRENCY, loadFeedArticles);
+    syncBoardScrollbar();
+    await mapLimited(feeds, BOARD_LOAD_CONCURRENCY, loadFeedArticles, current);
   } else if (VIEW === "home") {
     el("empty-state").hidden = true;
     for (const hf of DELPHI_FEEDS) board.appendChild(feedColumn(hf, /*readonly*/ true));
-    await mapLimited(DELPHI_FEEDS, BOARD_LOAD_CONCURRENCY, loadFeedArticles);
+    syncBoardScrollbar();
+    await mapLimited(DELPHI_FEEDS, BOARD_LOAD_CONCURRENCY, loadFeedArticles, current);
   } else {
     el("empty-state").hidden = FEEDS.length > 0;
     for (const feed of FEEDS) board.appendChild(feedColumn(feed));
-    await mapLimited(FEEDS, BOARD_LOAD_CONCURRENCY, loadFeedArticles);
+    syncBoardScrollbar();
+    await mapLimited(FEEDS, BOARD_LOAD_CONCURRENCY, loadFeedArticles, current);
   }
 
-  syncBoardScrollbar();   // the column count just changed
+  syncBoardScrollbar();   // widths can change as columns fill
 }
 
 function wireTopbar() {
@@ -252,23 +262,69 @@ function wireTopbar() {
     clearTimeout(srcFilterTimer);
     srcFilterTimer = setTimeout(renderSourcesPanel, 120);
   });
-  el("btn-add-source").onclick = async () => {
+  wireAddSource();
+}
+
+/* ---------- add-source dialog ---------- */
+const AddSource = {
+  open() {
+    for (const id of ["src-name", "src-url", "src-categories"]) el(id).value = "";
+    el("src-language").value = "en";
+    el("src-platform").value = "news";
+    el("src-scope").value = "national";
+    el("src-country").value = "";
+    el("src-paywall").checked = false;
+    this.clearError();
+    el("src-backdrop").hidden = false;
+    el("src-name").focus();
+  },
+  close() { el("src-backdrop").hidden = true; },
+  showError(msg) {
+    const box = el("src-error");
+    box.textContent = msg; box.hidden = false;
+  },
+  clearError() { el("src-error").hidden = true; },
+
+  async save() {
     const name = el("src-name").value.trim(), url = el("src-url").value.trim();
-    if (!name || !url) { toast("Missing fields", "A source needs a name and a feed URL."); return; }
+    // Report the problem next to the form rather than in a toast that appears
+    // behind the dialog the user is still looking at.
+    if (!name) return this.showError("Give the source a name.");
+    if (!url) return this.showError("A source needs the URL of its RSS or Atom feed.");
+    if (!/^https?:\/\//i.test(url))
+      return this.showError("The feed URL has to start with http:// or https://");
+    this.clearError();
     try {
       await API.addSource({
         name, rss_url: url,
         platform: el("src-platform").value,
         scope: el("src-scope").value,
         country: el("src-country").value,
+        language: el("src-language").value.trim() || "en",
+        categories: el("src-categories").value.split(",").map(s => s.trim()).filter(Boolean),
         paywall: el("src-paywall").checked,
       });
-      el("src-name").value = ""; el("src-url").value = ""; el("src-paywall").checked = false;
-      await reloadSources();
-      toast("Source added", `${name} — refresh ⟳ to pull it for the first time.`);
-    } catch (e) { toast("Could not add source", e.message); }
-  };
+    } catch (e) { return this.showError(e.message); }
+    this.close();
+    await reloadSources();
+    toast("Source added", `${name} — refresh ⟳ to pull it for the first time.`);
+  },
+};
+
+function wireAddSource() {
+  el("btn-open-add-source").onclick = () => AddSource.open();
+  el("btn-close-src").onclick = () => AddSource.close();
+  el("btn-src-cancel").onclick = () => AddSource.close();
+  el("src-backdrop").addEventListener("mousedown", (e) => {
+    if (e.target === el("src-backdrop")) AddSource.close();
+  });
+  el("btn-add-source").onclick = () => AddSource.save();
   feedback(el("btn-add-source"), "Adding…");
+  // Enter anywhere in the form submits, as in any other dialog.
+  el("src-backdrop").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.tagName === "INPUT") el("btn-add-source").click();
+    if (e.key === "Escape") AddSource.close();
+  });
 }
 
 /* ---------- settings ---------- */
@@ -606,8 +662,9 @@ async function refreshFeeds() {
 
 function feedColumn(feed, readonly = false) {
   const col = document.createElement("section");
-  col.className = "feed-col" + (feed.width > 1 ? " wide" : "");
+  col.className = "feed-col";
   col.id = "feed-" + (feed.id ?? feed.home);
+  applyColWidth(col, feed);
 
   const head = document.createElement("div");
   head.className = "feed-head";
@@ -647,7 +704,8 @@ function feedColumn(feed, readonly = false) {
     tools.append(
       toolBtn("◀", "Move left", () => moveFeed(feed.id, -1)),
       toolBtn("▶", "Move right", () => moveFeed(feed.id, +1)),
-      toolBtn("⇔", "Toggle width", () => toggleWidth(feed)),
+      toolBtn("⇔", "Toggle between the standard and wide width (or drag either edge)",
+              () => toggleWidth(feed, col)),
       toolBtn("✎", "Edit feed", () => Builder.open("feed", feed)),
     );
     if (PANTHEONS.length) {
@@ -680,8 +738,16 @@ function feedColumn(feed, readonly = false) {
 
   const body = document.createElement("div");
   body.className = "feed-body";
-  body.innerHTML = '<div class="feed-empty">Loading…</div>';
-  col.append(head, body);
+  // Paint the last known contents here, while the column is being built, rather
+  // than waiting for loadFeedArticles. That runs behind the concurrency
+  // limiter, so every column past the first few used to sit on "Loading…" for
+  // as long as the columns ahead of it took — switching panels looked like it
+  // had wiped them. From cache the whole board comes back at once and only
+  // refreshes in the background.
+  const cached = FEED_CACHE.get(feedCacheKey(feed));
+  if (cached) renderFeedItems(body, feed, cached);
+  else body.innerHTML = '<div class="feed-empty">Loading…</div>';
+  col.append(head, body, resizeGrip(col, feed, "left"), resizeGrip(col, feed, "right"));
   return col;
 }
 
@@ -722,8 +788,18 @@ function criteriaBadges(c, sort) {
   const nq = (c.queries || []).filter(q => q && q.trim()).length + (c.query ? 1 : 0);
   if (nq) out.push(tag(nq > 1 ? `Boolean ×${nq}` : "Boolean",
                        [...(c.queries || []), c.query].filter(Boolean).join("  |  ")));
+  if ((c.source_ids || []).length) {
+    const names = c.source_ids.map(id => (SOURCES.find(s => s.id === id) || {}).name)
+      .filter(Boolean).sort((a, b) => a.localeCompare(b));
+    const label = names.length ? names[0] + (names.length > 1 ? ` +${names.length - 1}` : "")
+                               : `${c.source_ids.length} sources`;
+    out.push(tag("📡 " + label,
+                 "Only pulls from: " + (names.join(", ") || c.source_ids.join(", "))));
+  }
   if (c.min_importance) out.push(tag("imp≥" + c.min_importance));
-  if (c.geo) out.push(tag("📍 map area"));
+  // Both keys: feeds saved before multiple areas carry the single `geo`.
+  const areas = (c.geos || []).length + (c.geo ? 1 : 0);
+  if (areas) out.push(tag(areas > 1 ? `📍 ${areas} map areas` : "📍 map area"));
   if (c.hours) out.push(tag("last " + c.hours + "h"));
   if (c.date_from || c.date_to)
     out.push(tag(`📅 ${c.date_from || "…"}→${c.date_to || "…"}`));
@@ -767,15 +843,21 @@ function safeUrl(url) {
    slower, and the unlucky ones hit the client timeout and report themselves as
    failures — even though nothing is actually broken. A small window keeps the
    server responsive, fills columns progressively instead of all-at-once, and
-   costs little on a fast one. */
-const BOARD_LOAD_CONCURRENCY = 3;
+   costs little on a fast one.
+
+   Columns outside the window are not blank while they wait: feedColumn paints
+   them from FEED_CACHE as it builds them, so the size of this window changes
+   only how fast the board becomes *fresh*, never whether it has news on it. */
+const BOARD_LOAD_CONCURRENCY = 2;
 
 /* Run `fn` over `items`, at most `limit` at a time. Rejections are contained so
-   one failing column can't abandon the rest of the board. */
-async function mapLimited(items, limit, fn) {
+   one failing column can't abandon the rest of the board. `stillWanted` is an
+   optional predicate checked between items: when it goes false the remaining
+   work is dropped, so a superseded board stops competing for the window. */
+async function mapLimited(items, limit, fn, stillWanted = () => true) {
   const queue = items.slice();
   const worker = async () => {
-    while (queue.length) {
+    while (queue.length && stillWanted()) {
       const item = queue.shift();
       try { await fn(item); } catch (e) { console.error("[board]", e); }
     }
@@ -795,6 +877,104 @@ async function mapLimited(items, limit, fn) {
 const FEED_CACHE = new Map();
 
 const feedCacheKey = (feed) => (feed.home ? "home:" + feed.home : "feed:" + feed.id);
+
+/* ---------- column widths ----------
+   Narrow enough that a headline still fits on two lines, wide enough to read a
+   summary without it becoming a wall. Widths live in Settings (see api.js). */
+const COL_MIN = 240, COL_MAX = 1000;
+const COL_DEFAULT = 360, COL_WIDE = 734;   // the two presets ⇔ toggles between
+/* Keeping every column a user ever resized would eventually outgrow the 4 KB
+   the server allows for settings, so the map is bounded. Object key order is
+   insertion order, so the oldest entries are the ones dropped. */
+const COL_WIDTHS_MAX = 150;
+
+const colWidths = () => Settings.get("col_widths") || {};
+
+function colWidth(feed) {
+  const w = colWidths()[feedCacheKey(feed)];
+  return Number.isFinite(w) ? Math.min(COL_MAX, Math.max(COL_MIN, w)) : 0;
+}
+
+/* px = 0 clears the override and returns the column to its default width. */
+function setColWidth(feed, px) {
+  const all = { ...colWidths() };
+  const key = feedCacheKey(feed);
+  delete all[key];                                   // re-insert so it counts as recent
+  if (px) all[key] = Math.round(Math.min(COL_MAX, Math.max(COL_MIN, px)));
+  const keys = Object.keys(all);
+  for (const stale of keys.slice(0, Math.max(0, keys.length - COL_WIDTHS_MAX))) delete all[stale];
+  Settings.set("col_widths", all);
+}
+
+function applyColWidth(col, feed) {
+  const px = colWidth(feed) || (feed.width > 1 ? COL_WIDE : 0);
+  // Both properties: the board sets flex-basis as well as width, and a bare
+  // inline width would lose to it.
+  col.style.width = px ? px + "px" : "";
+  col.style.flexBasis = px ? px + "px" : "";
+}
+
+/* Draggable edges. Both edges resize this column — the left one grows it as you
+   drag left, which is what the edge under the cursor appears to do. Nothing is
+   saved until the drag ends, so a resize is one settings write, not sixty. */
+function resizeGrip(col, feed, side) {
+  const grip = document.createElement("div");
+  grip.className = "col-grip col-grip-" + side;
+  grip.tabIndex = 0;
+  grip.setAttribute("role", "separator");
+  grip.setAttribute("aria-orientation", "vertical");
+  grip.setAttribute("aria-label", `Resize “${feed.name}” (arrow keys, or double-click to reset)`);
+  grip.title = "Drag to resize · double-click to reset";
+
+  let startX = 0, startW = 0, dragging = false;
+  const width = () => colWidth(feed) || col.offsetWidth;
+  const preview = (px) => {
+    col.style.width = col.style.flexBasis =
+      Math.round(Math.min(COL_MAX, Math.max(COL_MIN, px))) + "px";
+    syncBoardScrollbar();
+  };
+
+  grip.addEventListener("pointerdown", (e) => {
+    dragging = true; startX = e.clientX; startW = col.offsetWidth;
+    grip.setPointerCapture(e.pointerId);
+    grip.classList.add("dragging");
+    document.body.classList.add("col-resizing");
+    e.preventDefault();   // or the pointer drag turns into a text selection
+  });
+  grip.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    preview(startW + (side === "right" ? dx : -dx));
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    grip.classList.remove("dragging");
+    document.body.classList.remove("col-resizing");
+    setColWidth(feed, col.offsetWidth);
+  };
+  grip.addEventListener("pointerup", end);
+  grip.addEventListener("pointercancel", end);
+  grip.addEventListener("dblclick", () => {
+    setColWidth(feed, 0);
+    applyColWidth(col, feed);
+    syncBoardScrollbar();
+  });
+  grip.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 60 : 12;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      const dir = e.key === "ArrowRight" ? 1 : -1;
+      const px = width() + dir * step * (side === "right" ? 1 : -1);
+      preview(px);
+      setColWidth(feed, col.offsetWidth);
+      e.preventDefault();
+    } else if (e.key === "Home") {
+      setColWidth(feed, 0); applyColWidth(col, feed); syncBoardScrollbar();
+      e.preventDefault();
+    }
+  });
+  return grip;
+}
 
 function renderFeedItems(body, feed, items) {
   body.innerHTML = "";
@@ -1102,11 +1282,14 @@ async function moveFeed(id, dir) {
   await refreshFeeds();
 }
 
-async function toggleWidth(feed) {
-  feed.width = feed.width > 1 ? 1 : 2;
-  await API.updateFeed(feed.id, { name: feed.name, criteria: feed.criteria, sort: feed.sort,
-                                  width: feed.width, group_events: feed.group_events });
-  await refreshFeeds();
+/* The two presets the ⇔ button alternates between. It writes the same
+   per-account width the drag handles do, so the button and the edges can't
+   disagree about how wide the column is. */
+function toggleWidth(feed, col) {
+  const now = colWidth(feed) || (feed.width > 1 ? COL_WIDE : COL_DEFAULT);
+  setColWidth(feed, now >= COL_WIDE ? COL_DEFAULT : COL_WIDE);
+  applyColWidth(col, feed);
+  syncBoardScrollbar();
 }
 
 function renderSearchColumn(q, arts) {
@@ -1215,8 +1398,22 @@ function initBoardScrollbar() {
 
   board.addEventListener("scroll", sync, { passive: true });
   addEventListener("resize", sync);
-  // Columns load asynchronously, so the scrollable width changes after render.
-  if (window.ResizeObserver) new ResizeObserver(sync).observe(board);
+  // Three ways the scrollable width changes, all of which have to move the bar:
+  // the board's own box (window resize, panels), the set of columns on it
+  // (switching views, adding or deleting a feed), and a column's width (drag to
+  // resize). Observing only the board left the bar showing its previous state
+  // for as long as a re-render took — which is how it came to be on screen with
+  // too few columns to scroll.
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(sync);
+    ro.observe(board);
+    const observeColumns = () => {
+      for (const c of board.querySelectorAll(".feed-col")) ro.observe(c);
+    };
+    new MutationObserver(() => { observeColumns(); sync(); })
+      .observe(board, { childList: true });
+    observeColumns();
+  }
   sync();
 }
 // Replaced by the real implementation once the board exists.
