@@ -101,54 +101,118 @@ function renderViewSwitch() {
    concurrency budget filling columns that are no longer on screen. */
 let BOARD_GENERATION = 0;
 
-async function renderBoard() {
+/* Which feeds are on each Pantheon's board, as last seen.
+
+   Home and My feeds are built from state the client already holds, so their
+   columns appear the instant you click. A Pantheon's board has to ask the
+   server what is on it — and while that request was in flight the board stood
+   empty, which is the wipe you see when switching to a shared board on a busy
+   server. Remembering the list lets the board come back immediately and
+   reconcile behind that. */
+const PANTHEON_FEEDS = new Map();
+
+/* Swap the board's contents in one operation. Nothing is removed until the
+   replacement exists, so there is never a frame with an empty board. The
+   search column is not part of a view and survives the swap. */
+function paintBoard(columns) {
   const board = el("board");
   const searchCol = el("search-col");
+  board.replaceChildren(...(searchCol ? [searchCol, ...columns] : columns));
+  syncBoardScrollbar();
+}
+
+/* The placeholder column for a Pantheon nobody has shared anything with yet.
+   Built with the DOM rather than innerHTML because a Pantheon's name is
+   written by another user and read by every member. */
+function pantheonEmptyNote(p) {
+  const note = document.createElement("section");
+  note.className = "feed-col";
+  const head = document.createElement("div"); head.className = "feed-head";
+  const row = document.createElement("div"); row.className = "feed-head-row";
+  const title = document.createElement("h3"); title.textContent = "🏛 " + p.name;
+  row.appendChild(title); head.appendChild(row);
+  const body = document.createElement("div"); body.className = "feed-body";
+  const empty = document.createElement("div"); empty.className = "feed-empty";
+  empty.textContent = "No shared feeds yet. Open 📋 My feeds and press 🏛 on any " +
+    "feed to share it with this Pantheon — everyone here will see it. Alerts are " +
+    "shared the same way from the 🔔 panel.";
+  body.appendChild(empty);
+  note.append(head, body);
+  return note;
+}
+
+const pantheonColumns = (p, feeds) =>
+  (feeds.length ? feeds.map(f => feedColumn(f)) : [pantheonEmptyNote(p)]);
+
+/* Same feeds, in the same order? Then the painted board is already correct and
+   repainting would only throw away columns the user is reading. */
+const sameFeeds = (a, b) =>
+  a.length === b.length && a.every((f, i) => f.id === b[i].id && f.name === b[i].name);
+
+async function renderBoard() {
   const generation = ++BOARD_GENERATION;
   const current = () => generation === BOARD_GENERATION;
-  board.innerHTML = "";
-  if (searchCol) board.appendChild(searchCol);
+
   if (VIEW.startsWith("pantheon:")) {
     const pid = +VIEW.split(":")[1];
     const p = PANTHEONS.find(x => x.id === pid);
     if (!p) { setView("home"); return; }
     el("empty-state").hidden = true;
-    let feeds = [];
-    try { feeds = await API.pantheonFeeds(pid); } catch (e) { setView("home"); return; }
-    if (!feeds.length) {
-      // Build with the DOM (not innerHTML) so a Pantheon name never becomes
-      // markup — names are attacker-controlled and seen by every member.
-      const note = document.createElement("section");
-      note.className = "feed-col";
-      const nHead = document.createElement("div"); nHead.className = "feed-head";
-      const nRow = document.createElement("div"); nRow.className = "feed-head-row";
-      const nTitle = document.createElement("h3"); nTitle.textContent = "🏛 " + p.name;
-      nRow.appendChild(nTitle); nHead.appendChild(nRow);
-      const nBody = document.createElement("div"); nBody.className = "feed-body";
-      const nEmpty = document.createElement("div"); nEmpty.className = "feed-empty";
-      nEmpty.textContent = "No shared feeds yet. Open 📋 My feeds and press 🏛 on any " +
-        "feed to share it with this Pantheon — everyone here will see it. Alerts are " +
-        "shared the same way from the 🔔 panel.";
-      nBody.appendChild(nEmpty);
-      note.append(nHead, nBody);
-      board.appendChild(note);
+
+    // Paint something for this board straight away: its last known columns if
+    // we have them, otherwise a placeholder. Leaving the previous view's
+    // columns up would make the click look like it hadn't registered.
+    const known = PANTHEON_FEEDS.get(pid);
+    paintBoard(known ? pantheonColumns(p, known)
+                     : [feedColumnNote(`🏛 ${p.name}`, "Loading this board…")]);
+
+    let feeds;
+    try {
+      feeds = await API.pantheonFeeds(pid);
+    } catch (e) {
+      // Bouncing to Home on a failed request threw the user off a board that
+      // was working a second ago. Keep what's painted; say so if there is
+      // nothing to keep.
+      if (!current()) return;
+      if (!known) {
+        paintBoard([feedColumnNote(`🏛 ${p.name}`,
+          `Couldn't load this board (${e.message}). It will come back when the server ` +
+          "answers — press ⟳, or switch away and back, to retry.")]);
+      } else {
+        for (const body of document.querySelectorAll("#board .feed-col .feed-body"))
+          staleNotice(body, `Couldn't refresh this board (${e.message}) — showing the last update.`);
+      }
+      return;
     }
-    for (const feed of feeds) board.appendChild(feedColumn(feed));
-    syncBoardScrollbar();
+    if (!current()) return;                 // a later switch owns the board now
+    PANTHEON_FEEDS.set(pid, feeds);
+    if (!known || !sameFeeds(known, feeds)) paintBoard(pantheonColumns(p, feeds));
     await mapLimited(feeds, BOARD_LOAD_CONCURRENCY, loadFeedArticles, current);
   } else if (VIEW === "home") {
     el("empty-state").hidden = true;
-    for (const hf of DELPHI_FEEDS) board.appendChild(feedColumn(hf, /*readonly*/ true));
-    syncBoardScrollbar();
+    paintBoard(DELPHI_FEEDS.map(hf => feedColumn(hf, /*readonly*/ true)));
     await mapLimited(DELPHI_FEEDS, BOARD_LOAD_CONCURRENCY, loadFeedArticles, current);
   } else {
     el("empty-state").hidden = FEEDS.length > 0;
-    for (const feed of FEEDS) board.appendChild(feedColumn(feed));
-    syncBoardScrollbar();
+    paintBoard(FEEDS.map(feed => feedColumn(feed)));
     await mapLimited(FEEDS, BOARD_LOAD_CONCURRENCY, loadFeedArticles, current);
   }
 
   syncBoardScrollbar();   // widths can change as columns fill
+}
+
+/* A column that carries a message instead of articles. */
+function feedColumnNote(title, message) {
+  const col = document.createElement("section");
+  col.className = "feed-col";
+  const head = document.createElement("div"); head.className = "feed-head";
+  const row = document.createElement("div"); row.className = "feed-head-row";
+  const h = document.createElement("h3"); h.textContent = title;
+  row.appendChild(h); head.appendChild(row);
+  const body = document.createElement("div"); body.className = "feed-body";
+  body.appendChild(feedEmpty(message));
+  col.append(head, body);
+  return col;
 }
 
 function wireTopbar() {
@@ -720,6 +784,9 @@ function feedColumn(feed, readonly = false) {
         toolBtn("🗑", "Remove from this Pantheon", async () => {
           if (!confirm(`Remove “${feed.name}” from this Pantheon's board?`)) return;
           await API.deleteFeed(feed.id);
+          // Drop the remembered list, or the next render paints the column
+          // back from cache before the server's answer removes it again.
+          PANTHEON_FEEDS.delete(feed.pantheon_id);
           await renderBoard();
         }),
       );
@@ -739,6 +806,7 @@ function feedColumn(feed, readonly = false) {
         pantheonPickMenu(e.currentTarget, async (p) => {
           try {
             await API.shareFeed(feed.id, p.id);
+            PANTHEON_FEEDS.delete(p.id);   // that board gained a feed
             toast("Feed shared", `“${feed.name}” is now on ${p.name}'s board.`);
           } catch (err) { toast("Could not share", err.message); }
         })));
