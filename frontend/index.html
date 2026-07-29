@@ -448,9 +448,13 @@
   <!-- Sign-in gate: the system requires an account -->
   <div id="gate" class="gate" hidden>
     <div class="gate-card">
-      <img src="/img/logo.png" alt="" class="gate-logo" onerror="this.remove()">
-      <h1 class="gate-title">D.E.L.P.H.I.</h1>
-      <p class="gate-sub">Digital Exploration and Layout for Publicly Harvested Intelligence</p>
+      <!-- The artwork already carries the name and the tagline, so neither is
+           repeated beside it. The heading below is the accessible name and only
+           becomes visible if the image fails to load. -->
+      <img src="/img/logo.png" alt="D.E.L.P.H.I. — Digital Exploration and Layout for Publicly Harvested Intelligence"
+           class="gate-logo"
+           onerror="this.remove(); document.querySelector('.gate-title').hidden = false;">
+      <h1 class="gate-title" hidden>D.E.L.P.H.I.</h1>
 
       <div id="gate-signin">
         <label class="field"><span>Username or email</span>
