@@ -25,18 +25,38 @@
       <button id="btn-view-home" class="active" title="Delphi-curated overview of everything ingested">🏠 Home</button>
       <button id="btn-view-mine" title="Feeds and alerts you created">📋 My feeds</button>
     </div>
-    <div class="topbar-actions">
-      <input id="global-search" type="search" placeholder="Search all news… (supports AND OR NOT)" autocomplete="off">
-      <button id="btn-create" class="btn btn-primary" title="Create a feed or an alert — pick which with the toggle inside">+ Create</button>
-      <button id="btn-sources" class="btn" title="Manage sources">Sources</button>
-      <button id="btn-pantheons" class="btn bell" aria-label="Pantheons" title="Pantheons — organizations that share feeds and alerts">🏛<span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
-      <button id="btn-refresh" class="btn" aria-label="Poll all sources now" title="Poll all sources now">⟳</button>
-      <button id="btn-alerts-panel" class="btn bell" aria-label="Alerts" title="Alerts">🔔<span id="bell-count" class="bell-count" hidden>0</span></button>
-      <button id="btn-admin" class="btn" aria-label="Operator console" title="Operator console — manage all accounts" hidden>🛠 Admin</button>
-      <button id="btn-settings" class="btn" aria-label="Settings" title="Settings">⚙</button>
-      <button id="btn-profile" class="btn" title="Your feeds and alerts are private to your profile">👤 Sign in</button>
-    </div>
   </header>
+
+  <!-- Action rail: search and every action, pinned to the right edge. Lives
+       outside the header so the header stays one short row — a wrapping header
+       used to grow tall enough to push the board's horizontal scrollbar off
+       the bottom of the screen. Collapsed it is a strip of icons; expanded it
+       adds labels and the search box. -->
+  <aside id="action-rail" class="action-rail" aria-label="Actions">
+    <button id="btn-rail-toggle" class="rail-toggle" aria-expanded="false"
+            aria-controls="action-rail" title="Expand actions (\)">‹</button>
+    <div class="rail-search">
+      <input id="global-search" type="search" placeholder="Search all news…" autocomplete="off"
+             aria-label="Search all news (supports AND OR NOT)">
+    </div>
+    <button id="btn-create" class="btn btn-primary rail-btn" title="Create a feed or an alert — pick which with the toggle inside">
+      <span class="rail-icon">＋</span><span class="rail-label">Create</span></button>
+    <button id="btn-sources" class="btn rail-btn" title="Manage sources">
+      <span class="rail-icon">📡</span><span class="rail-label">Sources</span></button>
+    <button id="btn-pantheons" class="btn rail-btn bell" title="Pantheons — organizations that share feeds and alerts">
+      <span class="rail-icon">🏛</span><span class="rail-label">Pantheons</span><span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
+    <button id="btn-refresh" class="btn rail-btn" title="Poll all sources now">
+      <span class="rail-icon">⟳</span><span class="rail-label">Refresh</span></button>
+    <button id="btn-alerts-panel" class="btn rail-btn bell" title="Alerts">
+      <span class="rail-icon">🔔</span><span class="rail-label">Alerts</span><span id="bell-count" class="bell-count" hidden>0</span></button>
+    <button id="btn-admin" class="btn rail-btn" title="Operator console — manage all accounts" hidden>
+      <span class="rail-icon">🛠</span><span class="rail-label">Admin</span></button>
+    <span class="rail-spacer"></span>
+    <button id="btn-settings" class="btn rail-btn" title="Settings">
+      <span class="rail-icon">⚙</span><span class="rail-label">Settings</span></button>
+    <button id="btn-profile" class="btn rail-btn" title="Your feeds and alerts are private to your profile">
+      <span class="rail-icon">👤</span><span class="rail-label">Sign in</span></button>
+  </aside>
 
   <!-- Settings side panel -->
   <aside id="settings-panel" class="side-panel" hidden>
@@ -461,6 +481,14 @@
   </div>
 
   <main id="board" class="board"></main>
+  <!-- Custom horizontal scrollbar for the board: the native one is an overlay
+       on most platforms (no layout space, fades when idle), so it can't be kept
+       visible. Hidden automatically when every feed already fits. -->
+  <div id="board-scroll" class="board-scroll" hidden
+       role="scrollbar" aria-controls="board" aria-orientation="horizontal"
+       aria-label="Scroll feeds sideways">
+    <div class="board-scroll-thumb"></div>
+  </div>
 
   <div id="empty-state" class="empty-state" hidden>
     <h2>Your dashboard is empty</h2>

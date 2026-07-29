@@ -7,6 +7,9 @@
    Contrast computed against surfaces (all pairs ≥3.8:1; primary ≥5:1).
    Status colors (importance tiers) stay fixed and are never themed. */
 :root, :root[data-theme="dark"] {
+  /* Width of the collapsed action rail; the board reserves this much on the
+     right so the last feed column is never hidden underneath it. */
+  --rail-w: 52px;
   --page: #0c0e0c;
   --surface: #151815;
   --surface-2: #1e231e;
@@ -43,15 +46,23 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; height: 100%; }
 body {
   background: var(--page);
   color: var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 14px;
   line-height: 1.45;
+  /* The window is the frame: header takes what it needs, the board takes the
+     rest. Nothing here may depend on a hard-coded header height — the header
+     wraps to more rows on narrow windows, and a guessed offset made the board
+     overflow the viewport, which pushed its horizontal scrollbar below the
+     fold exactly when there were enough feeds to need it. */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   /* The board scrolls horizontally within itself; the page never should. */
-  overflow-x: hidden;
+  overflow: hidden;
 }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; }
@@ -60,12 +71,16 @@ button { font: inherit; }
 
 /* ---------- top bar ---------- */
 .topbar {
-  position: sticky; top: 0; z-index: 500;
+  position: relative;   /* the ::after meander frieze positions against this */
+  z-index: 500;
   display: flex; align-items: center; gap: 16px;
   padding: 10px 16px;
+  /* Room for the collapsed rail so the sign-in button can't sit under it. */
+  padding-right: calc(var(--rail-w) + 16px);
   background: var(--surface);
   border-bottom: 1px solid var(--hairline);
   flex-wrap: wrap;
+  flex: 0 0 auto;   /* takes its natural height; the board absorbs the rest */
 }
 .brand {
   font-size: 17px; font-weight: 700; white-space: nowrap;
@@ -157,7 +172,7 @@ button { font: inherit; }
   filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.45));
 }
 .pillar-left { left: 0; }
-.pillar-right { right: 0; transform: scaleX(-1); }  /* mirror: light from center */
+.pillar-right { right: var(--rail-w); transform: scaleX(-1); }  /* mirror: light from center */
 .pillar-cap {
   flex: 0 0 50px;
   background: url("../img/column-cap-dark.svg") no-repeat center / 100% 100%;
@@ -182,6 +197,60 @@ button { font: inherit; }
   letter-spacing: 0.6px;
 }
 
+/* ---------- action rail ----------
+   Fixed to the right edge and always reachable. Collapsed it shows icons only;
+   expanded it adds labels and the search field. Kept out of the header so the
+   header can stay a single short row at any window width. */
+.action-rail {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  z-index: 600;
+  width: var(--rail-w);
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 6px;
+  padding: 10px 6px;
+  background: var(--surface);
+  border-left: 1px solid var(--gold-soft);
+  transition: width 0.16s ease;
+  overflow: hidden;
+}
+.action-rail.open { width: 244px; padding: 10px; }
+.rail-spacer { flex: 1 1 auto; }
+
+.rail-toggle {
+  align-self: flex-end;
+  background: none; border: 1px solid var(--border); color: var(--ink-2);
+  border-radius: 6px; cursor: pointer;
+  width: 26px; height: 26px; line-height: 1;
+  flex: 0 0 auto;
+}
+.rail-toggle:hover { color: var(--ink); border-color: var(--gold-soft); }
+.action-rail.open .rail-toggle { transform: rotate(180deg); }
+
+.rail-search { display: none; }
+.action-rail.open .rail-search { display: block; }
+.rail-search input {
+  width: 100%;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 7px 9px; font-size: 13px;
+}
+
+.rail-btn {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%;
+  padding: 8px;
+  justify-content: center;
+  position: relative;
+  flex: 0 0 auto;
+}
+.action-rail.open .rail-btn { justify-content: flex-start; padding: 8px 10px; }
+.rail-icon { font-size: 16px; line-height: 1; }
+.rail-label { display: none; white-space: nowrap; }
+.action-rail.open .rail-label { display: inline; }
+/* Collapsed, the icon alone must still say what the control does. */
+.action-rail:not(.open) .rail-btn { aspect-ratio: 1 / 1; }
+
 /* ---------- board ---------- */
 /* Single lateral rail: feeds never wrap below one another. */
 .board {
@@ -191,18 +260,47 @@ button { font: inherit; }
   padding: 22px 16px 14px;
   align-items: flex-start;
   overflow-x: auto;
+  /* Vertical scrolling belongs to each column, so the board's own horizontal
+     bar stays pinned to the bottom of the visible area. */
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
-  min-height: calc(100vh - 90px);
-  scrollbar-width: thin;
-  scrollbar-color: var(--gold-soft) transparent;
+  /* Fill the space the header leaves, whatever that turns out to be. min-height
+     0 is required or flex refuses to shrink this below its content. */
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Keep the last column clear of the collapsed action rail. */
+  padding-right: calc(var(--rail-w) + 16px);
+  /* The native bar is hidden in favour of .board-scroll below. Most platforms
+     now draw overlay scrollbars, which occupy no space and fade out when idle
+     — they cannot be made permanently visible, and the lateral bar is the only
+     indication that more feeds exist off-screen. */
+  scrollbar-width: none;
 }
-.board::-webkit-scrollbar { height: 10px; }
-.board::-webkit-scrollbar-track { background: transparent; }
-.board::-webkit-scrollbar-thumb {
+.board::-webkit-scrollbar { height: 0; width: 0; }
+
+/* Always-present horizontal scrollbar for the board. Sits in the layout below
+   the board, so it is on screen at every window height, and it appears only
+   when there is actually something to scroll to. */
+.board-scroll {
+  flex: 0 0 auto;
+  height: 14px;
+  margin: 0 16px 8px;
+  margin-right: calc(var(--rail-w) + 16px);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  position: relative;
+  cursor: pointer;
+}
+.board-scroll-thumb {
+  position: absolute; top: 1px; bottom: 1px; left: 0;
+  min-width: 48px;
   background: var(--gold-soft);
-  border-radius: 5px;
+  border-radius: 6px;
+  cursor: grab;
 }
-.board::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+.board-scroll-thumb:hover { background: var(--gold); }
+.board-scroll-thumb.dragging { background: var(--gold); cursor: grabbing; }
 .board > .feed-col { flex: 0 0 360px; width: 360px; }
 .board > .feed-col.wide { flex: 0 0 734px; width: 734px; }
 @media (min-width: 1281px) {
@@ -213,7 +311,8 @@ button { font: inherit; }
   border: 1px solid var(--border);
   border-radius: 5px;
   display: flex; flex-direction: column;
-  max-height: calc(100vh - 130px);
+  /* Bounded by the board, not by a guess about the header's height. */
+  max-height: 100%;
   overflow: hidden;
 }
 
@@ -298,7 +397,7 @@ button { font: inherit; }
 
 /* ---------- side panels ---------- */
 .side-panel {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 800;
+  position: fixed; top: 0; right: var(--rail-w); bottom: 0; z-index: 800;
   width: 400px; max-width: 95vw;
   background: var(--surface);
   border-left: 1px solid var(--hairline);
@@ -715,9 +814,9 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
 
 /* ---------- toasts ---------- */
 .toasts { position: fixed; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
-.toasts.pos-br { bottom: 16px; right: 16px; }
+.toasts.pos-br { bottom: 16px; right: calc(var(--rail-w) + 16px); }
 .toasts.pos-bl { bottom: 16px; left: 16px; }
-.toasts.pos-tr { top: 64px; right: 16px; }
+.toasts.pos-tr { top: 64px; right: calc(var(--rail-w) + 16px); }
 .toasts.pos-tl { top: 64px; left: 16px; }
 .toast {
   background: var(--surface); color: var(--ink);
@@ -734,29 +833,30 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
 
 @media (max-width: 900px) {
   .stat-row { order: 3; width: 100%; justify-content: space-between; }
-  #global-search { width: 160px; }
   .builder-grid, .builder-grid.two { grid-template-columns: 1fr; }
   .feed-col.wide { grid-column: span 1; }
-  /* Actions can't fit one row — let them wrap instead of overflowing. */
-  .topbar-actions { flex-wrap: wrap; }
 }
 
 /* Phones: topbar wraps into rows, one feed column fills the screen (swipe
    between them), side panels and modals go full-width, and touch targets
    grow. */
 @media (max-width: 640px) {
-  .topbar { gap: 8px 10px; padding: 8px 12px; }
+  .topbar { gap: 8px 10px; padding: 8px 12px; padding-right: calc(var(--rail-w) + 10px); }
   .brand { font-size: 15px; }
-  .topbar-actions { margin-left: 0; width: 100%; flex-wrap: wrap; justify-content: flex-start; }
-  #global-search { flex: 1 1 100%; width: auto; min-width: 0; }
   .view-switch { flex: 1 1 100%; }
+  /* Narrower rail on phones, and the expanded form takes most of the screen
+     so labels and the search box stay legible. */
+  .action-rail { --rail-w: 46px; }
+  .action-rail.open { width: min(82vw, 260px); }
   .view-switch button { flex: 1; }
   .stat-tile { flex: 1; min-width: 0; padding: 4px 6px; }
 
-  .board { padding: 14px 12px; gap: 12px; scroll-snap-type: x mandatory; }
+  .board { padding: 14px 12px; gap: 12px; scroll-snap-type: x mandatory;
+           padding-right: calc(var(--rail-w) + 10px); }
   .board > .feed-col,
   .board > .feed-col.wide { flex: 0 0 86vw; width: 86vw; max-width: 360px; scroll-snap-align: start; }
-  .board, .empty-state { padding-left: 12px; padding-right: 12px; }
+  .board, .empty-state { padding-left: 12px; }
+  .empty-state { padding-right: calc(var(--rail-w) + 10px); }
 
   .side-panel, .side-panel.wide { width: 100vw; max-width: 100vw; }
 

@@ -45,6 +45,7 @@ async function boot() {
     }
   };
   wireTopbar();
+  initBoardScrollbar();
   renderStats();
   await refreshPantheons();  // before the board: VIEW may be a Pantheon's
   await Promise.all([refreshFeeds(), refreshAlerts()]);
@@ -134,6 +135,8 @@ async function renderBoard() {
     for (const feed of FEEDS) board.appendChild(feedColumn(feed));
     await Promise.all(FEEDS.map(f => loadFeedArticles(f)));
   }
+
+  syncBoardScrollbar();   // the column count just changed
 }
 
 function wireTopbar() {
@@ -152,6 +155,7 @@ function wireTopbar() {
   updateViewButtons();
   wirePantheons();
   wireAdmin();
+  wireActionRail();
   // Reading-language picker: articles in other languages are translated
   // automatically into this language (defaults to the browser language).
   const sel = el("lang-select");
@@ -443,7 +447,11 @@ function wireSettings() {
 }
 
 function wireAuth() {
-  el("btn-profile").textContent = `👤 ${Session.username() || "account"}`;
+  // Set only the label span — replacing the button's text would drop the icon
+  // the rail shows when collapsed.
+  const who = Session.username() || "account";
+  el("btn-profile").querySelector(".rail-label").textContent = who;
+  el("btn-profile").title = `Signed in as ${who} — your feeds and alerts are private to your account`;
   el("btn-profile").onclick = () => {
     if (confirm(`Signed in as ${Session.username()}. Sign out?`)) {
       Session.clear();
@@ -1134,6 +1142,91 @@ function wirePantheons() {
     } catch (e) { toast("Could not create", e.message); }
   };
   feedback(el("btn-create-pantheon"), "Creating…");
+}
+
+/* ---------- board scrollbar ----------
+   A real, always-visible horizontal scrollbar for the feed board. Native ones
+   are overlays on most platforms: they take no layout space and fade out when
+   idle, so nothing on screen tells you more feeds exist to the right. This one
+   lives in the layout under the board, so it is visible at any window height,
+   and hides itself when everything already fits. */
+function initBoardScrollbar() {
+  const board = el("board");
+  const bar = el("board-scroll");
+  if (!board || !bar) return;
+  const thumb = bar.querySelector(".board-scroll-thumb");
+
+  const sync = () => {
+    const hidden = board.scrollWidth <= board.clientWidth + 2;
+    bar.hidden = hidden;
+    if (hidden) return;
+    const track = bar.clientWidth;
+    const width = Math.max(48, track * (board.clientWidth / board.scrollWidth));
+    const maxScroll = board.scrollWidth - board.clientWidth;
+    const x = maxScroll ? (board.scrollLeft / maxScroll) * (track - width) : 0;
+    thumb.style.width = `${width}px`;
+    thumb.style.transform = `translateX(${x}px)`;
+    bar.setAttribute("aria-valuenow", String(Math.round(
+      maxScroll ? (board.scrollLeft / maxScroll) * 100 : 0)));
+  };
+  syncBoardScrollbar = sync;   // let the board re-render refresh it
+
+  // Position the board from a pointer x within the track.
+  const scrollTo = (clientX) => {
+    const rect = bar.getBoundingClientRect();
+    const width = thumb.offsetWidth;
+    const travel = rect.width - width;
+    const pos = Math.min(Math.max(clientX - rect.left - width / 2, 0), travel);
+    board.scrollLeft = travel ? (pos / travel) * (board.scrollWidth - board.clientWidth) : 0;
+  };
+
+  let dragging = false;
+  thumb.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    thumb.classList.add("dragging");
+    thumb.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  thumb.addEventListener("pointermove", (e) => { if (dragging) scrollTo(e.clientX); });
+  const endDrag = () => { dragging = false; thumb.classList.remove("dragging"); };
+  thumb.addEventListener("pointerup", endDrag);
+  thumb.addEventListener("pointercancel", endDrag);
+  // Clicking the track jumps there.
+  bar.addEventListener("pointerdown", (e) => { if (e.target === bar) scrollTo(e.clientX); });
+
+  board.addEventListener("scroll", sync, { passive: true });
+  addEventListener("resize", sync);
+  // Columns load asynchronously, so the scrollable width changes after render.
+  if (window.ResizeObserver) new ResizeObserver(sync).observe(board);
+  sync();
+}
+// Replaced by the real implementation once the board exists.
+let syncBoardScrollbar = () => {};
+
+/* ---------- action rail ---------- */
+function wireActionRail() {
+  const rail = el("action-rail");
+  const toggle = el("btn-rail-toggle");
+  if (!rail || !toggle) return;
+  const apply = (open) => {
+    rail.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.title = open ? "Collapse actions (\\)" : "Expand actions (\\)";
+  };
+  apply(Settings.get("rail_open") === true);
+  toggle.onclick = () => {
+    const open = !rail.classList.contains("open");
+    apply(open);
+    Settings.set("rail_open", open);   // follows the account, like other prefs
+  };
+  // Backslash toggles it — no modifier, and never while the user is typing.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "\\" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    e.preventDefault();
+    toggle.click();
+  });
 }
 
 /* ---------- admin / operator console ---------- */
