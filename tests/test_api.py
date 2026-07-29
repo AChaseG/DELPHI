@@ -132,3 +132,46 @@ def test_names_are_trimmed(client, register):
     assert r.status_code == 201
     alerts = client.get("/api/alerts", headers=hdr).json()
     assert alerts[0]["name"] == "Tokyo watch"
+
+
+def test_startup_removes_leftover_demo_data(db):
+    """Demo generation is gone, but instances seeded by an older build still
+    carry sample rows and the button that cleared them no longer exists — so
+    startup cleans them, and must not touch real reporting."""
+    from backend.app.main import _purge_demo_data
+    from backend.app.models import Article, Source, utcnow
+
+    demo = Source(name="Sample", rss_url="https://example.org/demo.xml",
+                  homepage="https://example.org", country="US", language="en",
+                  scope="national", categories=[])
+    real = Source(name="Real wire", rss_url="https://news.example.com/rss",
+                  homepage="https://news.example.com", country="GB", language="en",
+                  scope="international", categories=[])
+    db.add_all([demo, real])
+    db.flush()
+    db.add(Article(source_id=demo.id, url="https://example.org/demo/1/0", guid="d0",
+                   title="Sample story", summary="", content="",
+                   published_at=utcnow(), fetched_at=utcnow(), language="en",
+                   country="US", categories=[], places=[], importance=50))
+    db.add(Article(source_id=real.id, url="https://news.example.com/a/1", guid="r1",
+                   title="Real story", summary="", content="",
+                   published_at=utcnow(), fetched_at=utcnow(), language="en",
+                   country="GB", categories=[], places=[], importance=50))
+    db.commit()
+
+    removed = _purge_demo_data(db)
+
+    assert removed == 1
+    assert db.query(Article).filter(Article.url.like("https://example.org/demo/%")).count() == 0
+    assert db.query(Source).filter(Source.rss_url.like("https://example.org%")).count() == 0
+    # Real reporting survives untouched.
+    assert db.query(Article).filter_by(guid="r1").count() == 1
+    assert db.query(Source).filter_by(name="Real wire").count() == 1
+    # Idempotent: a second run on a clean database does nothing.
+    assert _purge_demo_data(db) == 0
+
+
+def test_demo_endpoints_are_gone(client, register):
+    hdr = register("nodemo")
+    for path in ("/api/demo/seed", "/api/demo/purge"):
+        assert client.post(path, headers=hdr).status_code == 404

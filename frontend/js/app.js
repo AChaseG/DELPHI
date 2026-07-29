@@ -244,20 +244,13 @@ function wireTopbar() {
   };
   feedback(el("btn-track-social"), "Searching…");
 
-  el("btn-purge-demo").onclick = async () => {
-    if (!confirm("Delete all demo/sample articles and local test sources? Real news is untouched.")) return;
-    try {
-      const r = await API.purgeDemo();
-      toast("Demo data removed",
-        `${r.articles} sample articles, ${r.sources} test sources, ${r.events} empty events deleted`);
-      SOURCES = await API.sources();
-      Builder.init(META, SOURCES);
-      renderSourcesPanel();
-      renderStats(await API.meta());
-      await Promise.all([refreshFeeds(), refreshAlerts()]);
-    } catch (e) { toast("Purge failed", e.message); }
-  };
-  feedback(el("btn-purge-demo"), "Removing…");
+  // Typing filters the list in place; the catalog runs to hundreds of sources,
+  // so scrolling to find one was impractical.
+  let srcFilterTimer;
+  el("src-search").addEventListener("input", () => {
+    clearTimeout(srcFilterTimer);
+    srcFilterTimer = setTimeout(renderSourcesPanel, 120);
+  });
   el("btn-add-source").onclick = async () => {
     const name = el("src-name").value.trim(), url = el("src-url").value.trim();
     if (!name || !url) { toast("Missing fields", "A source needs a name and a feed URL."); return; }
@@ -1852,10 +1845,41 @@ function renderAlertsMap(eventsByAlert) {
 }
 
 /* ---------- sources panel ---------- */
+/* Match a source against the filter box: name, feed URL, country code and
+   name, language, scope, platform, and how it was added — so "JP", "Japan",
+   "reddit", "auto-discovered" and "paywall" all find what you'd expect. */
+function sourceMatches(s, needle) {
+  if (!needle) return true;
+  const hay = [
+    s.name, s.rss_url, s.homepage, s.country, COUNTRY_NAMES.get(s.country) || "",
+    s.region, s.language, s.scope, s.platform, s.added_by,
+    ...(s.categories || []),
+    s.paywall ? "paywall paywalled" : "",
+    s.repaired_from ? "repaired" : "",
+    (s.last_status || "").startsWith("ok") ? "ok healthy" : (s.last_status ? "error broken" : ""),
+  ].join(" ").toLowerCase();
+  // Every word must appear somewhere, so terms narrow rather than widen.
+  return needle.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+
 async function renderSourcesPanel() {
   const box = el("sources-list");
   box.innerHTML = "";
-  for (const s of SOURCES) {
+  const needle = (el("src-search")?.value || "").trim();
+  const shown = SOURCES.filter(s => sourceMatches(s, needle));
+  const count = el("src-count");
+  if (count) {
+    count.textContent = needle
+      ? `${shown.length} of ${SOURCES.length}`
+      : `${SOURCES.length} source${SOURCES.length === 1 ? "" : "s"}`;
+  }
+  if (!shown.length) {
+    box.appendChild(feedEmpty(needle
+      ? `No source matches “${needle}”.`
+      : "No sources yet."));
+    return;
+  }
+  for (const s of shown) {
     const row = document.createElement("div");
     row.className = "source-row";
     const ok = (s.last_status || "").startsWith("ok");

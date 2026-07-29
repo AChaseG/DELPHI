@@ -23,7 +23,7 @@ import re as _username_re
 
 from . import auth, ingest, langdetect, mailer, ratelimit, repair, translate
 from .boolean_query import normalize_quotes, validate_query
-from .catalog import seed_city_sources, seed_demo_articles, seed_sources
+from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
 from .clustering import assign_events, rebuild_events
 from .database import Base, SessionLocal, engine, get_db
@@ -112,12 +112,45 @@ def _ensure_fts(conn) -> None:
             "SELECT id, title, summary, content FROM articles")
 
 
+def _purge_demo_data(db) -> int:
+    """Delete any sample articles left over from earlier versions.
+
+    Delphi no longer generates demo data, but instances seeded by an older
+    build still carry it, and the button that used to clear it is gone. This
+    runs at every start and is a no-op once the rows are gone. Scoped to the
+    unmistakable marker — the example.org URLs the generator produced — so it
+    can never touch real reporting.
+    """
+    ids = list(db.scalars(select(Article.id).where(
+        Article.url.like("https://example.org/demo/%"))))
+    demo_sources = db.scalars(select(Source).where(
+        Source.rss_url.like("https://example.org%"))).all()
+    if not ids and not demo_sources:
+        return 0
+    if ids:
+        db.execute(sa_delete(AlertEvent).where(AlertEvent.article_id.in_(ids)))
+        db.execute(sa_delete(Translation).where(Translation.article_id.in_(ids)))
+        db.execute(sa_delete(Article).where(Article.id.in_(ids)))
+    for source in demo_sources:
+        db.delete(source)
+    db.flush()
+    # Events whose only articles were samples would otherwise linger empty.
+    used = select(Article.event_id).where(Article.event_id.is_not(None))
+    db.execute(sa_delete(Event).where(Event.id.not_in(used)))
+    db.commit()
+    logging.getLogger("catalog").info(
+        "removed %d leftover sample articles and %d sample sources",
+        len(ids), len(demo_sources))
+    return len(ids)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
     _ensure_schema()
     db = next(get_db())
     try:
+        _purge_demo_data(db)
         seed_sources(db)
         if os.environ.get("NEWS_SEED_CITIES", "1") != "0":
             added = seed_city_sources(db)
@@ -1423,55 +1456,6 @@ async def ingest_run():
 @app.get("/api/ingest/status")
 def ingest_status():
     return ingest.status
-
-
-@app.post("/api/demo/seed")
-def demo_seed(db: Session = Depends(get_db)):
-    added = seed_demo_articles(db)
-    unclustered = db.scalars(select(Article).where(Article.event_id.is_(None))).all()
-    assign_events(db, unclustered)
-    db.commit()
-    return {"added": added}
-
-
-@app.post("/api/demo/purge")
-def demo_purge(db: Session = Depends(get_db)):
-    """Remove every trace of demo/sample data: seeded articles (example.org
-    URLs), local test sources, their alert hits and cached translations, and
-    any events left with no articles."""
-    demo_sources = db.scalars(select(Source).where(or_(
-        Source.rss_url.like("http://127.0.0.1%"),
-        Source.rss_url.like("http://localhost%"),
-        Source.rss_url.like("https://example.org%"),
-    ))).all()
-
-    conds = [Article.url.like("https://example.org/demo/%")]
-    if demo_sources:
-        conds.append(Article.source_id.in_([s.id for s in demo_sources]))
-    article_ids = list(db.scalars(select(Article.id).where(or_(*conds))))
-
-    removed = {"articles": len(article_ids), "sources": len(demo_sources), "events": 0}
-    if article_ids:
-        db.execute(sa_delete(AlertEvent).where(AlertEvent.article_id.in_(article_ids)))
-        db.execute(sa_delete(Translation).where(Translation.article_id.in_(article_ids)))
-        db.execute(sa_delete(Article).where(Article.id.in_(article_ids)))
-    for source in demo_sources:
-        db.delete(source)
-    db.flush()
-
-    used_events = select(Article.event_id).where(Article.event_id.is_not(None))
-    removed["events"] = db.execute(
-        sa_delete(Event).where(Event.id.not_in(used_events))
-    ).rowcount
-    # Demo articles may have clustered into surviving events; fix their counts.
-    counts = dict(db.execute(
-        select(Article.event_id, func.count()).where(Article.event_id.is_not(None))
-        .group_by(Article.event_id)
-    ).all())
-    for event in db.scalars(select(Event)):
-        event.article_count = counts.get(event.id, 0)
-    db.commit()
-    return removed
 
 
 @app.post("/api/maintenance/fetch-content")

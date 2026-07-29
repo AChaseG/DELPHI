@@ -132,13 +132,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn backend.app.main:app --port 8000
 ```
 
-On first run the source catalog is seeded and a full poll starts automatically
-(every 5 minutes thereafter). Use **⟳** to poll on demand and **Add starter
-feeds** for a ready-made dashboard layout. For offline demos,
-`POST /api/demo/seed` loads sample articles (all with `example.org` URLs);
-`POST /api/demo/purge` — or the **🧹 Remove demo data** button in the Sources
-panel — deletes every trace of them (sample articles, local test sources,
-their alert history and empty events). Real ingested news is never touched.
+On first run the source catalog is seeded and polling starts automatically —
+each source then refreshes on its own cadence. Use **⟳** to poll on demand and
+**Add starter feeds** for a ready-made dashboard layout. Everything on the
+board is real reporting: Delphi generates no sample data, and any left behind
+by an older build is removed at startup.
 
 ### Tests
 
@@ -216,7 +214,7 @@ backend/app
 ├── geo.py            gazetteer geotagging, point-in-polygon/circle geofences
 ├── scoring.py        importance score, breaking signals, auto-categories
 ├── models.py         SQLAlchemy models (Source, Article, Feed, Alert, AlertEvent)
-├── catalog.py        catalog seeding + offline demo articles
+├── catalog.py        source catalog seeding (curated + city feeds)
 └── events.py         in-process pub/sub behind /api/stream (SSE)
 
 backend/data
@@ -245,7 +243,6 @@ GET  /api/alerts/{id}/events       alert hit history
 POST /api/alerts/{id}/mark-seen
 POST /api/ingest/run               poll all sources now
 GET  /api/stream                   SSE: live article batches + alert hits
-POST /api/demo/seed                offline sample articles
 ```
 
 ## Notes & limits

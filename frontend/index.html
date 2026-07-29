@@ -518,6 +518,12 @@
       <button class="icon-btn" id="btn-close-sources" aria-label="Close sources">✕</button>
     </div>
     <div class="source-tools">
+      <input id="src-search" type="search" autocomplete="off"
+             placeholder="Filter sources — name, country, language…"
+             aria-label="Filter the source list">
+      <span id="src-count" class="s-meta"></span>
+    </div>
+    <div class="source-tools">
       <input id="topic-query" type="text" placeholder="Track a topic…">
       <button class="btn" id="btn-track-topic" title="Worldwide press coverage via Google News search">📰 Press</button>
       <button class="btn" id="btn-track-social" title="Reddit search + Mastodon hashtag feeds for this topic">💬 Social</button>
@@ -541,11 +547,6 @@
         <input type="checkbox" id="src-paywall"> 🔒 paywalled
       </label>
       <button class="btn btn-primary" id="btn-add-source">Add source</button>
-    </div>
-    <div class="source-tools">
-      <button class="btn" id="btn-purge-demo"
-        title="Delete all sample/demo articles (example.org) and local test sources, including their alert history">
-        🧹 Remove demo data</button>
     </div>
     <div id="sources-list"></div>
   </aside>

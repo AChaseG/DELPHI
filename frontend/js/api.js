@@ -178,7 +178,6 @@ const API = {
     api(`/api/articles/search-grouped?sort=${sort}&limit=${limit}${langQS()}${staleQS()}`, { method: "POST", body: JSON.stringify({ criteria }) }),
   validateQuery: (query) => api("/api/query/validate", { method: "POST", body: JSON.stringify({ query }) }),
   runIngest: () => api("/api/ingest/run", { method: "POST" }),
-  purgeDemo: () => api("/api/demo/purge", { method: "POST" }),
 
   pantheons: () => api("/api/pantheons"),
   createPantheon: (body) => api("/api/pantheons", { method: "POST", body: JSON.stringify(body) }),
