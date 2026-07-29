@@ -12,8 +12,10 @@
 <body>
   <header class="topbar">
     <div class="brand" title="Digital Exploration and Layout for Publicly Harvested Intelligence">
-      <img src="/img/logo.png" alt="D.E.L.P.H.I." class="brand-logo" onerror="this.remove()">
-      <span>D.E.L.P.H.I.</span>
+      <!-- The logo artwork carries the name already; no separate wordmark. The
+           fallback text only appears if the image fails to load. -->
+      <img src="/img/logo.png" alt="D.E.L.P.H.I." class="brand-logo"
+           onerror="this.replaceWith(Object.assign(document.createElement('span'), {textContent: 'D.E.L.P.H.I.'}))">
     </div>
     <div class="stat-row" id="stat-row">
       <div class="stat-tile"><div class="stat-value" id="stat-articles">–</div><div class="stat-label">articles (24h)</div></div>

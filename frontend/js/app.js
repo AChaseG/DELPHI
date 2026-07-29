@@ -617,6 +617,11 @@ function feedColumn(feed, readonly = false) {
   h.title = feed.name;
   const tools = document.createElement("div");
   tools.className = "feed-tools";
+  // Every column can be refreshed on its own — the ⟳ in the rail re-polls every
+  // source, which is slow and heavy when you only want this one column current.
+  tools.append(toolBtn("⟳", "Refresh this feed", async () => {
+    await loadFeedArticles(feed);
+  }));
   const pinBtn = () => toolBtn("📌", "Add a copy to My feeds (editable)", async () => {
     await API.createFeed({ name: feed.name.replace(/^[^\w]*\s*/, ""), criteria: feed.criteria,
                            sort: feed.sort, group_events: !!feed.group_events });
