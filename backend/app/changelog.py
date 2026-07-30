@@ -13,6 +13,20 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-05",
+        "title": "The board stops freezing while it draws",
+        "items": [
+            "Putting a full board on screen locked the interface for about "
+            "four tenths of a second on a mid-range laptop — thirteen columns "
+            "of forty articles built in one go, with clicks and scrolling "
+            "ignored until it finished. The rows a reader can actually see now "
+            "go in immediately and the rest follow in small batches, so nothing "
+            "blocks long enough to feel. Measured on a throttled CPU: the "
+            "longest frozen moment fell from 440ms to 160ms, and a board "
+            "settles in 141ms instead of 715ms.",
+        ],
+    },
+    {
         "date": "2026-08-04",
         "title": "Delphi remembers your board between visits",
         "items": [

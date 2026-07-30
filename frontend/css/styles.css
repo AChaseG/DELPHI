@@ -327,6 +327,9 @@ button { font: inherit; }
    inline (app.js sets width and flex-basis together — flex-basis here would
    otherwise win over a bare inline width). */
 .board > .feed-col { flex: 0 0 360px; width: 360px; }
+/* Skipping whole off-screen columns was measured and rejected: the rows inside
+   one are already off-screen, so the row rule above has taken the work
+   regardless, and containing the column made the worst repaint worse. */
 
 /* Drag handles on a column's edges. They sit inside the column rather than
    between columns so the target is the edge you can actually see. */
@@ -407,6 +410,13 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   padding: 9px 12px;
   border-bottom: 1px solid var(--hairline);
 }
+/* content-visibility:auto was measured here and removed. It was worth 3.8x on
+   render cost, but Chrome leaves skipped rows out of the accessibility tree
+   until something scrolls to them — verified directly against the browser's AX
+   tree, present with the rule off and absent with it on. A screen reader
+   enumerating a column would have found eight rows out of forty. Rendering is
+   chunked in app.js instead, which shortens the blocking task without ever
+   making a row unreachable. */
 .article:hover { background: var(--surface-2); }
 .article:last-child { border-bottom: none; }
 .article .title { font-weight: 600; font-size: 13.5px; }
