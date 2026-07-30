@@ -20,7 +20,7 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, select
 
-from . import discovery, langdetect, mailer, repair
+from . import discovery, home, langdetect, mailer, repair
 from .clustering import assign_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -604,6 +604,25 @@ def prune_old_articles(db) -> dict:
 _next_prune_at: float = 0.0  # monotonic deadline for the next retention pass
 
 
+async def warm_home():
+    """Re-match Home's shared columns, off the event loop.
+
+    It is a plain blocking scan, and on a large corpus it is not a short one, so
+    it runs in a worker thread with a session of its own rather than holding up
+    every other request while it works."""
+    def run():
+        db = SessionLocal()
+        try:
+            return home.refresh(db)
+        finally:
+            db.close()
+
+    try:
+        await asyncio.to_thread(run)
+    except Exception:
+        log.exception("could not warm the Home board")
+
+
 async def ingest_loop():
     """Continuous rolling poll: every tick, fetch whichever sources are due
     (news wires first, then a bounded slice of city feeds), paced per host so
@@ -612,6 +631,7 @@ async def ingest_loop():
     global _next_prune_at
     status["running"] = True
     while True:
+        new_articles = 0
         try:
             async with cycle_lock:
                 db = SessionLocal()
@@ -621,7 +641,7 @@ async def ingest_loop():
                     batch = ([s for s in due if not _is_city(s)][:POLL_BATCH]
                              + [s for s in due if _is_city(s)][:CITY_PER_TICK])
                     if batch:
-                        await _ingest_batch(db, batch)
+                        new_articles = (await _ingest_batch(db, batch))["new_articles"]
                     if RETENTION_DAYS > 0 and time.monotonic() >= _next_prune_at:
                         _next_prune_at = time.monotonic() + PRUNE_EVERY_SECONDS
                         pruned = prune_old_articles(db)
@@ -633,4 +653,12 @@ async def ingest_loop():
         except Exception as exc:
             status["last_error"] = f"{type(exc).__name__}: {exc}"[:300]
             log.exception("ingest tick failed")
+        # Home's columns are one query per reader that never varies by reader,
+        # so they are matched here instead of on arrival: whenever news landed,
+        # and otherwise well before the warm lists would age out. Outside the
+        # cycle lock, so a manual refresh is never kept waiting on it.
+        warm = home.status()
+        if (new_articles or not warm["columns"]
+                or warm["oldest_age_s"] > home.MAX_AGE_S / 2):
+            await warm_home()
         await asyncio.sleep(POLL_TICK)

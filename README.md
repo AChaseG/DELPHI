@@ -44,8 +44,12 @@ feeds**.
   in columns you can reorder, widen, edit, and delete.
 - **Home & My feeds.** The dashboard opens on **🏠 Home** — Delphi-curated
   columns generated live from everything ingested (top events, breaking now,
-  conflict & disasters, politics, business, sci-tech, social pulse). 📌 any
-  Home column to copy it into **📋 My feeds**, your own editable panel.
+  conflict & disasters, politics, business, sci-tech, social pulse). Those
+  columns are identical for every account, so the poller matches them as news
+  lands rather than when someone asks (`backend/app/home.py`); a request is then
+  a primary-key fetch, with language, read history and staleness still applied
+  per reader. 📌 any Home column to copy it into **📋 My feeds**, your own
+  editable panel.
 - **Guided feed builder** — a four-step wizard (Topic → Where → Refine →
   Review) with per-step guidance, a criteria summary, and a live match-count
   preview before saving. Combinable criteria:

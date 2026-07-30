@@ -13,6 +13,23 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-07",
+        "title": "Home is ready before you open it",
+        "items": [
+            "🏠 The columns on Home are the same for every reader — fixed subjects "
+            "over the same pool of news — but they were worked out from scratch "
+            "each time somebody asked for them, so the first person to open "
+            "Delphi paid for the whole board. They are now worked out as the "
+            "news arrives, by the same background job that collects it, and "
+            "simply handed over when you sign in. On a database of 250,000 "
+            "articles the Home board went from 772ms to 56ms.",
+            "This changes nothing about what you see: your language, which "
+            "stories you have already opened, and your staleness setting are "
+            "still applied to your request alone. Only the search itself is "
+            "shared, and it is the same search for everybody.",
+        ],
+    },
+    {
         "date": "2026-08-06",
         "title": "Delphi opens about four times faster",
         "items": [

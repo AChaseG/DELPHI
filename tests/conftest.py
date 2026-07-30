@@ -20,6 +20,7 @@ os.environ.update(
     NEWS_SECRET="test-secret-key",
 )
 
+from backend.app import home  # noqa: E402
 from backend.app.database import Base, engine, SessionLocal  # noqa: E402
 from backend.app.main import _ensure_schema  # noqa: E402
 
@@ -33,6 +34,7 @@ def db():
     for table in reversed(Base.metadata.sorted_tables):
         with engine.begin() as conn:
             conn.exec_driver_sql(f"DELETE FROM {table.name}")
+    home.clear()   # a warm Home board must not outlive the rows it was built from
     s = SessionLocal()
     try:
         yield s
@@ -46,6 +48,7 @@ def client():
     for table in reversed(Base.metadata.sorted_tables):
         with engine.begin() as conn:
             conn.exec_driver_sql(f"DELETE FROM {table.name}")
+    home.clear()
     from fastapi.testclient import TestClient
     from backend.app.main import app
     with TestClient(app) as c:

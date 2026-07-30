@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 import re as _username_re
 
-from . import auth, ingest, langdetect, mailer, ratelimit, repair, translate
+from . import auth, home, ingest, langdetect, mailer, ratelimit, repair, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -163,11 +163,15 @@ async def lifespan(app: FastAPI):
                 logging.getLogger("catalog").info("seeded %d city local-news sources", added)
     finally:
         db.close()
-    task = None
+    tasks = []
     if not DISABLE_INGEST:
-        task = asyncio.create_task(ingest.ingest_loop())
+        # Home's shared columns, matched before anyone asks for them. Started
+        # alongside the poller rather than awaited, so a cold start still serves
+        # the sign-in page immediately; until it lands, columns are matched live.
+        tasks.append(asyncio.create_task(ingest.warm_home()))
+        tasks.append(asyncio.create_task(ingest.ingest_loop()))
     yield
-    if task:
+    for task in tasks:
         task.cancel()
 
 
@@ -851,7 +855,11 @@ async def search_articles(
 ):
     """Ad-hoc search with a criteria object (used for feed preview and search bar)."""
     criteria = body.get("criteria", body)
-    articles = query_articles(db, criteria, sort=sort, limit=limit)
+    # One of Home's columns is the same query for every reader, so the poller
+    # has already run it; everything below this line is still per-request.
+    articles = home.take(db, criteria, sort, limit, grouped=False)
+    if articles is None:
+        articles = query_articles(db, criteria, sort=sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
     events = _events_for(db, articles) if (criteria or {}).get("hide_stale") else None
@@ -1007,7 +1015,9 @@ async def search_grouped(
 ):
     """Ad-hoc criteria search clustered into events (used by Home columns)."""
     criteria = body.get("criteria", body)
-    articles = query_articles(db, criteria, sort=sort, limit=200)
+    articles = home.take(db, criteria, sort, limit, grouped=True)
+    if articles is None:
+        articles = query_articles(db, criteria, sort=sort, limit=home.GROUPED_QUERY_LIMIT)
     return await _grouped_response(db, articles, lang, limit, user_id)
 
 
@@ -1497,7 +1507,12 @@ async def ingest_run():
         raise HTTPException(
             409, "A poll cycle is already running — new articles will appear when it finishes.")
     try:
-        return await ingest.run_ingest_cycle()
+        result = await ingest.run_ingest_cycle()
+        # Pressing Refresh means "show me current news", so Home's shared
+        # columns are re-matched before the answer goes back, rather than on
+        # the poller's own schedule.
+        await ingest.warm_home()
+        return result
     except Exception as exc:
         ingest.status["last_error"] = f"{type(exc).__name__}: {exc}"[:300]
         raise HTTPException(500, f"Ingest cycle failed: {type(exc).__name__}: {exc}")
@@ -1505,7 +1520,9 @@ async def ingest_run():
 
 @app.get("/api/ingest/status")
 def ingest_status():
-    return ingest.status
+    # The warm Home board goes with it: both are the poller's work, and an
+    # operator looking at one wants to know the state of the other.
+    return {**ingest.status, "home": home.status()}
 
 
 @app.post("/api/maintenance/fetch-content")
