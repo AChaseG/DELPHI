@@ -437,6 +437,17 @@ function wireTopbar() {
   el("event-backdrop").addEventListener("mousedown", (e) => {
     if (e.target === el("event-backdrop")) el("event-backdrop").hidden = true;
   });
+  el("btn-close-article").onclick = closeArticleFocus;
+  el("article-backdrop").addEventListener("mousedown", (e) => {
+    if (e.target === el("article-backdrop")) closeArticleFocus();
+  });
+  // Escape closes the topmost of the two story dialogs, so a reader who opened
+  // an article from an event's timeline lands back on the event.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!el("article-backdrop").hidden) closeArticleFocus();
+    else if (!el("event-backdrop").hidden) el("event-backdrop").hidden = true;
+  });
   el("btn-alerts-panel").onclick = () => { el("alerts-panel").hidden = false; renderAlertsPanel(); };
   el("btn-close-alerts").onclick = () => { el("alerts-panel").hidden = true; };
   el("btn-toggle-alerts-map").onclick = () => {
@@ -1567,6 +1578,159 @@ function eventGroup(g) {
   return wrap;
 }
 
+/* ---------- article focus ----------
+   What a headline opens. The card in a column is a teaser — a truncated
+   summary and a few tags — so this is where a story is actually read: the
+   publisher's summary in full, an extract of the body, when and where it was
+   published, and who else is covering it. The outlet is one clearly-marked
+   click away, never an accident. */
+async function openArticleFocus(articleId) {
+  let d;
+  try {
+    d = await API.article(articleId);
+  } catch (e) {
+    toast("Could not open the story", e.message);
+    return;
+  }
+
+  // Opening a story counts as having seen its event, the same as opening the
+  // event itself: the cards dim wherever they appear.
+  if (d.event_id) {
+    API.markEventViewed(d.event_id).catch(() => {});
+    for (const card of document.querySelectorAll(`[data-event-id="${d.event_id}"]`))
+      card.classList.add("event-viewed");
+  }
+
+  el("ar-title").textContent = d.title;
+
+  const badges = el("ar-badges");
+  badges.innerHTML = "";
+  const t = impTier(d.importance);
+  const imp = document.createElement("span");
+  imp.className = "imp " + t.cls;
+  imp.textContent = `${t.icon} ${t.label} ${d.importance}`;
+  badges.appendChild(imp);
+  const tag = (txt, title = "") => {
+    const s = document.createElement("span");
+    s.className = "tag"; s.textContent = txt;
+    if (title) s.title = title;
+    badges.appendChild(s);
+  };
+  if (d.country) tag(`${flagEmoji(d.country)} ${COUNTRY_NAMES.get(d.country) || d.country}`);
+  for (const c of (d.categories || []).slice(0, 4)) tag(c);
+  for (const n of nearLocations(d)) tag(`📍 ${n.name}`, `Inside your favourite location “${n.name}”`);
+  if (d.paywall) tag("🔒 paywalled", "The outlet limits how much of this you can read");
+  if (d.translated_from) tag(`🌐 translated from ${d.translated_from.toUpperCase()}`);
+
+  // Byline: who published it, and when — the two things a card can only abbreviate.
+  const source = d.source ? d.source.name : "Unknown source";
+  const when = d.published_at
+    ? `${new Date(d.published_at).toLocaleString([], {
+        weekday: "short", year: "numeric", month: "long", day: "numeric",
+        hour: "2-digit", minute: "2-digit" })} · ${timeAgo(d.published_at)}`
+    : "publication date not given";
+  el("ar-byline").textContent = `${source} — ${when}`;
+
+  const img = el("ar-image");
+  if (safeUrl(d.image_url)) {
+    img.src = safeUrl(d.image_url);
+    img.hidden = false;
+    img.onerror = () => { img.hidden = true; };
+  } else {
+    img.hidden = true;
+    img.removeAttribute("src");
+  }
+
+  el("ar-summary").textContent = d.summary || "";
+  el("ar-summary").hidden = !d.summary;
+
+  // The body extract, when Delphi fetched one. Some sources publish only a
+  // headline and a link, and paywalled ones are stored headline-only by design.
+  const excerpt = (d.excerpt || "").trim();
+  el("ar-excerpt-section").hidden = !excerpt;
+  el("ar-excerpt").textContent = excerpt;
+  el("ar-excerpt-note").hidden = !d.excerpt_truncated;
+
+  const coverage = d.also_covered_by || [];
+  el("ar-coverage-section").hidden = !coverage.length;
+  el("ar-coverage-count").textContent = coverage.length
+    ? `— ${coverage.length} other report${plural(coverage.length)}` : "";
+  const cov = el("ar-coverage");
+  cov.innerHTML = "";
+  for (const other of coverage) {
+    const row = document.createElement("div");
+    row.className = "ar-cov-row";
+    row.setAttribute("role", "button");
+    row.tabIndex = 0;
+    const head = document.createElement("div");
+    head.className = "ar-cov-title";
+    head.textContent = other.title;
+    const meta = document.createElement("div");
+    meta.className = "ar-cov-meta";
+    const outlet = other.source ? other.source.name : "";
+    const flag = other.source && other.source.country ? flagEmoji(other.source.country) + " " : "";
+    meta.textContent = `${flag}${outlet}  ·  ${timeAgo(other.published_at)}`;
+    row.append(head, meta);
+    const open = () => openArticleFocus(other.id);
+    row.onclick = open;
+    row.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+    };
+    cov.appendChild(row);
+  }
+
+  // Everything else worth knowing, in one list rather than scattered tags.
+  const facts = el("ar-facts");
+  facts.innerHTML = "";
+  const fact = (label, value) => {
+    if (!value) return;
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    facts.append(dt, dd);
+  };
+  fact("Published", d.published_at ? new Date(d.published_at).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "");
+  fact("Collected", d.fetched_at ? timeAgo(d.fetched_at) : "");
+  if (d.source) {
+    fact("Outlet", d.source.name);
+    fact("Reach", d.source.scope);
+    fact("Platform", d.source.platform);
+  }
+  fact("Language", (d.language || "").toUpperCase());
+  fact("Places named", (d.places || []).map(p => p.name).join(", "));
+  fact("Importance", `${d.importance} of 100 — ${t.label}`);
+  if (d.event) {
+    fact("Event", `${d.event.article_count} report${plural(d.event.article_count)} from `
+      + `${d.event.source_count} outlet${plural(d.event.source_count)}, `
+      + `first seen ${timeAgo(d.event.first_seen)}`);
+  }
+
+  const evBtn = el("btn-ar-event");
+  evBtn.hidden = !d.event;
+  if (d.event) evBtn.onclick = () => { closeArticleFocus(); openEventFocus(d.event.id); };
+
+  const open = el("ar-open");
+  const href = safeUrl(d.url);
+  open.href = href || "#";
+  open.hidden = !href;
+  open.title = href ? `Read this at ${source}` : "";
+  const arch = el("ar-archive");
+  arch.hidden = !safeUrl(d.archive_url);
+  if (!arch.hidden) {
+    arch.href = safeUrl(d.archive_url);
+    arch.title = "Read the full text via archive.ph (the outlet paywalls it)";
+  }
+
+  el("article-backdrop").hidden = false;
+  el("ar-body").scrollTop = 0;
+  el("btn-close-article").focus();
+}
+
+function closeArticleFocus() {
+  el("article-backdrop").hidden = true;
+}
+
 /* ---------- event focus ---------- */
 let EVENT_MAP = null;
 let EVENT_MAP_SEQ = 0;   // which event the map is being drawn for
@@ -1702,25 +1866,28 @@ async function renderEventMap(d) {
   }, 80);
 }
 
-function articleRow(a, mode = "link") {
-  // "link":  navigates to the article (alert hits, Event Focus timeline)
+function articleRow(a, mode = "focus") {
+  // "focus": selecting the row opens the story in Article Focus
   // "plain": inert row inside an already-clickable event card
-  // "focus": selecting the row opens Event Focus for its event
+  //
+  // Nothing here navigates. A headline used to be an <a> that took the reader
+  // straight to the outlet, which meant one stray click left Delphi for a page
+  // they had not decided to visit yet. Every row now opens the story in the
+  // dashboard, and leaving is a deliberate second click from there.
   const t = impTier(a.importance);
-  if (mode === "focus" && !a.event_id) mode = "link";  // unclustered stray
-  const row = document.createElement(mode === "link" ? "a" : "div");
+  const row = document.createElement("div");
   row.className = "article";
-  if (mode === "link") {
-    const href = safeUrl(a.url);
-    if (href) { row.href = href; row.target = "_blank"; row.rel = "noopener"; }
-  }
   if (mode === "focus") {
     row.classList.add("article-focus");
-    row.dataset.eventId = a.event_id;
+    if (a.event_id) row.dataset.eventId = a.event_id;
     if (a.viewed) row.classList.add("event-viewed");
     row.setAttribute("role", "button");
-    row.title = "Open event: summary, timeline, sources, map, related events";
-    row.onclick = () => openEventFocus(a.event_id);
+    row.tabIndex = 0;    // it is a button now, so it has to be reachable as one
+    row.title = "Open the story: summary, when and where it was published, who else has it";
+    row.onclick = () => openArticleFocus(a.id);
+    row.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openArticleFocus(a.id); }
+    };
   }
 
   const title = document.createElement("div");
@@ -1749,23 +1916,18 @@ function articleRow(a, mode = "link") {
   }
   if (a.translated_from) bits.push("🌐 translated from " + a.translated_from.toUpperCase());
   if ((a.categories || []).length) bits.push(a.categories.slice(0, 3).join(" · "));
-  if (mode === "focus") bits.push("⤢ event");
+  if (mode === "focus") bits.push(a.event_id ? "⤢ open · event" : "⤢ open");
   const span = document.createElement("span");
   span.textContent = bits.join("  ·  ");
   meta.appendChild(span);
-  if (a.archive_url) {
-    // A <span> (not a nested <a>, which is invalid inside a link-mode row):
-    // open archive.ph and suppress the row's own navigation.
-    const arch = document.createElement("span");
-    arch.className = "archive-link";
-    arch.textContent = "🔓 archive.ph";
-    arch.title = "Read the full article via archive.ph (paywalled source)";
-    arch.setAttribute("role", "link");
-    arch.onclick = (e) => {
-      e.preventDefault(); e.stopPropagation();
-      window.open(a.archive_url, "_blank", "noopener");
-    };
-    meta.appendChild(arch);
+  // Paywalled outlets are marked, but the way out to archive.ph lives in the
+  // focused view rather than the row: nothing in a column navigates.
+  if (a.paywall) {
+    const lock = document.createElement("span");
+    lock.className = "paywall-mark";
+    lock.textContent = "🔒";
+    lock.title = "The outlet paywalls this — open the story for a way to read it";
+    meta.appendChild(lock);
   }
 
   const text = document.createElement("div");

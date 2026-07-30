@@ -13,6 +13,28 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-08",
+        "title": "A headline opens the story, not the outlet",
+        "items": [
+            "📖 Clicking a headline used to send you straight to the publisher's "
+            "website. It now opens the story inside Delphi: the headline, which "
+            "outlet published it and exactly when, the summary in full rather "
+            "than the truncation a column has room for, an extract of the "
+            "article itself, the places it names, its importance, and which "
+            "other outlets are covering the same event. Going to the outlet is "
+            "a marked button at the bottom — so a stray click can no longer "
+            "take you somewhere you had not decided to go.",
+            "This applies everywhere a headline appears: the boards, search "
+            "results, the alerts panel, and an event's timeline. Opening a "
+            "story from a timeline lays it over the event, and closing it puts "
+            "you back on the event. Esc closes whichever is on top, and rows "
+            "now answer Enter and Space as well as the mouse.",
+            "🔒 A paywalled outlet is marked on the row, and the way through — "
+            "🔓 archive.ph — sits beside the outlet's own link in the story "
+            "view, rather than being a second link inside the row.",
+        ],
+    },
+    {
         "date": "2026-08-07",
         "title": "Home is ready before you open it",
         "items": [

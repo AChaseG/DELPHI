@@ -173,8 +173,10 @@
               curates for you from everything it has ingested.</li>
             <li>Drag the board sideways, or use the bar beneath it, to reach the
               columns off-screen. Each column scrolls its own articles vertically.</li>
-            <li>Click any headline to open <b>Event Focus</b> — the story's summary,
-              a map, every outlet covering it, and related events.</li>
+            <li>Click any headline to open the story: its summary in full, an extract
+              of the article, when and where it was published, and who else is
+              covering it. Nothing in a column takes you off to the outlet by
+              itself — going there is a button inside that view.</li>
             <li>Found a Home column you want to keep and edit? Press <b>📌</b> in its
               header to copy it to <b>📋 My feeds</b>.</li>
             <li>Press <b>＋ Create</b> in the rail on the right to build your own feed,
@@ -227,16 +229,20 @@
               carrying the score itself.</li>
             <li>The <b>outlet</b>, the <b>country</b> the story is about, and when it was
               published, in whichever timestamp format you chose in Settings.</li>
-            <li>Its <b>categories</b>, and <b>⤢ event</b> — the whole story is one click
-              away.</li>
+            <li>Its <b>categories</b>, and <b>⤢ open</b> — the story itself is one click
+              away, with <b>· event</b> beside it when other outlets are covering
+              the same thing.</li>
             <li><b>📍 a place name</b> when the article falls inside one of your
               favourite locations.</li>
             <li><b>🌐 translated from XX</b> when it was written in another language.</li>
-            <li><b>🔓 archive.ph</b> on a paywalled outlet, which opens a readable
-              snapshot instead of the paywall.</li>
+            <li><b>🔒</b> on a paywalled outlet. Open the row and the story's own view
+              offers <b>🔓 archive.ph</b>, a readable snapshot instead of the
+              paywall.</li>
           </ul>
-          <p>Clicking the row opens Event Focus; the links inside that panel take you to
-             the outlet's own page.</p>
+          <p>Clicking a row never leaves D.E.L.P.H.I. It opens the story in
+             <b>Article Focus</b>, and the outlet's own page is a marked button in
+             there — so a stray click can't send you to a page you hadn't decided to
+             visit.</p>
         </details>
 
         <details>
@@ -335,13 +341,39 @@
         </details>
 
         <details>
+          <summary>📖 Reading a story in Article Focus</summary>
+          <ol>
+            <li>Click any headline — on a board, in search results, in the alerts
+              panel, or in an event's timeline. Enter or Space does the same on the
+              row your keyboard is on.</li>
+            <li>The view opens with the headline, an importance chip, the country and
+              categories, and a line saying which outlet published it and exactly
+              when — the full date, not just "3h ago".</li>
+            <li>Below that: the publisher's summary in full (a column truncates it),
+              then <b>From the article</b>, an extract of the body D.E.L.P.H.I.
+              fetched. Long pieces are cut, and the view says so.</li>
+            <li><b>Also covering this</b> lists other outlets on the same event;
+              clicking one opens that report in the same way.</li>
+            <li><b>Details</b> gives the publication time in UTC, when D.E.L.P.H.I.
+              collected it, the outlet's reach and platform, the places named in the
+              story, and its importance out of 100.</li>
+            <li><b>Open original ↗</b> at the bottom goes to the outlet — the only
+              thing here that leaves D.E.L.P.H.I. <b>⤢ Open the event</b> beside it
+              switches to the whole story across every outlet.</li>
+          </ol>
+          <p><b>Esc</b> closes it. Opened from an event's timeline, closing returns you
+             to the event rather than the board.</p>
+        </details>
+
+        <details>
           <summary>🧵 Reading a story in Event Focus</summary>
           <ol>
-            <li>Click any headline or grouped event card.</li>
+            <li>Click a grouped event card, or press <b>⤢ Open the event</b> inside a
+              story.</li>
             <li>The panel opens with the story's summary, its importance and category
               badges, and a map of the places it mentions.</li>
-            <li><b>Timeline</b> lists every report on the story, newest first — each
-              links out to the original article.</li>
+            <li><b>Timeline</b> lists every report on the story, newest first — clicking
+              one opens it in Article Focus, over the event.</li>
             <li><b>Covered by</b> lists the outlets reporting it; click one to read its
               version.</li>
             <li><b>Related events</b> links to stories D.E.L.P.H.I. considers adjacent.</li>
@@ -684,13 +716,14 @@
              names (recognized across scripts, e.g. 東京 → Tokyo) and significant
              numbers (a magnitude, a toll) — so a story's coverage in its own language
              groups with the English coverage, not as a separate event.</p>
-          <p>Selecting any story — grouped card or single article row — opens
-             <b>Event Focus</b>: the founding report's synopsis, stats, a map of tagged
-             places, the full timeline newest-first, "covered by" outlet links, and
-             related events. The article links live inside the panel (timeline and
-             outlet chips); alert hit lists link straight to articles for speed. Once
-             viewed, the event dims everywhere it appears (hover to read at full
-             strength). Views are remembered on your account, on every device.</p>
+          <p>A grouped card opens <b>Event Focus</b>: the founding report's synopsis,
+             stats, a map of tagged places, the full timeline newest-first, "covered by"
+             outlet links, and related events. A single article row opens that article
+             instead — <b>Article Focus</b> — with <b>⤢ Open the event</b> in it when
+             the story is one of several on the same event. Either way, opening a story
+             counts as reading its event: it dims everywhere it appears (hover to read
+             at full strength), on your account and on every device you sign in
+             from.</p>
           <p><b>Staleness:</b> a feed can enable 🕰 "Hide events with no recent updates"
              (wizard, Review step); the threshold is yours, in ⚙ Settings. Hiding is
              display-only — clustering keeps attaching new similar reports to hidden
@@ -785,9 +818,9 @@
              headlines and summaries usually aren't). Delphi then ingests those
              headlines and summaries — enough to match feeds and alerts on — but skips
              fetching the locked article body, so nothing is polluted with paywall
-             stubs. Every article from a paywalled source shows a <b>🔓 archive.ph</b>
-             link (in the row and in Event Focus) that opens the story via
-             <code>archive.ph</code>, which typically has a readable snapshot.</p>
+             stubs. A row from a paywalled source is marked <b>🔒</b>, and opening it
+             offers <b>🔓 archive.ph</b> beside the outlet's own link — typically a
+             readable snapshot of the story.</p>
           <p><b>Retention:</b> articles are kept for 30 days by default, then pruned to
              keep the system fast (self-hosting: <code>NEWS_RETENTION_DAYS</code>, 0 =
              keep forever). Date-range feeds can only reach back as far as retention.</p>
@@ -1473,6 +1506,45 @@
         <span class="spacer"></span>
         <button class="btn" id="btn-qb-cancel">Cancel</button>
         <button class="btn btn-primary" id="btn-qb-insert">Use this search</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Article focus modal. Opening a headline never leaves D.E.L.P.H.I.: the
+       story is shown here — title, when it was published, who published it,
+       the summary in full and an extract of the body — and going to the outlet
+       is a deliberate second click. -->
+  <div id="article-backdrop" class="modal-backdrop" hidden>
+    <div class="modal article-modal" role="dialog" aria-modal="true" aria-labelledby="ar-title">
+      <div class="modal-head">
+        <h2 id="ar-title">Article</h2>
+        <button class="icon-btn" id="btn-close-article" aria-label="Close article">✕</button>
+      </div>
+      <div class="modal-body" id="ar-body">
+        <div class="ev-badges" id="ar-badges"></div>
+        <p class="ar-byline" id="ar-byline"></p>
+        <img id="ar-image" class="ar-image" alt="" referrerpolicy="no-referrer" hidden>
+        <p class="ar-summary" id="ar-summary"></p>
+        <div class="ev-section" id="ar-excerpt-section" hidden>
+          <h3>From the article</h3>
+          <p class="ar-excerpt" id="ar-excerpt"></p>
+          <p class="ar-excerpt-note" id="ar-excerpt-note" hidden>
+             Extract only — open the original for the rest.</p>
+        </div>
+        <div class="ev-section" id="ar-coverage-section" hidden>
+          <h3>Also covering this <span id="ar-coverage-count" class="ev-dim"></span></h3>
+          <div id="ar-coverage"></div>
+        </div>
+        <div class="ev-section">
+          <h3>Details</h3>
+          <dl class="ar-facts" id="ar-facts"></dl>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="btn-ar-event" hidden>⤢ Open the event</button>
+        <span class="spacer"></span>
+        <a class="btn" id="ar-archive" target="_blank" rel="noopener" hidden>🔓 archive.ph</a>
+        <a class="btn btn-primary" id="ar-open" target="_blank" rel="noopener">Open original ↗</a>
       </div>
     </div>
   </div>

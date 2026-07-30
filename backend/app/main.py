@@ -42,6 +42,11 @@ logging.basicConfig(level=logging.INFO)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 DISABLE_INGEST = os.environ.get("NEWS_DISABLE_INGEST", "") == "1"
 
+# How much of a story's body the focused view shows. Enough to judge the piece
+# without it standing in for the outlet's page, which is one click away.
+ARTICLE_EXCERPT_CHARS = 1200
+ARTICLE_SIBLINGS = 8      # other outlets on the same event, listed in the view
+
 
 def _ensure_schema():
     """Additive migrations for databases created by earlier versions."""
@@ -864,6 +869,68 @@ async def search_articles(
     viewed = _viewed_events(db, user_id, articles)
     events = _events_for(db, articles) if (criteria or {}).get("hide_stale") else None
     return [_article_json(a, tr, viewed, events) for a in articles]
+
+
+@app.get("/api/articles/{article_id}")
+async def article_detail(article_id: int, lang: str = Query(default=""),
+                         user_id: str = Depends(user_id_header),
+                         db: Session = Depends(get_db)):
+    """One article in full, for the focused view a headline opens.
+
+    Everything a reader needs to judge a story before deciding to leave for the
+    outlet: the whole summary rather than the card's truncation, an extract of
+    the body Delphi already fetched for matching, where and when it was
+    published, and who else is covering the same event."""
+    article = db.get(Article, article_id)
+    if not article:
+        raise HTTPException(404, "Article not found")
+    tr = await translate.translate_articles(db, [article], lang)
+    viewed = _viewed_events(db, user_id, [article])
+    out = _article_json(article, tr, viewed, None)
+
+    # The card truncates to 400 characters because a column is narrow; here
+    # there is room for the publisher's summary in full.
+    t = (tr or {}).get(article.id)
+    out["summary"] = t["summary"] if t else (article.summary or "")
+
+    # An extract of the story body, which is fetched for matching anyway. It is
+    # deliberately bounded and always shown beside a link to the outlet: this is
+    # a reading aid for deciding whether to go there, not a copy of the article.
+    body = (article.content or "").strip()
+    out["excerpt"] = body[:ARTICLE_EXCERPT_CHARS]
+    out["excerpt_truncated"] = len(body) > ARTICLE_EXCERPT_CHARS
+    out["fetched_at"] = article.fetched_at.isoformat() + "Z" if article.fetched_at else None
+    if article.source:
+        out["source"] = {**out["source"], "platform": article.source.platform or "news",
+                         "language": article.source.language,
+                         "homepage": article.source.homepage or ""}
+
+    out["event"] = None
+    out["also_covered_by"] = []
+    if article.event_id:
+        event = db.get(Event, article.event_id)
+        siblings = db.scalars(
+            select(Article).where(Article.event_id == article.event_id,
+                                  Article.id != article.id)
+            .order_by(Article.published_at.desc()).limit(ARTICLE_SIBLINGS)
+        ).all()
+        if event:
+            out["event"] = {
+                "id": event.id, "title": event.title,
+                "article_count": event.article_count,
+                "source_count": len({a.source_id for a in siblings} | {article.source_id}),
+                "first_seen": event.first_seen.isoformat() + "Z",
+                "updated_at": event.updated_at.isoformat() + "Z",
+            }
+        strs = await translate.translate_articles(db, siblings, lang)
+        out["also_covered_by"] = [{
+            "id": s.id,
+            "title": (strs.get(s.id) or {}).get("title") or s.title,
+            "url": s.url,
+            "published_at": s.published_at.isoformat() + "Z" if s.published_at else None,
+            "source": {"name": s.source.name, "country": s.source.country} if s.source else None,
+        } for s in siblings]
+    return out
 
 
 @app.post("/api/query/validate")

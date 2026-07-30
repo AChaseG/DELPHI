@@ -64,6 +64,10 @@ feeds**.
     A 🪄 **query builder** composes the string from fill-in boxes ("at least
     one from each row, none of these") with a live preview and match count —
     no syntax needed
+  - **article focus** — clicking a headline never navigates away: it opens the
+    story in the dashboard (summary in full, an extract of the body, outlet,
+    publication time, places, importance, and who else is covering it), with the
+    outlet's own page a marked button inside it
   - **event focus** — selecting an event opens a detail panel: synopsis, stats,
     a map of where it's happening, the full cross-source timeline, the outlets
     covering it, and related events

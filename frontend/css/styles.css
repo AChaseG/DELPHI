@@ -539,11 +539,9 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   font-size: 12px; color: var(--ink-2);
   white-space: nowrap;
 }
-.archive-link {
-  margin-left: 8px; cursor: pointer; color: var(--gold);
-  font-weight: 600; white-space: nowrap;
-}
-.archive-link:hover { text-decoration: underline; }
+/* The paywall mark on a row is a label, not a way out: the link to archive.ph
+   lives in the focused view the row opens. */
+.paywall-mark { margin-left: 6px; color: var(--gold); }
 .archive-chip { color: var(--gold); }
 .source-tools select {
   background: var(--surface-2); color: var(--ink);
@@ -922,7 +920,46 @@ button.working::after {
 .ev-related-row:hover { background: var(--surface-2); }
 .ev-related-title { flex: 1; }
 
+/* ---------- article focus ----------
+   The dialog a headline opens. It sits above Event Focus, because a story can
+   be opened from an event's timeline and closing it should return there. */
+#article-backdrop { z-index: 950; }
+.article-modal { width: 660px; }
+.article-modal .modal-body { max-height: 74vh; overflow-y: auto; }
+.article-modal .modal-head h2 { font-size: 17px; line-height: 1.35; }
+.ar-byline { margin: 0; font-size: 12.5px; color: var(--ink-muted); }
+.ar-image {
+  width: 100%; max-height: 260px; object-fit: cover;
+  border-radius: 10px; border: 1px solid var(--border);
+}
+.ar-summary { margin: 0; font-size: 14px; line-height: 1.6; color: var(--ink); }
+.ar-excerpt {
+  margin: 0; font-size: 13.5px; line-height: 1.65; color: var(--ink-2);
+  white-space: pre-wrap;                    /* the body keeps its paragraphs */
+  border-left: 3px solid var(--gold-soft); padding-left: 12px;
+}
+.ar-excerpt-note { margin: 6px 0 0; font-size: 11.5px; color: var(--ink-muted); }
+.ar-cov-row {
+  border-bottom: 1px solid var(--hairline);
+  padding: 8px 4px; cursor: pointer;
+}
+.ar-cov-row:last-child { border-bottom: none; }
+.ar-cov-row:hover, .ar-cov-row:focus-visible { background: var(--surface-2); }
+.ar-cov-title { font-size: 13px; color: var(--ink); }
+.ar-cov-meta { font-size: 11.5px; color: var(--ink-muted); margin-top: 2px; }
+/* Two columns: the fact and its value, with the labels quiet. */
+.ar-facts {
+  margin: 0; display: grid; grid-template-columns: max-content 1fr;
+  gap: 4px 14px; font-size: 12.5px;
+}
+.ar-facts dt { color: var(--ink-muted); }
+.ar-facts dd { margin: 0; color: var(--ink-2); }
+
 .article-focus { cursor: pointer; }
+/* A row is a button now, so it has to show where the keyboard is. */
+.article-focus:focus-visible, .ar-cov-row:focus-visible, .ev-related-row:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: -2px;
+}
 .event-clickable { cursor: pointer; }
 .event-clickable:hover { background: var(--surface-2); }
 /* previously viewed events recede; hover brings them back for re-reading */
