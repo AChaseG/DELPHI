@@ -467,6 +467,16 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .empty-state { text-align: center; padding: 80px 20px; color: var(--ink-2); }
 .empty-state h2 { color: var(--ink); }
 .empty-state .btn { margin: 6px; }
+/* Startup failed, so nothing else is on screen to sit inside — this covers the
+   window rather than adding to a layout that never finished being built. */
+.boot-error {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--page);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 40px 24px;
+}
+.boot-error p { max-width: 46ch; margin: 0; }
+.boot-error .set-note { margin-top: 4px; }
 
 /* ---------- side panels ---------- */
 .side-panel {

@@ -59,8 +59,18 @@ async function boot() {
   wireTopbar();
   initBoardScrollbar();
   renderStats();
-  await refreshPantheons();  // before the board: VIEW may be a Pantheon's
-  await Promise.all([refreshFeeds(), refreshAlerts()]);
+  // Past this point the app is usable: the shell is wired and the panels open.
+  // A board or an alert list that fails to load is a column with an error in
+  // it, not a reason to replace the whole dashboard with one — losing the rail,
+  // Settings and the sign-out button along with it.
+  await refreshPantheons().catch((e) => console.error("[boot] pantheons", e));
+  await Promise.all([
+    refreshFeeds().catch((e) => {
+      console.error("[boot] feeds", e);
+      toast("Couldn't load your feeds", e.message);
+    }),
+    refreshAlerts().catch((e) => console.error("[boot] alerts", e)),
+  ]);
   connectStream();
   runOnboarding();
   setInterval(checkForUpdates, UPDATE_POLL_MS);
@@ -2927,7 +2937,42 @@ function toast(title, body, isAlert = false) {
   setTimeout(() => t.remove(), 9000);
 }
 
-boot().catch(e => {
-  document.body.insertAdjacentHTML("beforeend",
-    `<div class="empty-state"><h2>Could not reach the backend</h2><p>${e.message}</p></div>`);
-});
+/* Boot failed. Say which kind of failure it was.
+
+   This used to read "Could not reach the backend" whatever went wrong, because
+   any exception anywhere in boot lands here — a bug in the dashboard's own
+   startup reported itself as a network problem, and sent the search for the
+   cause in the wrong direction. The two cases need different first moves, so
+   they get different words. */
+function showBootFailure(e) {
+  console.error("[boot]", e);
+  const msg = (e && e.message) || String(e);
+  // The client raises these two itself when fetch fails or times out; anything
+  // else reaching here came out of the dashboard's own code.
+  const unreachable = /reach the server|didn't respond within/i.test(msg);
+
+  const panel = document.createElement("div");
+  panel.className = "empty-state boot-error";
+  const h = document.createElement("h2");
+  h.textContent = unreachable ? "Can't reach the server" : "D.E.L.P.H.I. failed to start";
+  const p = document.createElement("p");
+  p.textContent = msg;
+  const hint = document.createElement("p");
+  hint.className = "set-note";
+  hint.textContent = unreachable
+    ? "The server isn't answering. It may be restarting or under load — this "
+      + "usually clears on its own within a minute."
+    : "This is a fault in the dashboard itself rather than the connection. The "
+      + "browser console has the full details, including which line failed.";
+  const retry = document.createElement("button");
+  retry.className = "btn btn-primary";
+  retry.textContent = "Try again";
+  retry.onclick = () => location.reload();
+  panel.append(h, p, hint, retry);
+
+  // Replace any earlier failure rather than stacking panels on a retry loop.
+  for (const old of document.querySelectorAll(".boot-error")) old.remove();
+  document.body.appendChild(panel);
+}
+
+boot().catch(showBootFailure);
