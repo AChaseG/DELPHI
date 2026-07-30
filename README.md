@@ -222,6 +222,7 @@ backend/data
 └── gazetteer.json    countries (centroids + aliases) and ~160 major cities
 
 frontend/             no build step — plain HTML/CSS/JS; Leaflet vendored in frontend/vendor
+                      (loaded on demand by ensureLeaflet(), not at startup)
 ```
 
 ### API sketch

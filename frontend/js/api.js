@@ -151,6 +151,8 @@ const langQS = () => (getLang() ? `&lang=${encodeURIComponent(getLang())}` : "")
 const API = {
   meta: () => api("/api/meta"),
   sources: () => api("/api/sources"),
+  // Just id and name: what startup needs to label a restricted feed.
+  sourceNames: () => api("/api/sources?slim=1"),
   addSource: (body) => api("/api/sources", { method: "POST", body: JSON.stringify(body) }),
   patchSource: (id, body) => api(`/api/sources/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteSource: (id) => api(`/api/sources/${id}`, { method: "DELETE" }),
@@ -233,3 +235,37 @@ const API = {
   resetPassword: (token, password) =>
     api("/api/auth/reset", { method: "POST", body: JSON.stringify({ token, password }) }),
 };
+
+/* ---------- map library, loaded when a map is actually opened ----------
+   Leaflet and Leaflet.draw are a quarter of a megabyte of script and CSS that
+   most sessions never use: the board has no map on it. They used to be in the
+   page head, so every reader paid for them before the first column appeared.
+   Now every caller awaits this first, and the files are fetched once. */
+let leafletWanted = null;
+function ensureLeaflet() {
+  if (typeof L !== "undefined") return Promise.resolve();
+  if (leafletWanted) return leafletWanted;
+  const sheet = (href) => new Promise((ok, fail) => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.onload = ok;
+    link.onerror = () => fail(new Error(`could not load ${href}`));
+    document.head.appendChild(link);
+  });
+  const script = (src) => new Promise((ok, fail) => {
+    const tag = document.createElement("script");
+    tag.src = src;
+    tag.onload = ok;
+    tag.onerror = () => fail(new Error(`could not load ${src}`));
+    document.body.appendChild(tag);
+  });
+  // The stylesheets are independent, but leaflet.draw extends L, so it can only
+  // run after Leaflet itself.
+  leafletWanted = Promise.all([
+    sheet("/vendor/leaflet/leaflet.css"),
+    sheet("/vendor/leaflet-draw/leaflet.draw.css"),
+    script("/vendor/leaflet/leaflet.js").then(() => script("/vendor/leaflet-draw/leaflet.draw.js")),
+  ]).catch((e) => { leafletWanted = null; throw e; });   // a later open can retry
+  return leafletWanted;
+}

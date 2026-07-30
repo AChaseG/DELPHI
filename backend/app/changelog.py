@@ -13,6 +13,29 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-06",
+        "title": "Delphi opens about four times faster",
+        "items": [
+            "⚡ Startup used to be a queue: settings, then the source catalog, "
+            "then the country list, then your places, then your Pantheons, then "
+            "your feeds — six round trips deep before a single column could be "
+            "drawn. Delphi now asks for all of it at once and paints your board "
+            "from the copy on your own computer before any answer comes back. "
+            "On a connection with 150ms of latency, the first column appeared "
+            "after 1,083ms and now appears after 274ms.",
+            "📚 The catalog of every source Delphi polls — close to half a "
+            "megabyte — is no longer downloaded when you sign in. Startup takes "
+            "just the outlet names it needs to label a feed, and the full "
+            "catalog arrives the first time you open the Sources panel or the "
+            "wizard's source picker. Opening Delphi now transfers 54 KB of data "
+            "instead of 489 KB.",
+            "🗺 The map library is fetched the first time you actually open a "
+            "map — drawing an area in the wizard, favourite locations, the "
+            "alerts map, or an event's map — rather than on every visit. That is "
+            "another 225 KB nobody has to wait for.",
+        ],
+    },
+    {
         "date": "2026-08-05",
         "title": "The board stops freezing while it draws",
         "items": [

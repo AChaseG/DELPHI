@@ -686,7 +686,16 @@ def save_user_settings(body: dict, user_id: str = Depends(user_id_header),
 # ---------- sources ----------
 
 @app.get("/api/sources")
-def list_sources(db: Session = Depends(get_db)):
+def list_sources(slim: bool = Query(default=False), db: Session = Depends(get_db)):
+    """Every source, or — with slim=1 — just enough to name one.
+
+    The full catalog runs past a thousand outlets and half a megabyte, and the
+    dashboard needs it only when the Sources panel or the wizard's picker is
+    open. At startup all it has to do is put a name against the outlets a feed
+    is restricted to, which is two fields."""
+    if slim:
+        rows = db.execute(select(Source.id, Source.name).order_by(Source.name)).all()
+        return [{"id": i, "name": n} for i, n in rows]
     sources = db.scalars(select(Source).order_by(Source.name)).all()
     return [{
         "id": s.id, "name": s.name, "rss_url": s.rss_url, "homepage": s.homepage,

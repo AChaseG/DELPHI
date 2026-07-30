@@ -490,19 +490,22 @@ const Builder = {
 
   /* ----- map / geofence ----- */
 
-  toggleMap() {
-    if (typeof L === "undefined") {
-      el("geo-summary").textContent =
-        "Map library could not be loaded (offline?) — geographic filters still work via the API.";
-      return;
-    }
+  async toggleMap() {
     const box = el("builder-map");
     box.hidden = !box.hidden;
     el("btn-toggle-map").textContent = box.hidden ? "Draw area on map" : "Hide map";
-    if (!box.hidden) {
-      if (!this.map) this._initMap();
-      setTimeout(() => { this.map.invalidateSize(); this._fitToGeo(); }, 60);
+    if (box.hidden) return;
+    try {
+      await ensureLeaflet();
+    } catch (e) {
+      box.hidden = true;
+      el("btn-toggle-map").textContent = "Draw area on map";
+      el("geo-summary").textContent =
+        "The map could not be loaded (offline?) — geographic filters still work without it.";
+      return;
     }
+    if (!this.map) this._initMap();
+    setTimeout(() => { this.map.invalidateSize(); this._fitToGeo(); }, 60);
   },
 
   _initMap() {

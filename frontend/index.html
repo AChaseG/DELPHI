@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>D.E.L.P.H.I. — Digital Exploration and Layout for Publicly Harvested Intelligence</title>
   <link rel="icon" type="image/png" href="/img/logo.png">
-  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="/vendor/leaflet-draw/leaflet.draw.css">
+  <!-- Leaflet's stylesheets and scripts are injected by ensureLeaflet() the
+       first time a map is opened: most sessions never open one. -->
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
@@ -1501,8 +1501,6 @@
 
   <div id="toasts" class="toasts pos-br"></div>
 
-  <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/vendor/leaflet-draw/leaflet.draw.js"></script>
   <script src="/js/api.js"></script>
   <!-- The local feed cache; app.js reads it at boot. -->
   <script src="/js/store.js"></script>

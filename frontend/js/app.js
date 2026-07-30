@@ -1,6 +1,10 @@
 /* Dashboard: feed board, alerts panel, sources panel, live SSE updates. */
 let META = null;
+// The full catalog — a thousand outlets and half a megabyte — is fetched only
+// when the Sources panel or the wizard's picker needs it. Startup takes the
+// slim list below instead, which is all a feed badge requires.
 let SOURCES = [];
+let SOURCE_NAMES = new Map();   // id -> name, always loaded
 let FEEDS = [];
 let ALERTS = [];
 let PANTHEONS = [];          // organizations this account belongs to
@@ -30,17 +34,38 @@ async function boot() {
     document.querySelector(".topbar").hidden = true;
     return;
   }
-  // Adopt the account's saved preferences FIRST: everything below (theme,
-  // language picker, staleness, settings panel) initializes from Settings,
-  // and this device's localStorage may be empty (new browser / new origin).
-  try { Settings.adopt((await API.getSettings()).settings); } catch (e) { /* offline */ }
-  [META, SOURCES] = await Promise.all([API.meta(), API.sources()]);
+  // Everything boot needs is an independent read, so ask for all of it at once.
+  // These used to be awaited one after another — settings, then meta, then
+  // locations, then Pantheons, then feeds — six round trips deep before the
+  // board could start, and five of them carrying almost no data. On a link with
+  // 150ms of latency that put the first column at 1,083ms; asked for in one
+  // round, and with the catalog no longer among them, it lands at 274ms.
+  const local = hydrateFeedCache();          // disk, not network: no reason to wait
+  const wanted = {
+    settings: API.getSettings().then(r => Settings.adopt(r.settings)).catch(() => {}),
+    meta: API.meta(),
+    locations: API.locations().catch(() => []),
+    pantheons: API.pantheons().catch(() => ({ mine: [], invites: [] })),
+    feeds: API.feeds().catch(() => null),
+    alerts: API.alerts().catch(() => null),
+    names: API.sourceNames().catch(() => []),
+  };
+
+  // Paint from the disk copy before any of that lands. A reader who was here
+  // before gets their board immediately and the network only reconciles it.
+  const cached = await local;
+  if (cached && cached.feeds) {
+    FEEDS = cached.feeds;
+    PANTHEONS = cached.pantheons || [];
+    LOCATIONS = cached.locations || LOCATIONS;
+  }
+
+  META = await wanted.meta;
   COUNTRY_NAMES = new Map(META.countries.map(c => [c.iso2, c.name]));
   COUNTRY_POINTS = new Map(META.countries.map(c => [c.iso2, { lat: c.lat, lon: c.lon }]));
-  // The board badges articles near a favourite location, so the list has to
-  // be here before the first column paints — not just when the panel opens.
-  await refreshLocations();
-  await hydrateFeedCache();
+  wanted.names.then((rows) => {
+    SOURCE_NAMES = new Map(rows.map(r => [r.id, r.name]));
+  });
   Builder.init(META, SOURCES);
   Builder.onSaved = async (mode, converted = false) => {
     // Whatever was cached for this feed was matched by its previous
@@ -59,18 +84,39 @@ async function boot() {
   wireTopbar();
   initBoardScrollbar();
   renderStats();
-  // Past this point the app is usable: the shell is wired and the panels open.
-  // A board or an alert list that fails to load is a column with an error in
-  // it, not a reason to replace the whole dashboard with one — losing the rail,
-  // Settings and the sign-out button along with it.
-  await refreshPantheons().catch((e) => console.error("[boot] pantheons", e));
-  await Promise.all([
-    refreshFeeds().catch((e) => {
-      console.error("[boot] feeds", e);
-      toast("Couldn't load your feeds", e.message);
-    }),
-    refreshAlerts().catch((e) => console.error("[boot] alerts", e)),
+
+  // A board from the disk copy, on screen before the server has answered.
+  if (FEEDS.length || PANTHEONS.length) {
+    renderViewSwitch();
+    renderBoard();
+  }
+
+  // Now reconcile with what the server says, and only redraw if it differs.
+  const [locations, pantheons, feeds] = await Promise.all([
+    wanted.locations, wanted.pantheons, wanted.feeds, wanted.settings,
   ]);
+  LOCATIONS = locations;
+  rememberList(LIST_LOCATIONS, LOCATIONS);
+  const listChanged = feeds && !sameFeeds(FEEDS, feeds);
+  const groupsChanged = JSON.stringify(PANTHEONS.map(p => p.id))
+    !== JSON.stringify(pantheons.mine.map(p => p.id));
+  PANTHEONS = pantheons.mine;
+  PANTHEON_INVITES = pantheons.invites;
+  if (feeds) FEEDS = feeds;
+  rememberList(LIST_FEEDS, FEEDS);
+  rememberList(LIST_PANTHEONS, PANTHEONS);
+  renderPantheonBadge();
+  if (groupsChanged) renderViewSwitch();
+  // Past this point the app is usable whatever happened: a board that fails to
+  // load is a column with an error in it, not a reason to replace the whole
+  // dashboard — rail, Settings and sign-out included.
+  if (listChanged || !(FEEDS.length || PANTHEONS.length)) {
+    await renderBoard().catch((e) => console.error("[boot] board", e));
+  } else {
+    refreshVisibleColumns();   // same columns: just bring their contents current
+  }
+  // Boot already asked for the alerts; hand them over rather than asking twice.
+  await refreshAlerts(await wanted.alerts).catch((e) => console.error("[boot] alerts", e));
   connectStream();
   runOnboarding();
   setInterval(checkForUpdates, UPDATE_POLL_MS);
@@ -364,8 +410,8 @@ function wireTopbar() {
   wireAuth();
   wireSettings();
   applySettings();
-  el("btn-create").onclick = () => Builder.open("feed");
-  el("btn-empty-new-feed").onclick = () => Builder.open("feed");
+  el("btn-create").onclick = () => openBuilder("feed");
+  el("btn-empty-new-feed").onclick = () => openBuilder("feed");
   el("btn-starter-pack").onclick = starterPack;
   el("btn-refresh").onclick = async () => {
     el("btn-refresh").disabled = true;
@@ -397,7 +443,7 @@ function wireTopbar() {
     localStorage.setItem("gnd_alerts_map", alertsMapWanted() ? "0" : "1");
     renderAlertsPanel();
   };
-  el("btn-sources").onclick = () => { el("sources-panel").hidden = false; reloadSources(); };
+  el("btn-sources").onclick = openSourcesPanel;
   el("btn-close-sources").onclick = () => { el("sources-panel").hidden = true; };
 
   el("global-search").addEventListener("keydown", async (e) => {
@@ -416,9 +462,7 @@ function wireTopbar() {
     try {
       await API.trackTopic(q);
       el("topic-query").value = "";
-      SOURCES = await API.sources();
-      Builder.init(META, SOURCES);
-      renderSourcesPanel();
+      await reloadSources();
       toast("Topic tracker added", `Now ingesting worldwide coverage of “${q}”. Refresh to pull articles.`);
     } catch (e) { toast("Could not add topic", e.message); }
   };
@@ -838,9 +882,54 @@ function wireGate() {
   el("auth-username").focus();
 }
 
+/* The full catalog is close to half a megabyte, and nothing on the board needs
+   it — a feed badge only wants a source's name, which the slim list carries.
+   So it is fetched the first time something actually lists outlets: the
+   wizard's source picker or the Sources panel. Once fetched it is kept. */
+let sourcesWanted = null;
+function ensureSources() {
+  if (!sourcesWanted) {
+    sourcesWanted = API.sources()
+      .then((rows) => { SOURCES = rows; Builder.init(META, SOURCES); })
+      .catch((e) => { sourcesWanted = null; throw e; });   // let a retry try again
+  }
+  return sourcesWanted;
+}
+
+// Opening the wizard has to wait for the catalog, or its picker would show an
+// empty list. Everything else in the modal is ready immediately.
+async function openBuilder(mode, item = null) {
+  try {
+    await ensureSources();
+  } catch (e) {
+    // Everything except "only these sources" still works without the catalog.
+    toast("Source list unavailable", `${e.message} — the rest of the ${mode} builder still works.`);
+  }
+  Builder.open(mode, item);
+}
+
+async function openSourcesPanel() {
+  el("sources-panel").hidden = false;
+  const box = el("sources-list");
+  if (!SOURCES.length) {
+    box.innerHTML = "";
+    box.appendChild(feedEmpty("Loading the source catalog…"));
+  }
+  try {
+    await ensureSources();
+  } catch (e) {
+    box.innerHTML = "";
+    box.appendChild(feedEmpty(`Could not load the source catalog: ${e.message}`));
+    return;
+  }
+  renderSourcesPanel();
+}
+
+// Used after something changes the catalog — a new source, a topic tracker, a
+// deletion — so the panel shows the change rather than the copy it started with.
 async function reloadSources() {
-  SOURCES = await API.sources();
-  Builder.init(META, SOURCES);
+  sourcesWanted = null;
+  await ensureSources();
   renderSourcesPanel();
 }
 
@@ -869,7 +958,17 @@ function renderStats(meta) {
 /* ---------- feed board ---------- */
 async function refreshFeeds() {
   FEEDS = await API.feeds();
+  rememberList(LIST_FEEDS, FEEDS);
   await renderBoard();
+}
+
+/* Bring the columns already on screen up to date without rebuilding them. Used
+   when the server confirms the board is the one already painted from disk: the
+   layout is right, only the contents may have moved on. */
+function refreshVisibleColumns() {
+  return mapLimited(visibleFeeds(), BOARD_LOAD_CONCURRENCY, loadFeedArticles)
+    .then(() => schedulePrefetch(BOARD_GENERATION))
+    .catch((e) => console.error("[board]", e));
 }
 
 function feedColumn(feed, readonly = false) {
@@ -902,7 +1001,7 @@ function feedColumn(feed, readonly = false) {
     tools.append(pinBtn());
     if (feed.can_edit) {
       tools.append(
-        toolBtn("✎", "Edit shared feed", () => Builder.open("feed", feed)),
+        toolBtn("✎", "Edit shared feed", () => openBuilder("feed", feed)),
         toolBtn("🗑", "Remove from this Pantheon", async () => {
           if (!confirm(`Remove “${feed.name}” from this Pantheon's board?`)) return;
           await API.deleteFeed(feed.id);
@@ -921,7 +1020,7 @@ function feedColumn(feed, readonly = false) {
       toolBtn("▶", "Move right", () => moveFeed(feed.id, +1)),
       toolBtn("⇔", "Switch between the standard and wide width — or drag either edge",
               () => toggleWidth(feed, col)),
-      toolBtn("✎", "Edit feed", () => Builder.open("feed", feed)),
+      toolBtn("✎", "Edit feed", () => openBuilder("feed", feed)),
     );
     if (PANTHEONS.length) {
       tools.append(toolBtn("🏛", "Share with a Pantheon", (e) =>
@@ -1005,7 +1104,7 @@ function criteriaBadges(c, sort) {
   if (nq) out.push(tag(nq > 1 ? `Boolean ×${nq}` : "Boolean",
                        [...(c.queries || []), c.query].filter(Boolean).join("  |  ")));
   if ((c.source_ids || []).length) {
-    const names = c.source_ids.map(id => (SOURCES.find(s => s.id === id) || {}).name)
+    const names = c.source_ids.map(id => SOURCE_NAMES.get(id))
       .filter(Boolean).sort((a, b) => a.localeCompare(b));
     const label = names.length ? names[0] + (names.length > 1 ? ` +${names.length - 1}` : "")
                                : `${c.source_ids.length} sources`;
@@ -1152,24 +1251,43 @@ function forgetLocationsFeed() {
 }
 
 async function refreshLocations() {
-  try { LOCATIONS = await API.locations(); } catch (e) { LOCATIONS = []; }
+  try {
+    LOCATIONS = await API.locations();
+    rememberList(LIST_LOCATIONS, LOCATIONS);
+  } catch (e) { LOCATIONS = []; }
 }
 
 /* ---------- the cache on disk ----------
    Read the persisted columns into the in-memory maps at boot. Every read path
    stays synchronous — feedColumn paints during layout and cannot await — so the
-   disk copy is only ever loaded here and written behind. */
+   disk copy is only ever loaded here and written behind.
+
+   The lists of feeds and Pantheons are cached alongside the columns. Without
+   them a returning reader still waited on /api/feeds before a single column
+   could be built, however much news was already on the disk — the board knew
+   what every column contained but not which columns there were. */
+const LIST_FEEDS = "list:feeds", LIST_PANTHEONS = "list:pantheons",
+      LIST_LOCATIONS = "list:locations";
+
 async function hydrateFeedCache() {
   let rows = [];
-  try { rows = await Store.load(Session.userKey()); } catch (e) { return; }
+  try { rows = await Store.load(Session.userKey()); } catch (e) { return null; }
+  const lists = {};
   for (const row of rows) {
+    if (row.key === LIST_FEEDS) { lists.feeds = row.items; continue; }
+    if (row.key === LIST_PANTHEONS) { lists.pantheons = row.items; continue; }
+    if (row.key === LIST_LOCATIONS) { lists.locations = row.items; continue; }
     FEED_CACHE.set(row.key, row.items);
     // Treat a restored column as exactly as old as it was when it was written,
     // so the freshness rules decide what to re-query — a reload must not be an
     // excuse to re-query everything, nor to show yesterday's news as current.
     FEED_CACHE_AT.set(row.key, row.at || 0);
   }
+  return lists;
 }
+
+const rememberList = (key, items) =>
+  Store.put(Session.userKey(), key, items, Date.now()).catch(() => {});
 
 function dropStale(feed, items) {
   if (!feed.criteria || !feed.criteria.hide_stale) return items;
@@ -1451,6 +1569,7 @@ function eventGroup(g) {
 
 /* ---------- event focus ---------- */
 let EVENT_MAP = null;
+let EVENT_MAP_SEQ = 0;   // which event the map is being drawn for
 
 async function openEventFocus(eventId) {
   // Remember the view (per account) and dim every card of this event now.
@@ -1546,18 +1665,23 @@ async function openEventFocus(eventId) {
   el("ev-body").scrollTop = 0;
 }
 
-function renderEventMap(d) {
+async function renderEventMap(d) {
   const box = el("event-map");
   const points = [];
   const seen = new Set();
   for (const a of d.articles)
     for (const p of a.places || [])
       if (!seen.has(p.name)) { seen.add(p.name); points.push({ p, imp: a.importance }); }
-  if (typeof L === "undefined" || !points.length) {
+  if (!points.length) {
     box.hidden = true;
     if (EVENT_MAP) { EVENT_MAP.remove(); EVENT_MAP = null; }
     return;
   }
+  // The map library may still be downloading; if the reader has opened another
+  // event by the time it arrives, those are the points that belong here now.
+  const wanted = ++EVENT_MAP_SEQ;
+  try { await ensureLeaflet(); } catch (e) { box.hidden = true; return; }
+  if (wanted !== EVENT_MAP_SEQ) return;
   box.hidden = false;
   if (EVENT_MAP) { EVENT_MAP.remove(); EVENT_MAP = null; }
   EVENT_MAP = L.map("event-map", { worldCopyJump: true });
@@ -1721,12 +1845,17 @@ async function refreshPantheons() {
     const r = await API.pantheons();
     PANTHEONS = r.mine;
     PANTHEON_INVITES = r.invites;
+    rememberList(LIST_PANTHEONS, PANTHEONS);
   } catch (e) { PANTHEONS = []; PANTHEON_INVITES = []; }
   renderViewSwitch();
+  renderPantheonBadge();
+  if (!el("pantheons-panel").hidden) renderPantheonsPanel();
+}
+
+function renderPantheonBadge() {
   const badge = el("pantheon-invite-count");
   badge.hidden = PANTHEON_INVITES.length === 0;
   badge.textContent = PANTHEON_INVITES.length;
-  if (!el("pantheons-panel").hidden) renderPantheonsPanel();
 }
 
 function wirePantheons() {
@@ -1963,6 +2092,7 @@ let LOCATIONS = [];
 
 const LocationsPanel = {
   map: null,
+  _mapWanted: null,   // in-flight load of the map library
   marker: null,
   circle: null,
   point: null,        // {lat, lon} currently being placed
@@ -1970,15 +2100,28 @@ const LocationsPanel = {
 
   async open() {
     el("locations-panel").hidden = false;
-    this._initMap();
-    await this.refresh();
+    const mapReady = this._initMap();          // fetches the map library if needed
+    await this.refresh();                      // the list does not wait for the map
+    await mapReady;
+    this.renderSaved();                        // the map may have arrived last
     // Leaflet measures the container; it was display:none until a moment ago.
     setTimeout(() => this.map && this.map.invalidateSize(), 60);
   },
 
   close() { el("locations-panel").hidden = true; },
 
-  _initMap() {
+  async _initMap() {
+    if (this.map) return;
+    if (this._mapWanted) return this._mapWanted;   // a second open, same download
+    this._mapWanted = ensureLeaflet();
+    try {
+      await this._mapWanted;
+    } catch (e) {
+      this._mapWanted = null;
+      el("loc-map").textContent =
+        "The map could not be loaded — you can still add a place by searching for it.";
+      return;
+    }
     if (this.map) return;
     this.map = L.map("loc-map", { worldCopyJump: true }).setView([25, 10], 2);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -2541,8 +2684,9 @@ function pantheonCard(p) {
 }
 
 /* ---------- alerts ---------- */
-async function refreshAlerts() {
-  ALERTS = await API.alerts();
+// `preloaded` is for boot, which has already fetched the list.
+async function refreshAlerts(preloaded = null) {
+  ALERTS = preloaded || await API.alerts();
   const unseen = ALERTS.reduce((n, a) => n + a.unseen, 0);
   el("stat-alerts").textContent = unseen;
   const bc = el("bell-count");
@@ -2590,7 +2734,7 @@ async function renderAlertsPanel() {
           await API.updateAlert(alert.id, { name: alert.name, criteria: alert.criteria, active: !alert.active });
           await refreshAlerts();
         }),
-        toolBtn("✎", "Edit alert", () => Builder.open("alert", alert)),
+        toolBtn("✎", "Edit alert", () => openBuilder("alert", alert)),
       );
     }
     if (!alert.pantheon_id && PANTHEONS.length) {
@@ -2620,9 +2764,14 @@ let alertsMapLayer = null;
 
 function alertsMapWanted() { return localStorage.getItem("gnd_alerts_map") !== "0"; }
 
-function renderAlertsMap(eventsByAlert) {
+let alertsMapSeq = 0;
+
+async function renderAlertsMap(eventsByAlert) {
   const box = el("alerts-map");
-  if (typeof L === "undefined" || !alertsMapWanted()) { box.hidden = true; return; }
+  if (!alertsMapWanted()) { box.hidden = true; return; }
+  const wanted = ++alertsMapSeq;
+  try { await ensureLeaflet(); } catch (e) { box.hidden = true; return; }
+  if (wanted !== alertsMapSeq) return;   // a later render already owns the map
   box.hidden = false;
   if (!alertsMap) {
     alertsMap = L.map("alerts-map", { worldCopyJump: true }).setView([25, 10], 1);
