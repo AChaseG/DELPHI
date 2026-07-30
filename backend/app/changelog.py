@@ -33,6 +33,13 @@ CHANGELOG: list[dict] = [
             "map — drawing an area in the wizard, favourite locations, the "
             "alerts map, or an event's map — rather than on every visit. That is "
             "another 225 KB nobody has to wait for.",
+            "📱 On a phone, every dialog now takes the height of the screen and "
+            "no more: the title bar and the button along the bottom stay put "
+            "while the text between them scrolls. What's-new used to put its "
+            "“Got it” button below the fold, where you could only reach it by "
+            "scrolling past the whole release note. The sign-in card scrolls "
+            "too when a phone is held sideways, and buttons everywhere are "
+            "finger-sized whichever way the phone is turned.",
         ],
     },
     {
