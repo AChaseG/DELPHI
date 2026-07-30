@@ -13,6 +13,28 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-03",
+        "title": "Keyword feeds stop timing out",
+        "items": [
+            "⚡ Feeds and searches that match on words are 5–7× faster. Serving a "
+            "page of forty articles was making the database sort twenty thousand "
+            "rows first, even though only forty were ever read — the cost of a "
+            "page had nothing to do with the page and everything to do with a "
+            "limit set far too high. The search now widens only when a page "
+            "can't be filled, so nothing that used to be findable stops being "
+            "findable. Measured on 250,000 articles: a common keyword went from "
+            "1.9s to 0.37s, a phrase from 2.0s to 0.38s, and a boolean search "
+            "from 1.9s to 0.35s.",
+            "This is what was behind “Failed to load” on a column: keyword feeds "
+            "cost roughly a hundred times more server time than any other kind, "
+            "so on a busy machine they were the ones that ran past the "
+            "thirty-second limit.",
+            "Every response now reports how long the server took, and the server "
+            "logs any request over three seconds. One slow path means an "
+            "expensive feed; all of them means the machine needs more CPU.",
+        ],
+    },
+    {
         "date": "2026-08-02",
         "title": "One column for every place you watch",
         "items": [

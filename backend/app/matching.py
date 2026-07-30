@@ -38,6 +38,15 @@ _FTS_UNSAFE = re.compile(r"[぀-ヿ㐀-鿿가-힣฀-๿*?]")
 # that a selective query doesn't pay for many round trips.
 _STREAM_BATCH = 256
 
+# How far the FTS path may scan before giving up on filling a page. Reached only
+# by a feed whose Python-side predicates reject nearly everything the index
+# offers; see the ladder in query_articles.
+_FTS_SCAN_CAP = 20000
+
+# Scan caps tried in order. Each rung is only paid for if the one before it
+# couldn't fill the page, and the ladder always ends at the caller's cap.
+_SCAN_LADDER = (400, 4000)
+
 
 def _kw_regex(kw: str) -> re.Pattern:
     parts = [re.escape(p) for p in kw.split()]
@@ -204,7 +213,7 @@ def query_articles(
         sub = (text("SELECT rowid FROM articles_fts WHERE articles_fts MATCH :ftsq")
                .bindparams(ftsq=_fts_match_expr(fts_terms)).columns(rowid=Article.id.type))
         stmt = stmt.where(Article.id.in_(select(sub.subquery().c.rowid)))
-        scan_cap = max(scan_cap, 20000)  # FTS already bounds the set to true candidates
+        scan_cap = max(scan_cap, _FTS_SCAN_CAP)
     if matcher.since:
         stmt = stmt.where(Article.published_at >= matcher.since)
     if matcher.date_from:
@@ -220,18 +229,40 @@ def query_articles(
         stmt = stmt.order_by(Article.importance.desc(), Article.published_at.desc())
     else:
         stmt = stmt.order_by(Article.published_at.desc())
-    stmt = stmt.limit(scan_cap)
 
-    # Stream the candidates instead of materializing all of them. The loop below
-    # stops as soon as `limit` matches are found, but a buffered result builds
-    # the entire scan_cap first — and on the FTS path that is up to 20k rows
-    # *with* article bodies (~20 KB each), i.e. hundreds of MB and seconds of
-    # work for a page of results, on every search of a common term. Batching
-    # means a query that fills its page early pays for only the rows it read.
-    results: list[Article] = []
-    for article in db.scalars(stmt.execution_options(yield_per=_STREAM_BATCH)):
-        if matcher.matches(article):
-            results.append(article)
-            if len(results) >= limit:
-                break
-    return results
+    # Stream the candidates instead of materializing all of them: the loop stops
+    # as soon as `limit` matches are found, so a query that fills its page early
+    # pays for only the rows it read.
+    def scan(cap: int) -> list[Article]:
+        found: list[Article] = []
+        rows = db.scalars(stmt.limit(cap).execution_options(yield_per=_STREAM_BATCH))
+        for article in rows:
+            if matcher.matches(article):
+                found.append(article)
+                if len(found) >= limit:
+                    rows.close()      # stop the server-side cursor, don't drain it
+                    break
+        return found
+
+    # Widen the scan only when a page couldn't be filled.
+    #
+    # The LIMIT is what a large scan cap actually costs: SQLite has to produce
+    # the top `cap` rows in published_at order before it yields the first one, so
+    # a cap of 20k builds a 20k-row sort that spills to a temp file — measured at
+    # 1.9s to serve a page of 40, of which the matcher was 0.02s and the FTS
+    # lookup itself 0.01s. The same query capped at 400 takes 0.33s and returns
+    # the identical page, because only 40 rows are ever examined either way.
+    #
+    # A small cap alone would be a recall bug: predicates the SQL can't express
+    # (excluded keywords, map areas, staleness) reject candidates in Python, so a
+    # narrow feed may need to look at thousands of rows to find forty. Hence the
+    # ladder — the last rung is the old behaviour, so nothing that used to be
+    # findable stops being findable; the fast rungs just spare the common case a
+    # sort it never needed.
+    for cap in _SCAN_LADDER:
+        if cap >= scan_cap:
+            return scan(scan_cap)
+        results = scan(cap)
+        if len(results) >= limit:
+            return results
+    return scan(scan_cap)

@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import urllib.parse
 
 import httpx
@@ -174,6 +175,31 @@ app = FastAPI(title="D.E.L.P.H.I.", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
+
+
+"""How long a request may take before the log says so, in seconds.
+
+The dashboard gives up on a request after 30s and shows "Failed to load", and
+until now nothing on the server said which request that was or how close to the
+line the others were running. A single warning per slow request is enough to
+tell an overloaded machine (everything slow) from an expensive feed (one path
+slow), which are fixed in completely different places."""
+SLOW_REQUEST_S = float(os.environ.get("NEWS_SLOW_REQUEST_S", "3"))
+_slow_log = logging.getLogger("slow")
+
+
+@app.middleware("http")
+async def time_requests(request: Request, call_next):
+    started = time.monotonic()
+    response = await call_next(request)
+    took = time.monotonic() - started
+    # Readable in the browser's network panel under Timing, so a user can see
+    # whether the server was slow or the network was.
+    response.headers["Server-Timing"] = f"app;dur={took * 1000:.0f}"
+    if took >= SLOW_REQUEST_S and request.url.path.startswith("/api/"):
+        _slow_log.warning("%.1fs %s %s%s", took, request.method, request.url.path,
+                          f"?{request.url.query}" if request.url.query else "")
+    return response
 
 
 @app.middleware("http")

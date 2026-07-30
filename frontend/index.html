@@ -874,6 +874,17 @@
              its own. If repair finds nothing, the outlet is likely gone — edit the URL
              in place or delete the source.</p>
           <p><b>Stat tile shows …/N:</b> the first poll since startup hasn't finished.</p>
+          <p><b>“Failed to load” on a column:</b> the server didn't answer within 30
+             seconds and that column had nothing cached to fall back on. A column that
+             has loaded before keeps its last contents and says they're stale instead,
+             so this is what a <em>first</em> load looks like when the server is
+             struggling. Every response carries a <code>Server-Timing</code> header with
+             how long the server itself took — visible in your browser's network panel —
+             and the server logs a warning for any request over 3 seconds
+             (<code>NEWS_SLOW_REQUEST_S</code>), naming the path. If every path is slow,
+             the machine is short of CPU; if one is, that feed's criteria are expensive.
+             Self-hosting on a shared vCPU is the usual answer: continuous ingestion
+             spends the burst allowance and everything is throttled after that.</p>
         </details>
 
       </div>

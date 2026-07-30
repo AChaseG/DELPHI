@@ -1,6 +1,9 @@
 """FTS5 keyword/text search: correctness (superset + matcher), recall, sync (Gap C)."""
+from datetime import timedelta
+
 import pytest
 
+from backend.app import matching
 from backend.app.matching import CriteriaMatcher, _fts_terms, query_articles
 from backend.app.models import Article, Source, utcnow
 
@@ -121,3 +124,67 @@ def test_common_term_search_returns_the_newest_matches(db):
 
     got = matching.query_articles(db, {"keywords": ["flooding"]}, sort="newest", limit=5)
     assert [a.title for a in got] == [f"Report {i} about flooding" for i in range(5)]
+
+
+@pytest.fixture
+def deep(db):
+    """A corpus where the index offers far more than the page needs, and where
+    Python-side predicates reject most of it — the shape that decides whether
+    the scan ladder can truncate a result."""
+    from backend.app.models import Source as S
+    src = S(name="S", rss_url="http://d/f", scope="national", tier=2)
+    db.add(src)
+    db.flush()
+    for i in range(1500):
+        # Every article carries "common"; only every 50th also carries "needle".
+        words = "common routine filler"
+        if i % 50 == 0:
+            words += " needle"
+        db.add(Article(source_id=src.id, url=f"http://d/{i}", guid=str(i),
+                       title=f"Report {i}", summary=words, content=words,
+                       published_at=utcnow() - timedelta(minutes=i),
+                       importance=50, language="en", country="US",
+                       categories=["world"], places=[]))
+    db.commit()
+    return db
+
+
+def _laddered_and_full(db, crit, sort="newest", limit=40):
+    """The same query the normal way, and with the ladder disabled so it goes
+    straight to the full cap — i.e. the behaviour before the ladder existed."""
+    laddered = [a.id for a in query_articles(db, crit, sort=sort, limit=limit)]
+    db.expire_all()
+    saved = matching._SCAN_LADDER
+    matching._SCAN_LADDER = ()
+    try:
+        full = [a.id for a in query_articles(db, crit, sort=sort, limit=limit)]
+    finally:
+        matching._SCAN_LADDER = saved
+    db.expire_all()
+    return laddered, full
+
+
+@pytest.mark.parametrize("label,crit,sort", [
+    ("common term", {"keywords": ["common"]}, "newest"),
+    ("common term by importance", {"keywords": ["common"]}, "importance"),
+    # Needs to scan ~50 rows per hit, so the first rung cannot fill the page.
+    ("sparse term needs a deep scan", {"keywords": ["needle"]}, "newest"),
+    # Python-side exclusion rejects everything the index offers.
+    ("exclusion rejects every candidate",
+     {"keywords": ["common"], "exclude_keywords": ["filler"]}, "newest"),
+    ("boolean requiring both", {"queries": ["common AND needle"]}, "newest"),
+])
+def test_scan_ladder_does_not_change_results(deep, label, crit, sort):
+    """Widening the scan only when a page is short must be invisible: the fast
+    path has to return exactly what an unconditional full scan returns, or the
+    optimization is a silent recall bug."""
+    laddered, full = _laddered_and_full(deep, crit, sort=sort)
+    assert laddered == full, label
+
+
+def test_sparse_term_still_fills_its_page(deep):
+    """The guard for the ladder's premise: a term appearing once every 50
+    articles must still return a full page, which means rung one (400 rows)
+    is not where the search stops."""
+    got = query_articles(deep, {"keywords": ["needle"]}, limit=25)
+    assert len(got) == 25
