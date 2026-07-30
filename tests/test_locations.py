@@ -83,15 +83,52 @@ def test_locations_share_one_feed(client, register):
     assert radii == [25, 40, 80]
 
 
-def test_articles_inside_a_location_are_flagged(client, register, db, corpus):
+def test_articles_carry_what_the_browser_needs_to_flag_them(client, register, db, corpus):
+    """Deciding which favourite locations an article is near moved to the
+    browser — it is geometry over data the browser already holds. The server's
+    remaining job is to hand over that data: the article's tagged places and its
+    country, and the locations themselves."""
     hdr = register("loc2")
     client.post("/api/locations", json={
         "name": "Tokyo watch", "lat": TOKYO[0], "lon": TOKYO[1], "radius_km": 60}, headers=hdr)
+
     found = client.post("/api/articles/search?limit=50", json={"criteria": {}}, headers=hdr)
     assert found.status_code == 200
     by_title = {a["title"]: a for a in found.json()}
-    assert [n["name"] for n in by_title["Tokyo story"]["near"]] == ["Tokyo watch"]
-    assert by_title["London story"]["near"] == []
+    tokyo = by_title["Tokyo story"]
+    assert tokyo["places"] and tokyo["places"][0]["name"] == "Tokyo"
+    assert "lat" in tokyo["places"][0] and "lon" in tokyo["places"][0]
+    # The work is not done twice: the server no longer ships a verdict.
+    assert "near" not in tokyo
+
+    loc = client.get("/api/locations", headers=hdr).json()[0]
+    assert (loc["lat"], loc["lon"], loc["radius_km"]) == (TOKYO[0], TOKYO[1], 60)
+
+
+def test_country_centroids_are_published_for_the_fallback(client, register):
+    """An article naming no place is placed at its country's centre, so the
+    browser needs those coordinates to reach the same answer the server used to."""
+    hdr = register("loc2b")
+    countries = client.get("/api/meta", headers=hdr).json()["countries"]
+    assert countries
+    assert all("lat" in c and "lon" in c for c in countries)
+    jp = next(c for c in countries if c["iso2"] == "JP")
+    assert 30 < jp["lat"] < 40 and 130 < jp["lon"] < 145
+
+
+def test_locations_still_match_server_side_for_the_feed(db, corpus):
+    """The locations feed is an ordinary geofenced feed, so the server keeps
+    matching those areas in SQL — moving the badges to the browser must not have
+    moved the feed's own filtering with them."""
+    from backend.app.main import _location_circle
+
+    src, arts = corpus
+    loc = FavoriteLocation(user_id="acct:1", name="Tokyo watch",
+                           lat=TOKYO[0], lon=TOKYO[1], radius_km=60, color="gold")
+    db.add(loc)
+    db.commit()
+    got = query_articles(db, {"geos": [_location_circle(loc)]}, limit=50)
+    assert [a.title for a in got] == ["Tokyo story"]
 
 
 def test_editing_a_location_moves_the_shared_feed(client, register):
@@ -165,12 +202,14 @@ def test_shared_location_flags_articles_for_other_members(client, db, corpus):
     assert client.post(f"/api/locations/{loc['id']}/share",
                        json={"pantheon_id": pid}, headers=owner).status_code == 201
 
-    # The member sees it, and their articles are flagged by it.
-    names = [x["name"] for x in client.get("/api/locations", headers=member).json()]
-    assert "Tokyo desk" in names
-    found = client.post("/api/articles/search?limit=50", json={"criteria": {}}, headers=member)
-    by_title = {a["title"]: a for a in found.json()}
-    assert [n["name"] for n in by_title["Tokyo story"]["near"]] == ["Tokyo desk"]
+    # The member's own /api/locations includes it, which is what their browser
+    # flags articles against — sharing a location is what puts it in that list.
+    shared = [x for x in client.get("/api/locations", headers=member).json()
+              if x["name"] == "Tokyo desk"]
+    assert shared, "the shared location reaches the other member"
+    assert shared[0]["shared_by"] == "owner"
+    assert (shared[0]["lat"], shared[0]["radius_km"]) == (TOKYO[0], 60)
+    assert shared[0]["mine"] is False
 
 
 def test_place_search_is_local(client, register):

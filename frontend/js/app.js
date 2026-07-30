@@ -6,6 +6,10 @@ let ALERTS = [];
 let PANTHEONS = [];          // organizations this account belongs to
 let PANTHEON_INVITES = [];   // pending invitations for this account
 let COUNTRY_NAMES = new Map();
+// iso2 -> {lat, lon}. The centre of a country, used when an article names no
+// place of its own and the browser has to decide whether it is near one of
+// the reader's favourite locations.
+let COUNTRY_POINTS = new Map();
 let VIEW = localStorage.getItem("gnd_view") || "home";  // "home" | "mine" | "pantheon:<id>"
 
 /* Delphi-curated Home columns, generated live from the shared corpus. */
@@ -32,6 +36,11 @@ async function boot() {
   try { Settings.adopt((await API.getSettings()).settings); } catch (e) { /* offline */ }
   [META, SOURCES] = await Promise.all([API.meta(), API.sources()]);
   COUNTRY_NAMES = new Map(META.countries.map(c => [c.iso2, c.name]));
+  COUNTRY_POINTS = new Map(META.countries.map(c => [c.iso2, { lat: c.lat, lon: c.lon }]));
+  // The board badges articles near a favourite location, so the list has to
+  // be here before the first column paints — not just when the panel opens.
+  await refreshLocations();
+  await hydrateFeedCache();
   Builder.init(META, SOURCES);
   Builder.onSaved = async (mode, converted = false) => {
     // Whatever was cached for this feed was matched by its previous
@@ -148,6 +157,7 @@ function invalidateFeedCache(feed) {
   const key = feedCacheKey(feed);
   FEED_CACHE.delete(key);
   FEED_CACHE_AT.delete(key);
+  Store.remove(key).catch(() => {});   // and on disk, or a reload restores it
 }
 
 /* Only the timestamps: the articles stay on screen while every column
@@ -645,7 +655,8 @@ function wireSettings() {
   stale.value = String(Settings.get("stale_hours"));
   stale.onchange = async () => {
     Settings.set("stale_hours", +stale.value);
-    invalidateAllFeedCaches();   // the server applies this, not the client
+    // Applied in the browser now, so this is a repaint of what is already
+    // here — no column has to be fetched again.
     await renderBoard();
   };
   theme.value = Settings.get("theme");
@@ -691,11 +702,13 @@ function wireAuth() {
   const who = Session.username() || "account";
   el("btn-profile").querySelector(".rail-label").textContent = who;
   el("btn-profile").title = `Signed in as ${who} — your feeds and alerts are private to your account`;
-  el("btn-profile").onclick = () => {
-    if (confirm(`Signed in as ${Session.username()}. Sign out?`)) {
-      Session.clear();
-      location.reload();
-    }
+  el("btn-profile").onclick = async () => {
+    if (!confirm(`Signed in as ${Session.username()}. Sign out?`)) return;
+    // The cached news is a reading history sitting on a disk that may not be
+    // this person's alone. Signing out erases it.
+    try { await Store.clear(); } catch (e) { /* nothing to clear */ }
+    Session.clear();
+    location.reload();
   };
 }
 
@@ -1071,6 +1084,94 @@ const FEED_CACHE = new Map();
 
 const feedCacheKey = (feed) => (feed.home ? "home:" + feed.home : "feed:" + feed.id);
 
+/* ---------- work done here rather than on the server ----------
+
+   Which favourite locations an article is near, and whether its event is too
+   stale to show, are both pure functions of data this browser already holds —
+   the article's tagged places, the reader's own saved locations, and a
+   threshold from their own settings. Computing them here removes two queries
+   and a per-article geometry pass from every feed request, on a server that is
+   shared by everyone, and does it on a machine that is sitting idle in front of
+   one person. It also means grouped feeds get the 📍 badges, which they never
+   did while this ran server-side. */
+
+const EARTH_KM = 6371;
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const rad = Math.PI / 180;
+  const p1 = lat1 * rad, p2 = lat2 * rad;
+  const dp = (lat2 - lat1) * rad, dl = (lon2 - lon1) * rad;
+  const a = Math.sin(dp / 2) ** 2
+    + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * EARTH_KM * Math.asin(Math.sqrt(a));
+}
+
+/* Favourite locations are always a point and a radius, so this is the circle
+   case only — the wizard's drawn polygons stay server-side, where the SQL that
+   selects the candidates lives. */
+const withinLocation = (lat, lon, loc) =>
+  haversineKm(lat, lon, loc.lat, loc.lon) <= loc.radius_km;
+
+/* Mirrors places_match_geo: a tagged place inside the radius, or — for an
+   article that names no place at all — its country's centre. */
+function nearLocations(article) {
+  if (!LOCATIONS.length) return [];
+  const places = article.places || [];
+  const hits = [];
+  for (const loc of LOCATIONS) {
+    let hit = places.some((p) => withinLocation(p.lat || 0, p.lon || 0, loc));
+    if (!hit && !places.length && article.country) {
+      const c = COUNTRY_POINTS.get(article.country);
+      hit = !!c && withinLocation(c.lat, c.lon, loc);
+    }
+    if (hit) hits.push({ id: loc.id, name: loc.name, color: loc.color });
+  }
+  return hits;
+}
+
+/* Feeds that ticked 🕰 hide events with nothing new inside the reader's own
+   threshold. Display-only, as it was on the server: clustering keeps attaching
+   reports to a hidden event, which reappears the moment one arrives. */
+/* The saved locations the badges are computed against. Loaded at boot and after
+   any change, so a column painted from cache badges correctly without asking
+   the server what is near what. */
+/* Drop the cached page of the one feed that covers every favourite location:
+   its areas move whenever a location is saved, moved, or deleted. */
+function forgetLocationsFeed() {
+  for (const loc of LOCATIONS) if (loc.feed_id) invalidateFeedCache({ id: loc.feed_id });
+}
+
+async function refreshLocations() {
+  try { LOCATIONS = await API.locations(); } catch (e) { LOCATIONS = []; }
+}
+
+/* ---------- the cache on disk ----------
+   Read the persisted columns into the in-memory maps at boot. Every read path
+   stays synchronous — feedColumn paints during layout and cannot await — so the
+   disk copy is only ever loaded here and written behind. */
+async function hydrateFeedCache() {
+  let rows = [];
+  try { rows = await Store.load(Session.userKey()); } catch (e) { return; }
+  for (const row of rows) {
+    FEED_CACHE.set(row.key, row.items);
+    // Treat a restored column as exactly as old as it was when it was written,
+    // so the freshness rules decide what to re-query — a reload must not be an
+    // excuse to re-query everything, nor to show yesterday's news as current.
+    FEED_CACHE_AT.set(row.key, row.at || 0);
+  }
+}
+
+function dropStale(feed, items) {
+  if (!feed.criteria || !feed.criteria.hide_stale) return items;
+  const hours = +Settings.get("stale_hours") || 0;
+  if (!hours) return items;
+  const cutoff = Date.now() - hours * 3600 * 1000;
+  const fresh = (stamp) => !stamp || Date.parse(stamp) >= cutoff;
+  return items.filter((it) => (it.articles      // an event group
+    ? (it.event_id == null || fresh(it.updated_at))
+    : (it.event_id == null || fresh(it.event_updated_at))));
+}
+
 /* ---------- column widths ----------
    Narrow enough that a headline still fits on two lines, wide enough to read a
    summary without it becoming a wall. Widths live in Settings (see api.js). */
@@ -1169,8 +1270,21 @@ function resizeGrip(col, feed, side) {
   return grip;
 }
 
-function renderFeedItems(body, feed, items) {
+function renderFeedItems(body, feed, allItems) {
   body.innerHTML = "";
+  // Staleness is applied here, not on the server: the threshold is this
+  // reader's setting, so changing it re-filters what is already on the page
+  // instead of re-querying every column.
+  const items = dropStale(feed, allItems);
+  if (!items.length && allItems.length) {
+    // Everything it matched was filtered out here, which is a different problem
+    // from matching nothing — say which.
+    body.replaceChildren(feedEmpty(
+      `All ${allItems.length} matching event${plural(allItems.length)} have had no `
+      + "update recently, and this feed hides those (🕰). Raise or clear "
+      + "“Hide events with no updates for” in ⚙ Settings to see them."));
+    return;
+  }
   if (!items.length) {
     body.innerHTML = '<div class="feed-empty">No matching articles yet. ' +
       "Open the feed (✎) and use <b>Preview matches</b> while removing one filter " +
@@ -1207,8 +1321,12 @@ async function fetchFeedItems(feed) {
     items = feed.group_events ? await API.feedEvents(feed.id) : await API.feedArticles(feed.id);
   }
   const key = feedCacheKey(feed);
+  const at = Date.now();
   FEED_CACHE.set(key, items);
-  FEED_CACHE_AT.set(key, Date.now());
+  FEED_CACHE_AT.set(key, at);
+  // Behind the render, and never awaited: a full disk or a private window must
+  // cost nothing but the loss of the cache.
+  Store.put(Session.userKey(), key, items, at).catch(() => {});
   return items;
 }
 
@@ -1430,8 +1548,11 @@ function articleRow(a, mode = "link") {
   if (a.source) bits.push(a.source.name);
   if (a.country) bits.push(flagEmoji(a.country) + " " + a.country);
   bits.push(timeAgo(a.published_at));
-  // Favourite-location hits are marked wherever the article shows up.
-  for (const n of a.near || []) {
+  // Favourite-location hits are marked wherever the article shows up. Worked
+  // out here rather than sent by the server: the browser has the places and the
+  // locations, so it needs nobody's help — and a cached article picks up a
+  // location added since it was fetched, without refetching anything.
+  for (const n of nearLocations(a)) {
     const pin = document.createElement("span");
     pin.className = "near-pin";
     pin.textContent = `📍 ${n.name}`;
@@ -1895,6 +2016,7 @@ const LocationsPanel = {
                        + "covering it.")) return;
           await API.deleteLocation(loc.id);
           await this.refresh();
+          forgetLocationsFeed();
           await refreshFeeds();
         });
         row.appendChild(del);
@@ -1942,6 +2064,9 @@ const LocationsPanel = {
       }
       this.cancelEdit();
       await this.refresh();
+      // The locations feed's areas just changed on the server, so what is
+      // cached for it answers a different question now.
+      forgetLocationsFeed();
       await refreshFeeds();
     } catch (e) { this.showError(e.message); }
   },

@@ -529,6 +529,11 @@
              loads the other boards behind it — one column at a time, so it never
              competes with what's on screen — which is why switching between 🏠 Home,
              📋 My feeds and a 🏛 Pantheon is usually instant.</p>
+          <p>Columns are also kept on your own computer, so reopening Delphi paints the
+             board from local storage before it asks the server anything — and the news
+             you last saw stays readable even when the server is unreachable. That copy
+             is bounded, belongs to your account alone, and is erased when you sign
+             out.</p>
         </details>
 
         <details>
@@ -638,6 +643,12 @@
              visible one is done. Switching away stops it. A column fetched in the last
              couple of minutes is left alone, so moving back and forth between boards
              costs nothing.</p>
+          <p>Some of the work happens on your machine rather than the server, which is
+             why parts of Delphi respond with no delay at all. Your browser decides which
+             articles are near a 📍 favourite location, and which events are too stale to
+             show — both are questions about data it already holds. So adding a location
+             badges the articles already on screen, and changing the staleness threshold
+             re-filters the board, without fetching anything.</p>
           <p>This is why a switch can show news a few seconds old. Nothing is hidden by
              it: new articles push a refresh of the visible board as they arrive, the
              column's own ⟳ always re-queries, and so do ⟳ Refresh, saving an edit to a
@@ -1493,6 +1504,8 @@
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script src="/vendor/leaflet-draw/leaflet.draw.js"></script>
   <script src="/js/api.js"></script>
+  <!-- The local feed cache; app.js reads it at boot. -->
+  <script src="/js/store.js"></script>
   <script src="/js/builder.js"></script>
   <script src="/js/app.js"></script>
 </body>

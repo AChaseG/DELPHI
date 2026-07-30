@@ -13,6 +13,29 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-04",
+        "title": "Delphi remembers your board between visits",
+        "items": [
+            "💾 The columns you have read are now kept on your own computer, so "
+            "reopening Delphi paints the whole board from local storage before it "
+            "asks the server for anything. Measured on an eight-feed board: "
+            "reloading used to cost fifteen requests and now costs none. The news "
+            "you last saw also stays readable when the server is unreachable.",
+            "That copy is bounded, belongs to your account alone — signing in as "
+            "someone else on a shared computer never shows your news — and is "
+            "erased when you sign out.",
+            "📍 Your browser now works out which articles are near a favourite "
+            "location, instead of the server doing it for every request. Adding a "
+            "location badges the articles already on screen with nothing fetched, "
+            "and grouped (event) feeds get the badges too, which they never did "
+            "before.",
+            "🕰 The staleness threshold is applied in the browser as well, so "
+            "changing it re-filters the board instantly rather than re-querying "
+            "every column. A feed that hides everything it matched now says so, "
+            "instead of claiming it matched nothing.",
+        ],
+    },
+    {
         "date": "2026-08-03",
         "title": "Keyword feeds stop timing out",
         "items": [

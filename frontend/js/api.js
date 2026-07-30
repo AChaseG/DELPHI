@@ -147,7 +147,6 @@ function setLang(lang) {
   Settings._push();  // the reading language syncs with the account too
 }
 const langQS = () => (getLang() ? `&lang=${encodeURIComponent(getLang())}` : "");
-const staleQS = () => `&stale=${Settings.get("stale_hours") || 0}`;
 
 const API = {
   meta: () => api("/api/meta"),
@@ -164,8 +163,8 @@ const API = {
   updateFeed: (id, body) => api(`/api/feeds/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteFeed: (id) => api(`/api/feeds/${id}`, { method: "DELETE" }),
   reorderFeeds: (order) => api("/api/feeds/reorder", { method: "POST", body: JSON.stringify({ order }) }),
-  feedArticles: (id) => api(`/api/feeds/${id}/articles?limit=40${langQS()}${staleQS()}`),
-  feedEvents: (id) => api(`/api/feeds/${id}/events?limit=30${langQS()}${staleQS()}`),
+  feedArticles: (id) => api(`/api/feeds/${id}/articles?limit=40${langQS()}`),
+  feedEvents: (id) => api(`/api/feeds/${id}/events?limit=30${langQS()}`),
   eventDetail: (id) => api(`/api/events/${id}?x=1${langQS()}`),
   markEventViewed: (id) => api(`/api/events/${id}/viewed`, { method: "POST" }),
   rebuildEvents: () => api("/api/events/rebuild", { method: "POST" }),
@@ -178,9 +177,9 @@ const API = {
   markAlertSeen: (id) => api(`/api/alerts/${id}/mark-seen`, { method: "POST" }),
 
   search: (criteria, sort = "newest", limit = 60) =>
-    api(`/api/articles/search?sort=${sort}&limit=${limit}${langQS()}${staleQS()}`, { method: "POST", body: JSON.stringify({ criteria }) }),
+    api(`/api/articles/search?sort=${sort}&limit=${limit}${langQS()}`, { method: "POST", body: JSON.stringify({ criteria }) }),
   searchGrouped: (criteria, sort = "newest", limit = 30) =>
-    api(`/api/articles/search-grouped?sort=${sort}&limit=${limit}${langQS()}${staleQS()}`, { method: "POST", body: JSON.stringify({ criteria }) }),
+    api(`/api/articles/search-grouped?sort=${sort}&limit=${limit}${langQS()}`, { method: "POST", body: JSON.stringify({ criteria }) }),
   validateQuery: (query) => api("/api/query/validate", { method: "POST", body: JSON.stringify({ query }) }),
   runIngest: () => api("/api/ingest/run", { method: "POST" }),
 

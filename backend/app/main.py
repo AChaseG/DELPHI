@@ -29,7 +29,7 @@ from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
 from .clustering import assign_events, rebuild_events
 from .database import Base, SessionLocal, engine, get_db
 from .events import broadcaster
-from .geo import load_gazetteer, places_match_geo, search_places
+from .geo import load_gazetteer, search_places
 from .matching import query_articles
 from .models import (Alert, AlertEvent, Article, Event, FavoriteLocation, Feed,
                      Pantheon, PantheonInvite, PantheonMember, Source,
@@ -249,18 +249,16 @@ def user_id_header(authorization: str = Header(default=""),
     return f"acct:{uid}"
 
 
-def _drop_stale(articles: list[Article], criteria: dict, stale_hours: float) -> list[Article]:
-    """When the feed opted into hide_stale, drop articles whose event has had
-    no update within the user's staleness threshold. Display-only: clustering
-    still attaches new reports to hidden events, which then resurface with
-    their full timeline (guaranteed while the threshold stays within the 72h
-    clustering window)."""
-    if not (criteria or {}).get("hide_stale") or not stale_hours:
-        return articles
-    from datetime import timedelta
-    cutoff = utcnow() - timedelta(hours=stale_hours)
-    return [a for a in articles
-            if a.event_id is None or (a.event and a.event.updated_at >= cutoff)]
+def _events_for(db: Session, articles: list[Article]) -> dict[int, Event]:
+    """The events behind a page of articles, in one query.
+
+    Reading `article.event` per row is a lazy load each time — up to one query
+    per article on a page of forty, and the reason a feed that opted into
+    staleness hiding cost so much more than one that didn't."""
+    ids = {a.event_id for a in articles if a.event_id is not None}
+    if not ids:
+        return {}
+    return {e.id: e for e in db.scalars(select(Event).where(Event.id.in_(ids)))}
 
 
 def _viewed_events(db: Session, user_id: str, articles: list[Article]) -> set[int]:
@@ -274,17 +272,25 @@ def _viewed_events(db: Session, user_id: str, articles: list[Article]) -> set[in
 
 def _article_json(a: Article, tr: dict | None = None,
                   viewed: set[int] | None = None,
-                  near: dict | None = None) -> dict:
+                  event_updated: dict[int, Event] | None = None) -> dict:
     """Serialize an article; `tr` is a {article_id: {title, summary}} map of
-    translations into the requester's language."""
+    translations into the requester's language.
+
+    Which favourite locations an article falls inside is deliberately *not*
+    computed here. It is pure geometry over `places` and the reader's own saved
+    locations, both of which the browser already holds, so the browser does it —
+    that removes two queries and a per-article geometry pass from every feed
+    request, and it means grouped feeds get the badges too, which they never did
+    while this was server-side."""
     t = (tr or {}).get(a.id)
+    event = (event_updated or {}).get(a.event_id)
     return {
         "id": a.id,
         "event_id": a.event_id,
         "viewed": a.event_id in (viewed or set()),
-        # Favourite locations this article falls inside, so every feed and
-        # alert can badge it wherever it appears.
-        "near": (near or {}).get(a.id, []),
+        # Only sent for feeds that hide stale events; the client applies the
+        # threshold, which is a setting it owns.
+        **({"event_updated_at": event.updated_at.isoformat() + "Z"} if event else {}),
         "title": t["title"] if t else a.title,
         "summary": (t["summary"] if t else a.summary)[:400],
         "translated_from": a.language if t else None,
@@ -333,8 +339,10 @@ def meta(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
         "categories": STANDARD_CATEGORIES,
         "scopes": ["local", "national", "international"],
         "platforms": ["news", "reddit", "mastodon", "bluesky", "youtube"],
+        # Coordinates ride along so the browser can do the country-centroid
+        # fallback when it decides which favourite locations an article is near.
         "countries": [
-            {"iso2": c["iso2"], "name": c["name"]}
+            {"iso2": c["iso2"], "name": c["name"], "lat": c["lat"], "lon": c["lon"]}
             for c in sorted(gaz["countries"], key=lambda c: c["name"])
         ],
         "languages": sorted(set(db.scalars(select(func.distinct(Source.language)))) | {"en"}),
@@ -829,18 +837,16 @@ async def search_articles(
     sort: str = Query(default="newest"),
     limit: int = Query(default=50, le=200),
     lang: str = Query(default=""),
-    stale: float = Query(default=0),
     user_id: str = Depends(user_id_header),
     db: Session = Depends(get_db),
 ):
     """Ad-hoc search with a criteria object (used for feed preview and search bar)."""
     criteria = body.get("criteria", body)
     articles = query_articles(db, criteria, sort=sort, limit=limit)
-    articles = _drop_stale(articles, criteria, stale)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
-    near = _flag_locations(articles, _visible_locations(db, user_id))
-    return [_article_json(a, tr, viewed, near) for a in articles]
+    events = _events_for(db, articles) if (criteria or {}).get("hide_stale") else None
+    return [_article_json(a, tr, viewed, events) for a in articles]
 
 
 @app.post("/api/query/validate")
@@ -919,15 +925,13 @@ def delete_feed(feed_id: int, user_id: str = Depends(user_id_header),
 @app.get("/api/feeds/{feed_id}/articles")
 async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
                         lang: str = Query(default=""),
-                        stale: float = Query(default=0),
-                        user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+                                            user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     feed = _shared_item_for_read(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
-    articles = _drop_stale(articles, feed.criteria, stale)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
-    near = _flag_locations(articles, _visible_locations(db, user_id))
-    return [_article_json(a, tr, viewed, near) for a in articles]
+    events = _events_for(db, articles) if (feed.criteria or {}).get("hide_stale") else None
+    return [_article_json(a, tr, viewed, events) for a in articles]
 
 
 async def _grouped_response(db: Session, articles: list[Article], lang: str, limit: int,
@@ -952,10 +956,13 @@ async def _grouped_response(db: Session, articles: list[Article], lang: str, lim
         viewed = set(db.scalars(select(ViewedEvent.event_id).where(
             ViewedEvent.user_id == user_id, ViewedEvent.event_id.in_(event_ids))))
 
+    # One query for the page's events, rather than a lazy load per group.
+    events = _events_for(db, [a for key in order for a in groups[key][:1]])
+
     out = []
     for key in order:
         members = groups[key]
-        event = members[0].event if members[0].event_id else None
+        event = events.get(members[0].event_id)
         out.append({
             "event_id": members[0].event_id,
             "viewed": members[0].event_id in viewed,
@@ -964,6 +971,8 @@ async def _grouped_response(db: Session, articles: list[Article], lang: str, lim
             "source_count": len({a.source_id for a in members}),
             "importance": event.importance if event else max(a.importance for a in members),
             "first_seen": event.first_seen.isoformat() + "Z" if event else None,
+            # The client hides stale events, so it needs to know how fresh each is.
+            "updated_at": event.updated_at.isoformat() + "Z" if event else None,
             "articles": [_article_json(a, tr) for a in members[:6]],
         })
     return out
@@ -972,11 +981,9 @@ async def _grouped_response(db: Session, articles: list[Article], lang: str, lim
 @app.get("/api/feeds/{feed_id}/events")
 async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
                       lang: str = Query(default=""),
-                      stale: float = Query(default=0),
-                      user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+                                        user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     feed = _shared_item_for_read(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=200)
-    articles = _drop_stale(articles, feed.criteria, stale)
     return await _grouped_response(db, articles, lang, limit, user_id)
 
 
@@ -986,14 +993,12 @@ async def search_grouped(
     sort: str = Query(default="newest"),
     limit: int = Query(default=30, le=100),
     lang: str = Query(default=""),
-    stale: float = Query(default=0),
     user_id: str = Depends(user_id_header),
     db: Session = Depends(get_db),
 ):
     """Ad-hoc criteria search clustered into events (used by Home columns)."""
     criteria = body.get("criteria", body)
     articles = query_articles(db, criteria, sort=sort, limit=200)
-    articles = _drop_stale(articles, criteria, stale)
     return await _grouped_response(db, articles, lang, limit, user_id)
 
 
@@ -1859,24 +1864,6 @@ def _consolidate_location_feeds(db: Session) -> int:
     if changed:
         db.commit()
     return changed
-
-
-def _flag_locations(articles: list[Article], locations: list[FavoriteLocation]) -> dict:
-    """Map article id -> the favourite locations it falls inside.
-
-    Runs over the page being served rather than the whole corpus, and only when
-    the account actually has locations, so it costs nothing for users who don't
-    use the feature."""
-    if not locations or not articles:
-        return {}
-    out: dict[int, list[dict]] = {}
-    for article in articles:
-        hits = [loc for loc in locations
-                if places_match_geo(article.places or [], article.country,
-                                    _location_circle(loc))]
-        if hits:
-            out[article.id] = [{"id": h.id, "name": h.name, "color": h.color} for h in hits]
-    return out
 
 
 @app.get("/api/locations")
