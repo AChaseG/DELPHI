@@ -22,7 +22,7 @@ def test_process_entries_drops_non_http_and_detects_language(db):
         {"link": "https://ok.test/jp", "title": "東京で大地震、津波警報が発令されました", "id": "2"},
         {"link": "https://ok.test/en", "title": "Breaking earthquake hits the capital", "id": "3"},
     ]
-    new = ingest.process_entries(db, src, entries, [], set())
+    new = ingest.process_entries(db, src, entries, ingest.RecentClusters(), set())
     urls = {a.url for a in new}
     assert urls == {"https://ok.test/jp", "https://ok.test/en"}   # javascript: dropped
     by = {a.url: a for a in new}

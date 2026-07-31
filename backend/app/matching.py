@@ -74,6 +74,11 @@ def _kw_regex(kw: str) -> re.Pattern:
     return re.compile(r"\b" + r"\s+".join(parts) + r"\b", re.IGNORECASE)
 
 
+def article_text(article: Article) -> str:
+    """Everything a text predicate searches: headline, summary, and body."""
+    return f"{article.title}\n{article.summary}\n{article.content or ''}"
+
+
 class CriteriaMatcher:
     """Compile criteria once, then test many articles."""
 
@@ -132,13 +137,19 @@ class CriteriaMatcher:
         except ValueError:
             pass  # malformed dates: ignore the bound rather than match nothing
 
-    def matches(self, article: Article, source: Source | None = None) -> bool:
+    def matches(self, article: Article, source: Source | None = None,
+                text: str | None = None) -> bool:
+        """Does this article satisfy the criteria?
+
+        `text` is what the text predicates search. Pass it when testing one
+        article against many criteria — it runs to 20 KB, and assembling it
+        once per matcher is the bulk of evaluating a board's worth of alerts."""
         source = source or article.source
         # Full recall: criteria see the fetched article body, not just the
         # headline and feed summary. Assembled only when a predicate needs it —
         # touching .content would otherwise force-load a deferred column.
-        text = (f"{article.title}\n{article.summary}\n{article.content or ''}"
-                if self.needs_text else "")
+        if text is None:
+            text = article_text(article) if self.needs_text else ""
 
         if self.since and article.published_at and article.published_at < self.since:
             return False

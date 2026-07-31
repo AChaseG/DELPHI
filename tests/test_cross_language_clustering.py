@@ -1,5 +1,5 @@
 """Cross-language event clustering via language-invariant anchors (Gap B)."""
-from backend.app.clustering import _best_match
+from backend.app.clustering import LiveEvents
 from backend.app.geo import extract_places
 from backend.app.models import Article, Event
 from backend.app.scoring import cluster_tokens, invariant_anchors
@@ -43,17 +43,17 @@ def test_numbers_extracted_next_to_cjk():
 def test_japanese_coverage_clusters_with_english_event():
     quake = _event("Magnitude 6.8 earthquake strikes Tokyo, tsunami warning issued")
     jp = _article("東京でマグニチュード6.8の地震、津波警報")
-    assert _best_match(jp, [quake]) is quake
+    assert LiveEvents([quake]).best_match(jp) == 0
 
 
 def test_unrelated_same_city_story_does_not_merge():
     quake = _event("Magnitude 6.8 earthquake strikes Tokyo, tsunami warning issued")
     museum = _article("Tokyo art museum unveils a major new exhibition")
-    assert _best_match(museum, [quake]) is None
+    assert LiveEvents([quake]).best_match(museum) is None
 
 
 def test_single_shared_token_is_not_enough():
     # A lone city token must not collapse into an unrelated same-city event.
     stock = _event("Tokyo stock exchange climbs to a record high on tech shares")
     sparse = _article("東京")  # yields only {tokyo}
-    assert _best_match(sparse, [stock]) is None
+    assert LiveEvents([stock]).best_match(sparse) is None

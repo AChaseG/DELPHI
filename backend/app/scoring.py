@@ -192,19 +192,27 @@ def cluster_tokens(title: str, text: str | None = None,
     return " ".join(sorted(sig)[:15])
 
 
-def tokens_similarity(a: str, b: str) -> float:
+def sets_similarity(sa: set[str], sb: set[str]) -> float:
     """Headline-token similarity: the max of Jaccard and containment.
 
     Containment (overlap / size of the smaller set) matters for follow-up
     coverage: "Japan earthquake update: aftershocks continue" shares its
     anchor tokens with the original event but adds new vocabulary, which
     Jaccard alone punishes — and story updates would wrongly found new events.
+
+    Takes the token sets rather than the strings: callers comparing one
+    headline against thousands would otherwise re-split the same tokens
+    thousands of times.
     """
-    sa, sb = set(a.split()), set(b.split())
     if not sa or not sb:
         return 0.0
     inter = len(sa & sb)
     return max(inter / len(sa | sb), inter / min(len(sa), len(sb)))
+
+
+def tokens_similarity(a: str, b: str) -> float:
+    """`sets_similarity` for two token strings."""
+    return sets_similarity(set(a.split()), set(b.split()))
 
 
 def score_importance(
