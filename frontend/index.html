@@ -414,10 +414,15 @@
 
         <details>
           <summary>📍 Keeping a list of favourite locations</summary>
-          <p><b>Add one:</b> open <b>📍 Locations</b> in the rail, type a place name in
-             the search box and pick it from the results — or click the map anywhere the
-             search doesn't know. Set the <b>radius</b> with the slider, give it a name,
-             and press <b>Save location</b>.</p>
+          <p><b>Add one:</b> open <b>📍 Locations</b> in the rail and start typing in the
+             search box. Suggestions appear as you type: cities and countries
+             D.E.L.P.H.I. ships come first and instantly, and a street address, a town
+             or a district is looked up through OpenStreetMap and listed below them,
+             marked <b>📍</b>. Each suggestion says where it is, so two towns with the
+             same name are easy to tell apart. <b>↓</b> and <b>↑</b> move through the
+             list, <b>Enter</b> takes one, <b>Esc</b> puts it away — or click the map for
+             a spot with no name at all. Then set the <b>radius</b> with the slider, give
+             it a name, and press <b>Save location</b>.</p>
           <p>From then on, any article D.E.L.P.H.I. places inside that radius carries a
              <b>📍</b> badge <em>everywhere it appears</em> — in every feed and alert, not
              only its own. All your locations also share a single
@@ -803,8 +808,15 @@
              would otherwise have skimmed past in a general column announces itself.
              They also share one <b>📍 Favourite Locations</b> column, whose areas are
              OR'd — so watching a dozen places costs one column, not a dozen.
-             Place lookup is answered by Delphi's own gazetteer rather than a
-             third-party geocoder, so the places you watch never leave this server.</p>
+             Place lookup answers from D.E.L.P.H.I.'s own gazetteer first — about
+             480 cities and 154 countries, instantly and without asking anyone
+             else. Anything it doesn't know (a street address, a town, a district)
+             is looked up through OpenStreetMap and listed below the local
+             matches, marked 📍 and credited. That request is made by this server,
+             never by your browser, so the outside service sees D.E.L.P.H.I. and
+             not you. Self-hosting and would rather it never happened?
+             <code>NEWS_GEOCODER=off</code> keeps everything local, and
+             <code>NEWS_NOMINATIM_URL</code> points at your own instance.</p>
 
           <p><b>Paywalled outlets.</b> Mark a source <b>🔒 paywalled</b> when adding or
              editing it (the article page is behind a paywall, but the RSS feed's
@@ -1072,7 +1084,8 @@
 
       <div class="loc-search">
         <input id="loc-search" type="search" autocomplete="off"
-               placeholder="Find a place — city or country…" aria-label="Find a place">
+               placeholder="Find a place — city, country, or an address…"
+               aria-label="Find a place — city, country, or an address">
         <span class="s-meta">…or click the map</span>
       </div>
       <div id="loc-results" class="loc-results" hidden></div>

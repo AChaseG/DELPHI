@@ -212,14 +212,17 @@ def test_shared_location_flags_articles_for_other_members(client, db, corpus):
     assert shared[0]["mine"] is False
 
 
-def test_place_search_is_local(client, register):
+def test_place_search_answers_from_the_gazetteer(client, register):
+    """A place Delphi ships is answered here, without asking anyone else."""
     hdr = register("loc7")
     r = client.get("/api/geo/search?q=tokyo", headers=hdr)
     assert r.status_code == 200
-    hits = r.json()
+    hits = r.json()["results"]
     assert hits and hits[0]["name"] == "Tokyo" and hits[0]["country"] == "JP"
+    assert hits[0]["source"] == "local"
     # Native-script names resolve too.
-    assert client.get("/api/geo/search?q=東京", headers=hdr).json()[0]["name"] == "Tokyo"
+    native = client.get("/api/geo/search?q=東京", headers=hdr).json()["results"]
+    assert native[0]["name"] == "Tokyo"
 
 
 def test_old_per_location_feeds_are_folded_into_one(client, register, db):

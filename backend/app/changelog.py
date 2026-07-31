@@ -13,6 +13,26 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-10",
+        "title": "The location search finds addresses now",
+        "items": [
+            "📍 Typing in the Favourite Locations search suggests places as you "
+            "go. Delphi's own list of about 480 cities and 154 countries answers "
+            "first, instantly — and anything it doesn't know is now looked up "
+            "through OpenStreetMap and listed underneath, marked 📍. A street "
+            "address, a town, a district or a neighbourhood all find something "
+            "where they used to find nothing.",
+            "Each suggestion says where it is, so the two Springfields are told "
+            "apart at a glance. ↓ and ↑ move through the list, Enter takes one, "
+            "Esc puts it away, and clicking the map still works for a spot with "
+            "no name at all.",
+            "The lookup is made by Delphi's server, never by your browser, so the "
+            "outside service sees Delphi rather than you — and it only happens "
+            "when Delphi's own list has no good answer, so typing a city name "
+            "still never leaves this server.",
+        ],
+    },
+    {
         "date": "2026-08-09",
         "title": "Stories open the moment you click them",
         "items": [

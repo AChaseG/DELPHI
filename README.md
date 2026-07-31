@@ -207,12 +207,17 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_CONTENT_MAX_PER_CYCLE` | `150` | article pages fetched per ingest cycle |
 | `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
 | `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
+| `NEWS_GEOCODER` | `nominatim` | address lookup for places the gazetteer lacks; `off` keeps every lookup local |
+| `NEWS_NOMINATIM_URL` | `https://nominatim.openstreetmap.org` | point at your own Nominatim instead |
+| `NEWS_GEOCODER_CONTACT` | repo URL | contact put in the User-Agent, as Nominatim's policy asks |
+| `NEWS_GEOCODER_GAP` | `1.0` | seconds between address lookups (their rate policy) |
 
 ## Architecture
 
 ```
 backend/app
 ├── main.py           FastAPI app: REST API, SSE stream, static frontend
+├── geocode.py        address lookup (OpenStreetMap) for places the gazetteer lacks
 ├── ingest.py         async poller: fetch → normalize → geotag → score → cluster → alert
 ├── clustering.py     incremental article→event clustering
 ├── translate.py      lazy cached translation (Google gtx / LibreTranslate)

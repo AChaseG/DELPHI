@@ -766,11 +766,27 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   border: 1px solid var(--border); border-radius: 7px; padding: 4px;
   background: var(--surface-2);
 }
+.loc-results { max-height: 240px; }
 .loc-result {
   background: none; border: none; color: var(--ink); cursor: pointer;
   text-align: left; padding: 6px 8px; border-radius: 5px; font-size: 13px;
+  display: flex; flex-direction: column; gap: 1px; width: 100%;
 }
-.loc-result:hover { background: var(--surface); }
+/* Hover and the keyboard's position look the same, so a reader driving the
+   list with arrow keys sees exactly what a mouse user sees. */
+.loc-result:hover, .loc-result.active, .loc-result:focus-visible {
+  background: var(--surface);
+}
+.loc-result-name { font-weight: 600; }
+/* The full address of a looked-up place: two towns with the same name are only
+   told apart by this, so it wraps rather than being cut off. */
+.loc-result-where {
+  font-size: 11.5px; color: var(--ink-muted); line-height: 1.35;
+}
+.loc-none, .loc-credit {
+  font-size: 11.5px; color: var(--ink-muted); padding: 6px 8px;
+}
+.loc-credit { border-top: 1px solid var(--hairline); margin-top: 2px; }
 .loc-map {
   height: 260px; border-radius: 8px; overflow: hidden;
   border: 1px solid var(--border); margin-bottom: 10px;

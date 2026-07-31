@@ -2507,31 +2507,133 @@ function wireLocations() {
     LocationsPanel._drawPending();
   });
 
-  let searchTimer;
-  el("loc-search").addEventListener("input", () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(async () => {
-      const q = el("loc-search").value.trim();
-      const box = el("loc-results");
-      if (q.length < 2) { box.hidden = true; box.innerHTML = ""; return; }
-      let hits = [];
-      try { hits = await API.placeSearch(q); } catch (e) { return; }
-      box.innerHTML = "";
-      box.hidden = hits.length === 0;
-      for (const h of hits) {
-        const b = document.createElement("button");
-        b.className = "loc-result";
-        b.textContent = `${h.kind === "country" ? "🌐" : "🏙"} ${h.name}`
-          + (h.kind === "city" && h.country ? ` · ${COUNTRY_NAMES.get(h.country) || h.country}` : "");
-        b.onclick = () => {
-          LocationsPanel.setPoint(h.lat, h.lon, h.name);
-          box.hidden = true;
-          el("loc-search").value = "";
-        };
-        box.appendChild(b);
+  wirePlaceSearch();
+}
+
+/* ---------- place search ----------
+   Suggestions as the reader types. The bundled gazetteer answers instantly and
+   privately; anything it doesn't know — a street address, a town, a district —
+   comes from an address lookup the server makes, listed below the local matches
+   and credited. Arrow keys move through the list, Enter takes one, Esc dismisses
+   it, because a suggestion list nobody can drive from the keyboard is a list
+   half the readers cannot use. */
+let PLACE_SEQ = 0;      // which keystroke the shown suggestions belong to
+
+function wirePlaceSearch() {
+  const input = el("loc-search");
+  const box = el("loc-results");
+  let timer;
+  let active = -1;      // which suggestion the keyboard is on
+
+  const rows = () => [...box.querySelectorAll(".loc-result")];
+  const dismiss = () => { box.hidden = true; box.innerHTML = ""; active = -1; };
+  const highlight = (i) => {
+    const list = rows();
+    if (!list.length) return;
+    active = (i + list.length) % list.length;
+    list.forEach((r, n) => r.classList.toggle("active", n === active));
+    list[active].scrollIntoView({ block: "nearest" });
+    input.setAttribute("aria-activedescendant", list[active].id);
+  };
+
+  const suggest = async (q) => {
+    const wanted = ++PLACE_SEQ;
+    let payload;
+    try {
+      payload = await API.placeSearch(q);
+    } catch (e) {
+      return;                                   // keep whatever is shown
+    }
+    if (wanted !== PLACE_SEQ) return;           // a later keystroke owns the list
+    // The endpoint used to answer with a bare array; accept both shapes so a
+    // browser holding an older copy of this file still gets its suggestions.
+    const hits = Array.isArray(payload) ? payload : (payload.results || []);
+    const credit = Array.isArray(payload) ? "" : (payload.attribution || "");
+    box.innerHTML = "";
+    active = -1;
+    input.removeAttribute("aria-activedescendant");
+    if (!hits.length) {
+      const none = document.createElement("div");
+      none.className = "loc-none";
+      none.textContent = `Nothing found for “${q}”. Click the map to drop a pin anywhere.`;
+      box.appendChild(none);
+      box.hidden = false;
+      return;
+    }
+    hits.forEach((h, i) => {
+      const b = document.createElement("button");
+      b.className = "loc-result";
+      b.id = `loc-result-${i}`;
+      b.type = "button";
+      b.setAttribute("role", "option");
+      const icon = h.kind === "country" ? "🌐" : h.source === "osm" ? "📍" : "🏙";
+      const name = document.createElement("span");
+      name.className = "loc-result-name";
+      name.textContent = `${icon} ${h.name}`;
+      b.appendChild(name);
+      // Where it is: the country for a gazetteer hit, the full postal address
+      // for a looked-up one — two "Springfield"s are only told apart by this.
+      const where = h.address
+        || (h.kind !== "country" && h.country
+            ? (COUNTRY_NAMES.get(h.country) || h.country.toUpperCase()) : "");
+      if (where) {
+        const sub = document.createElement("span");
+        sub.className = "loc-result-where";
+        sub.textContent = where;
+        b.appendChild(sub);
       }
-    }, 220);
+      b.onclick = () => {
+        LocationsPanel.setPoint(h.lat, h.lon, h.name);
+        dismiss();
+        input.value = "";
+      };
+      box.appendChild(b);
+    });
+    if (credit) {
+      const note = document.createElement("div");
+      note.className = "loc-credit";
+      note.textContent = `📍 addresses from OpenStreetMap · ${credit}`;
+      box.appendChild(note);
+    }
+    box.hidden = false;
+  };
+
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-expanded", "false");
+  input.setAttribute("aria-controls", "loc-results");
+  box.setAttribute("role", "listbox");
+
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { dismiss(); return; }
+    // Long enough to be worth an address lookup gets a beat longer, so typing
+    // a street name is a few requests rather than one per letter.
+    timer = setTimeout(() => suggest(q), q.length >= 3 ? 300 : 200);
   });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); highlight(active + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); highlight(active - 1); }
+    else if (e.key === "Enter") {
+      const list = rows();
+      if (!box.hidden && list.length) {
+        e.preventDefault();
+        list[active >= 0 ? active : 0].click();
+      }
+    } else if (e.key === "Escape" && !box.hidden) {
+      e.stopPropagation();       // dismiss the list, don't close the panel
+      dismiss();
+    }
+  });
+
+  // Clicking away puts the list down; the delay lets a click on a row land.
+  input.addEventListener("blur", () => setTimeout(() => {
+    if (!box.contains(document.activeElement)) dismiss();
+  }, 150));
+
+  new MutationObserver(() => input.setAttribute("aria-expanded", String(!box.hidden)))
+    .observe(box, { attributes: true, attributeFilter: ["hidden"] });
 }
 
 /* ---------- Pantheon create / manage modal ----------

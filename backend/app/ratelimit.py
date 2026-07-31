@@ -25,6 +25,9 @@ _LIMITS: dict[str, tuple[int, int]] = {
     "forgot": (5, 900),      # 5 reset emails / 15 min / IP
     "reset": (10, 900),      # 10 reset submissions / 15 min / IP
     "resend": (5, 900),      # 5 verification resends / 15 min / IP
+    # Address lookups spend somebody else's quota (OpenStreetMap's), so one
+    # reader typing quickly must not be able to spend all of it.
+    "geocode": (60, 60),     # 60 address lookups / min / IP
 }
 
 _hits: dict[tuple[str, str], deque] = defaultdict(deque)

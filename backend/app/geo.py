@@ -204,28 +204,31 @@ def search_places(query: str, limit: int = 12) -> list[dict]:
     if not q:
         return []
     exact, prefix, contains = [], [], []
+    # How well each hit matched is reported alongside it: the caller decides
+    # whether the gazetteer answered well enough, and only asks an outside
+    # geocoder when it plainly didn't.
     for city in _merged_cities():
         names = [city["name"]] + list(city.get("aliases") or [])
         low = [n.lower() for n in names]
         hit = {"name": city["name"], "country": city.get("country", ""),
                "lat": city["lat"], "lon": city["lon"], "kind": "city"}
         if any(n == q for n in low):
-            exact.append(hit)
+            exact.append({**hit, "match": "exact"})
         elif any(n.startswith(q) for n in low):
-            prefix.append(hit)
+            prefix.append({**hit, "match": "prefix"})
         elif any(q in n for n in low):
-            contains.append(hit)
+            contains.append({**hit, "match": "contains"})
     for iso, c in countries_index().items():
         name = c.get("name", "")
         low = name.lower()
         hit = {"name": name, "country": iso, "lat": c["lat"], "lon": c["lon"],
                "kind": "country"}
         if low == q:
-            exact.append(hit)
+            exact.append({**hit, "match": "exact"})
         elif low.startswith(q):
-            prefix.append(hit)
+            prefix.append({**hit, "match": "prefix"})
         elif q in low:
-            contains.append(hit)
+            contains.append({**hit, "match": "contains"})
     return (exact + prefix + contains)[:limit]
 
 

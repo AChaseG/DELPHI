@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 import re as _username_re
 
-from . import auth, home, ingest, langdetect, mailer, ratelimit, repair, translate
+from . import auth, geocode, home, ingest, langdetect, mailer, ratelimit, repair, translate
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -46,6 +46,7 @@ DISABLE_INGEST = os.environ.get("NEWS_DISABLE_INGEST", "") == "1"
 # without it standing in for the outlet's page, which is one click away.
 ARTICLE_EXCERPT_CHARS = 1200
 STORY_TIMELINE_MAX = 100  # reports shown for one story, newest first
+
 
 
 def _ensure_schema():
@@ -1526,8 +1527,12 @@ async def ingest_run():
 @app.get("/api/ingest/status")
 def ingest_status():
     # The warm Home board goes with it: both are the poller's work, and an
-    # operator looking at one wants to know the state of the other.
-    return {**ingest.status, "home": home.status()}
+    # operator looking at one wants to know the state of the other. The address
+    # lookup is here too, so "no address suggestions" can be told apart from
+    # "nobody searched for one" without reading the log.
+    return {**ingest.status, "home": home.status(),
+            "geocoder": {"provider": geocode.PROVIDER if geocode.enabled() else "off",
+                         **geocode.status}}
 
 
 @app.post("/api/maintenance/fetch-content")
@@ -1860,11 +1865,34 @@ def _reject_invalid_query(criteria):
 # ---------- favourite locations ----------
 
 @app.get("/api/geo/search")
-def geo_search(q: str = Query(default=""), user_id: str = Depends(user_id_header)):
-    """Place lookup for the location picker, served from the built-in
-    gazetteer — no external geocoder, so it works offline and the user's
-    places of interest never leave this server."""
-    return search_places(q)
+async def geo_search(q: str = Query(default=""), request: Request = None,
+                     user_id: str = Depends(user_id_header)):
+    """Place lookup for the location picker.
+
+    The bundled gazetteer answers first: instant, offline, and nothing leaves
+    this server. It knows about 480 cities and 154 countries, though, so a
+    street address, a town or a district finds nothing in it — those come from
+    an address lookup, appended below the local matches and marked as such.
+    Delphi's server makes that call, never the reader's browser."""
+    local = [{**hit, "source": "local"} for hit in search_places(q)]
+    if not geocode.enabled():
+        return {"results": local, "attribution": ""}
+
+    # Only when the gazetteer has no good answer. A reader typing "tok" wants
+    # Tokyo, and that is a prefix match, so nothing leaves the server; "1600
+    # Pennsylvania Ave" matches nothing here, and that is what a lookup is for.
+    # Rate-limited per caller, since it spends somebody else's quota.
+    strong = any(h.get("match") in ("exact", "prefix") for h in local)
+    remote = []
+    if not strong and len((q or "").strip()) >= 3:
+        if request is not None:
+            ratelimit.check("geocode", request)
+        remote = await geocode.search(q)
+        seen = {(round(h["lat"], 3), round(h["lon"], 3)) for h in local}
+        remote = [h for h in remote
+                  if (round(h["lat"], 3), round(h["lon"], 3)) not in seen]
+    return {"results": local + remote,
+            "attribution": geocode.ATTRIBUTION if remote else ""}
 
 
 def _location_json(loc: FavoriteLocation, mine: bool = True) -> dict:
