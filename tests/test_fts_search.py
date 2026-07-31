@@ -258,6 +258,40 @@ def test_blunt_term_still_reaches_past_the_scan_cap(deep):
     assert [a.id for a in got] == [buried.id]
 
 
+def _fts_queries(db, fn):
+    """Run `fn` and count how many statements went to the search index."""
+    from sqlalchemy import event
+    seen = []
+
+    def spy(conn, cursor, statement, *rest):
+        if "articles_fts" in statement:
+            seen.append(statement)
+
+    bind = db.get_bind()
+    event.listen(bind, "before_cursor_execute", spy)
+    try:
+        return fn(), seen
+    finally:
+        event.remove(bind, "before_cursor_execute", spy)
+
+
+def test_a_rung_can_hold_the_page_it_is_asked_for(deep):
+    """The grouped views ask for 200 articles to cluster. A rung fixed at 400
+    rows holds that many matches only if half the news matches, so those queries
+    fell through to the index every time. Rungs grow with the page instead: all
+    1,500 articles here carry "common", so the newest rows answer this outright
+    and the index is only asked the one question that routes the search."""
+    saved = matching._FTS_NARROW_MAX
+    matching._FTS_NARROW_MAX = 0     # a corpus too big for the index to narrow
+    try:
+        got, fts = _fts_queries(
+            deep, lambda: query_articles(deep, {"keywords": ["common"]}, limit=200))
+    finally:
+        matching._FTS_NARROW_MAX = saved
+    assert len(got) == 200
+    assert len(fts) == 1, fts        # the selectivity probe, and nothing after it
+
+
 def test_sparse_term_still_fills_its_page(deep):
     """The guard for the ladder's premise: a term appearing once every 50
     articles must still return a full page, which means rung one (400 rows)

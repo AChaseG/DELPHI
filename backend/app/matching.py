@@ -61,6 +61,13 @@ _FTS_NARROW_MAX = 20000
 # couldn't fill the page, and the ladder always ends at the caller's cap.
 _SCAN_LADDER = (400, 4000)
 
+# ...but a rung has to be big enough to hold the page being asked for. The
+# grouped views ask for 200 articles to cluster, and a rung of 400 rows only
+# holds 200 matches if half the news matches — so those queries always fell
+# through to the slow route. Rungs grow with the page: measured on 244,000
+# articles, a 200-article earthquake feed went 220ms → 47ms.
+_ROWS_PER_MATCH = 8
+
 
 def _kw_regex(kw: str) -> re.Pattern:
     parts = [re.escape(p) for p in kw.split()]
@@ -349,14 +356,21 @@ def query_articles(
     # ladder — its last rung reaches as far as the search ever did, so nothing
     # that used to be findable stops being findable; the fast rungs just spare
     # the common case a sort it never needed.
-    #
     if index_narrows:
         # The index offers few enough articles to be worth reading whole: there
         # is nothing for a ladder to climb, and a rung would be pure overhead —
         # a search this selective has almost nothing among the newest rows.
         return scan_indexed(max(scan_cap, _FTS_SCAN_CAP))
 
-    for cap in _SCAN_LADDER:
+    # Sorted by date and reading rows in date order, a rung has nothing to
+    # offer: the stream already stops at a full page, so a cap of 400 and a cap
+    # of 2,000 cost exactly the same, and a rung that comes up short has only
+    # re-read its rows (measured: 75ms → 117ms on a category feed). Rungs are
+    # for the two cases where a cap really is the cost — an ordering SQLite has
+    # to build in a temp B-tree, and a short page meaning "switch to the index".
+    ladder = _SCAN_LADDER if (fts_expr or sort == "importance") else ()
+    for rung in ladder:
+        cap = max(rung, _ROWS_PER_MATCH * limit)
         if cap >= scan_cap:
             break
         results = scan(cap)
