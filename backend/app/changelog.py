@@ -13,6 +13,27 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-09",
+        "title": "Stories open the moment you click them",
+        "items": [
+            "⚡ A headline used to wait on the server before anything appeared — "
+            "on a 300ms connection, a third of a second of nothing. The view now "
+            "opens from what the column already has, so the headline, the "
+            "summary, the outlet and the time are on screen immediately and the "
+            "rest of the story fills in behind them. Measured with 300ms of "
+            "latency: 333–354ms before a story was readable, now 4–10ms. "
+            "Pointing at a headline starts fetching it, and a story you reopen "
+            "comes straight back.",
+            "🔔 Alert hits sometimes did nothing when clicked. Every alert that "
+            "fires re-renders the alerts panel, and the panel emptied itself "
+            "before asking the server for its hits — so for as long as those "
+            "requests took, there was nothing under the pointer. Measured "
+            "directly: six hits on screen, zero during a re-render. The panel now "
+            "keeps what it is showing until the new list is ready to replace it "
+            "in one go.",
+        ],
+    },
+    {
         "date": "2026-08-08",
         "title": "A headline opens the story, not the outlet",
         "items": [

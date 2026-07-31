@@ -1566,7 +1566,10 @@ function eventGroup(g) {
   const srcs = g.source_count > 1 ? `${g.source_count} sources` : "1 source";
   meta.textContent = `🧵 ${g.total_count} report${plural(g.total_count)} · ${srcs} — open ⤢`;
   wrap.appendChild(meta);
-  wrap.onclick = () => openStoryByEvent(g.event_id);
+  // The card's own lead article opens the view at once; the payload it fetches
+  // carries the whole event anyway, so this is the by-event path without the wait.
+  wrap.onclick = () => openStory(g.articles[0]);
+  wrap.onpointerenter = () => prefetchStory(g.articles[0] && g.articles[0].id);
   return wrap;
 }
 
@@ -1585,15 +1588,91 @@ let STORY_MAP_SEQ = 0;   // which story the map is being drawn for
    page is a marked button, never an accident. */
 let STORY_SEQ = 0;    // which story the view is being drawn for
 
-async function openStory(articleId) {
-  await showStory(() => API.story(articleId));
+/* A story already fetched, kept briefly so reopening one costs nothing. The
+   server answers in about 18ms on a large database, but the round trip does
+   not, and this view is opened constantly while triaging a board. */
+const STORY_CACHE = new Map();      // article id -> {data, at}
+const STORY_WANTED = new Map();     // article id -> in-flight promise
+const STORY_FRESH_MS = 120000;
+const STORY_CACHE_MAX = 60;
+
+function cachedStory(id) {
+  const hit = STORY_CACHE.get(id);
+  if (!hit) return null;
+  if (Date.now() - hit.at > STORY_FRESH_MS) { STORY_CACHE.delete(id); return null; }
+  return hit.data;
 }
 
-// From a grouped card or a related story, where the reader has an event rather
-// than one report. The view opens at the latest report of it.
+function fetchStory(id) {
+  const already = STORY_WANTED.get(id);
+  if (already) return already;                 // one request per story, not one per hover
+  const wanted = API.story(id).then((data) => {
+    STORY_CACHE.set(id, { data, at: Date.now() });
+    if (STORY_CACHE.size > STORY_CACHE_MAX) {  // bounded: drop the oldest entry
+      STORY_CACHE.delete(STORY_CACHE.keys().next().value);
+    }
+    return data;
+  }).finally(() => STORY_WANTED.delete(id));
+  STORY_WANTED.set(id, wanted);
+  return wanted;
+}
+
+/* Warm a story before it is asked for. A reader's pointer lands on a headline
+   well before the click does, and moving the keyboard onto a row is the same
+   signal, so by the time either turns into an open the answer is usually here.
+   Costs one small request for a row the reader is already looking at. */
+let storyPrefetchTimer = null;
+function prefetchStory(id) {
+  if (!id || cachedStory(id) || STORY_WANTED.has(id)) return;
+  clearTimeout(storyPrefetchTimer);
+  storyPrefetchTimer = setTimeout(() => fetchStory(id).catch(() => {}), 70);
+}
+
+/* Open at a report. `article` may be the row's own article object — the view is
+   then painted from it immediately and filled in when the rest arrives — or
+   just an id, which costs a round trip before anything appears. */
+async function openStory(article) {
+  const known = article && typeof article === "object" ? article : null;
+  const id = known ? known.id : article;
+  const wanted = ++STORY_SEQ;
+
+  const cached = cachedStory(id);
+  if (cached) { paintStory(cached); return; }     // nothing to wait for
+
+  if (known) {
+    // Everything the row already holds: headline, summary, outlet, time, image,
+    // badges. The story around it follows; the reader is reading by then.
+    paintStory({ article: known, event: null, articles: [], sources: [], related: [] },
+               { partial: true });
+  }
+  let d;
+  try {
+    d = await fetchStory(id);
+  } catch (e) {
+    if (wanted !== STORY_SEQ) return;
+    if (known) return;                            // the report is on screen already
+    toast("Could not open the story", e.message);
+    return;
+  }
+  if (wanted !== STORY_SEQ) return;
+  paintStory(d);
+}
+
+// From a related story, where the reader has an event rather than a report.
+// The view opens at the latest report of it.
 async function openStoryByEvent(eventId) {
+  const wanted = ++STORY_SEQ;
   markEventRead(eventId);
-  await showStory(() => API.storyByEvent(eventId));
+  let d;
+  try {
+    d = await API.storyByEvent(eventId);
+  } catch (e) {
+    toast("Could not open the story", e.message);
+    return;
+  }
+  if (wanted !== STORY_SEQ) return;
+  STORY_CACHE.set(d.article.id, { data: d, at: Date.now() });
+  paintStory(d);
 }
 
 function markEventRead(eventId) {
@@ -1603,19 +1682,9 @@ function markEventRead(eventId) {
     card.classList.add("event-viewed");
 }
 
-async function showStory(fetcher) {
-  // Switching stories inside the view (a timeline row, a related story) reuses
-  // the same dialog, so a slow answer must never overwrite a newer one.
-  const wanted = ++STORY_SEQ;
-  let d;
-  try {
-    d = await fetcher();
-  } catch (e) {
-    toast("Could not open the story", e.message);
-    return;
-  }
-  if (wanted !== STORY_SEQ) return;
-
+/* Draw the view. `partial` means only the report is known so far: the sections
+   that describe the wider story stay hidden rather than flashing up empty. */
+function paintStory(d, { partial = false } = {}) {
   const a = d.article;
   const ev = d.event;
   markEventRead(a.event_id);
@@ -1674,7 +1743,7 @@ async function showStory(fetcher) {
   // The body extract, when Delphi fetched one. Some outlets publish only a
   // headline and a link, and paywalled ones are stored headline-only by design.
   const excerpt = (a.excerpt || "").trim();
-  el("st-excerpt-section").hidden = !excerpt;
+  el("st-excerpt-section").hidden = !excerpt;   // absent until the full story lands
   el("st-excerpt").textContent = excerpt;
   el("st-excerpt-note").hidden = !a.excerpt_truncated;
 
@@ -1685,7 +1754,7 @@ async function showStory(fetcher) {
   // Every report on the story, this one included and marked as the one being
   // read. A story nobody else has yet simply has no timeline.
   const timeline = d.articles || [];
-  el("st-timeline-section").hidden = timeline.length < 2;
+  el("st-timeline-section").hidden = partial || timeline.length < 2;
   el("st-count").textContent = timeline.length
     ? `— ${timeline.length} report${plural(timeline.length)}, newest first` : "";
   const tl = el("st-timeline");
@@ -1782,14 +1851,22 @@ async function showStory(fetcher) {
     arch.title = "Read the full text via archive.ph (the outlet paywalls it)";
   }
 
-  const first = el("story-backdrop").hidden;
+  const opening = el("story-backdrop").hidden;
   el("story-backdrop").hidden = false;
-  el("st-body").scrollTop = 0;      // a switched story starts at its own top
-  if (first) el("btn-close-story").focus();
+  // Only when the view first appears, or moves to another report: filling in
+  // the rest of a story must not throw the reader back to the top of it.
+  if (opening || !partial) {
+    if (opening || STORY_PAINTED !== a.id) el("st-body").scrollTop = 0;
+  }
+  STORY_PAINTED = a.id;
+  if (opening) el("btn-close-story").focus();
 }
+
+let STORY_PAINTED = null;   // which report the view currently shows
 
 function closeStory() {
   STORY_SEQ++;                      // an answer still in flight is now stale
+  STORY_PAINTED = null;
   el("story-backdrop").hidden = true;
 }
 
@@ -1853,10 +1930,14 @@ function articleRow(a, mode = "focus") {
     row.setAttribute("role", "button");
     row.tabIndex = 0;    // it is a button now, so it has to be reachable as one
     row.title = "Open the story: summary, when and where it was published, who else has it";
-    row.onclick = () => openStory(a.id);
+    // The row's own article opens the view immediately; the rest of the story
+    // fills in behind it. Pointing at a row is enough to start fetching.
+    row.onclick = () => openStory(a);
     row.onkeydown = (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openStory(a.id); }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openStory(a); }
     };
+    row.onpointerenter = () => prefetchStory(a.id);
+    row.onfocus = () => prefetchStory(a.id);
   }
 
   const title = document.createElement("div");
@@ -2827,9 +2908,13 @@ async function refreshAlerts(preloaded = null) {
   if (!el("alerts-panel").hidden) renderAlertsPanel();
 }
 
+/* Which render owns the panel. Every alert that fires re-renders it, so on a
+   busy account this runs constantly. */
+let alertsPanelSeq = 0;
+
 async function renderAlertsPanel() {
   const box = el("alerts-list");
-  box.innerHTML = "";
+  const wanted = ++alertsPanelSeq;
   if (!ALERTS.length) {
     el("alerts-map").hidden = true;
     box.innerHTML = '<div class="feed-empty">No alerts yet. Press “+ Create” and flip the toggle to 🔔 Alert — ' +
@@ -2840,7 +2925,14 @@ async function renderAlertsPanel() {
   const eventsByAlert = await Promise.all(
     ALERTS.map(async (alert) => ({ alert, events: await API.alertEvents(alert.id).catch(() => []) }))
   );
+  // A later render started while this one was fetching; it owns the panel now.
+  if (wanted !== alertsPanelSeq) return;
   renderAlertsMap(eventsByAlert);
+  // Built off-screen and swapped in one go. Emptying the panel first and
+  // filling it after the requests came back left it blank for as long as they
+  // took — and a hit clicked in that window landed on nothing at all, which is
+  // exactly when a reader reaches for it.
+  const built = document.createDocumentFragment();
   for (const { alert, events: evs } of eventsByAlert) {
     const block = document.createElement("div");
     block.className = "alert-block" + (alert.active ? "" : " alert-inactive");
@@ -2886,8 +2978,9 @@ async function renderAlertsPanel() {
     if (!evs.length) events.innerHTML = '<div class="feed-empty">No hits yet.</div>';
     for (const ev of evs.slice(0, 10)) events.appendChild(articleRow(ev.article));
     block.append(head, events);
-    box.appendChild(block);
+    built.appendChild(block);
   }
+  box.replaceChildren(built);
 }
 
 /* Map of where recent alert hits are geolocated, plus alert geofences. */
