@@ -240,7 +240,7 @@
               paywall.</li>
           </ul>
           <p>Clicking a row never leaves D.E.L.P.H.I. It opens the story in
-             <b>Article Focus</b>, and the outlet's own page is a marked button in
+             <b>Story Focus</b>, and the outlet's own page is a marked button in
              there — so a stray click can't send you to a page you hadn't decided to
              visit.</p>
         </details>
@@ -341,47 +341,40 @@
         </details>
 
         <details>
-          <summary>📖 Reading a story in Article Focus</summary>
+          <summary>📖 Reading a story in Story Focus</summary>
+          <p>One story, one view. A report nobody else has picked up and a story
+             forty outlets are carrying are the same thing at different distances,
+             so both open here — the report you picked, and the whole story around
+             it when other outlets have it.</p>
           <ol>
             <li>Click any headline — on a board, in search results, in the alerts
-              panel, or in an event's timeline. Enter or Space does the same on the
-              row your keyboard is on.</li>
-            <li>The view opens with the headline, an importance chip, the country and
-              categories, and a line saying which outlet published it and exactly
-              when — the full date, not just "3h ago".</li>
+              panel, or in the story's own timeline. Enter or Space does the same on
+              the row your keyboard is on. A grouped event card opens the same view
+              at the latest report.</li>
+            <li>It opens with the headline, an importance chip, the country and
+              categories, how many outlets are carrying it, and a line saying which
+              outlet published this report and exactly when — the full date, not
+              just "3h ago".</li>
             <li>Below that: the publisher's summary in full (a column truncates it),
               then <b>From the article</b>, an extract of the body D.E.L.P.H.I.
               fetched. Long pieces are cut, and the view says so.</li>
-            <li><b>Also covering this</b> lists other outlets on the same event;
-              clicking one opens that report in the same way.</li>
+            <li>A <b>map</b> of the places the story names — every report's places
+              when several outlets are on it.</li>
+            <li><b>Every report on this</b> lists the whole story newest-first, the
+              one you are reading marked. Click another to move to it, in place.</li>
+            <li><b>Covered by</b> lists the outlets; <b>Related stories</b> links to
+              what D.E.L.P.H.I. considers adjacent, and opens them here too.</li>
             <li><b>Details</b> gives the publication time in UTC, when D.E.L.P.H.I.
-              collected it, the outlet's reach and platform, the places named in the
-              story, and its importance out of 100.</li>
+              collected it, the outlet's reach and platform, the places named, and the
+              importance out of 100.</li>
             <li><b>Open original ↗</b> at the bottom goes to the outlet — the only
-              thing here that leaves D.E.L.P.H.I. <b>⤢ Open the event</b> beside it
-              switches to the whole story across every outlet.</li>
+              thing here that leaves D.E.L.P.H.I. On a paywalled outlet,
+              <b>🔓 archive.ph</b> sits beside it.</li>
           </ol>
-          <p><b>Esc</b> closes it. Opened from an event's timeline, closing returns you
-             to the event rather than the board.</p>
-        </details>
-
-        <details>
-          <summary>🧵 Reading a story in Event Focus</summary>
-          <ol>
-            <li>Click a grouped event card, or press <b>⤢ Open the event</b> inside a
-              story.</li>
-            <li>The panel opens with the story's summary, its importance and category
-              badges, and a map of the places it mentions.</li>
-            <li><b>Timeline</b> lists every report on the story, newest first — clicking
-              one opens it in Article Focus, over the event.</li>
-            <li><b>Covered by</b> lists the outlets reporting it; click one to read its
-              version.</li>
-            <li><b>Related events</b> links to stories D.E.L.P.H.I. considers adjacent.</li>
-          </ol>
-          <p>Opening an event marks it read: it dims everywhere it appears, straight
-             away and on every device you sign in from, so a second pass over the board
-             shows you only what you haven't triaged. Hover a dimmed event to read it at
-             full strength.</p>
+          <p><b>Esc</b> closes it. Opening a story marks it read: it dims everywhere it
+             appears, straight away and on every device you sign in from, so a second
+             pass over the board shows you only what you haven't triaged. Hover a
+             dimmed row to read it at full strength.</p>
         </details>
 
         <details>
@@ -708,7 +701,7 @@
         </details>
 
         <details>
-          <summary>🧵 Events, Event Focus, and dimming</summary>
+          <summary>🧵 Events, Story Focus, and dimming</summary>
           <p>Coverage of the same story from different outlets is clustered into an
              <b>event</b> (headline similarity, 72-hour rolling window). Feeds with
              "group into events" show one card per story with a report/source count.
@@ -716,14 +709,14 @@
              names (recognized across scripts, e.g. 東京 → Tokyo) and significant
              numbers (a magnitude, a toll) — so a story's coverage in its own language
              groups with the English coverage, not as a separate event.</p>
-          <p>A grouped card opens <b>Event Focus</b>: the founding report's synopsis,
-             stats, a map of tagged places, the full timeline newest-first, "covered by"
-             outlet links, and related events. A single article row opens that article
-             instead — <b>Article Focus</b> — with <b>⤢ Open the event</b> in it when
-             the story is one of several on the same event. Either way, opening a story
-             counts as reading its event: it dims everywhere it appears (hover to read
-             at full strength), on your account and on every device you sign in
-             from.</p>
+          <p>An event is not a separate thing to read: it is what a story looks like
+             once more than one outlet has it. So there is one <b>Story Focus</b>
+             either way — a headline opens at that report, a grouped card opens at the
+             latest one — carrying the report you are reading plus, when others have
+             it, the map, the timeline of every report, the outlets covering it and
+             related stories. Opening a story marks its event read: it dims everywhere
+             it appears (hover to read at full strength), on your account and on every
+             device you sign in from.</p>
           <p><b>Staleness:</b> a feed can enable 🕰 "Hide events with no recent updates"
              (wizard, Review step); the threshold is yours, in ⚙ Settings. Hiding is
              display-only — clustering keeps attaching new similar reports to hidden
@@ -1510,68 +1503,50 @@
     </div>
   </div>
 
-  <!-- Article focus modal. Opening a headline never leaves D.E.L.P.H.I.: the
-       story is shown here — title, when it was published, who published it,
-       the summary in full and an extract of the body — and going to the outlet
-       is a deliberate second click. -->
-  <div id="article-backdrop" class="modal-backdrop" hidden>
-    <div class="modal article-modal" role="dialog" aria-modal="true" aria-labelledby="ar-title">
+  <!-- Story focus. A single report and a story forty outlets are carrying are
+       the same thing seen from different distances, so they are one view: the
+       report the reader picked, and — when others have it — the whole event
+       around it. Opening a headline never leaves D.E.L.P.H.I.; going to the
+       outlet is a deliberate second click on the button at the bottom. -->
+  <div id="story-backdrop" class="modal-backdrop" hidden>
+    <div class="modal story-modal" role="dialog" aria-modal="true" aria-labelledby="st-title">
       <div class="modal-head">
-        <h2 id="ar-title">Article</h2>
-        <button class="icon-btn" id="btn-close-article" aria-label="Close article">✕</button>
+        <h2 id="st-title">Story</h2>
+        <button class="icon-btn" id="btn-close-story" aria-label="Close story">✕</button>
       </div>
-      <div class="modal-body" id="ar-body">
-        <div class="ev-badges" id="ar-badges"></div>
-        <p class="ar-byline" id="ar-byline"></p>
-        <img id="ar-image" class="ar-image" alt="" referrerpolicy="no-referrer" hidden>
-        <p class="ar-summary" id="ar-summary"></p>
-        <div class="ev-section" id="ar-excerpt-section" hidden>
+      <div class="modal-body" id="st-body">
+        <div class="ev-badges" id="st-badges"></div>
+        <p class="ar-byline" id="st-byline"></p>
+        <img id="st-image" class="ar-image" alt="" referrerpolicy="no-referrer" hidden>
+        <p class="ar-summary" id="st-summary"></p>
+        <div class="ev-section" id="st-excerpt-section" hidden>
           <h3>From the article</h3>
-          <p class="ar-excerpt" id="ar-excerpt"></p>
-          <p class="ar-excerpt-note" id="ar-excerpt-note" hidden>
+          <p class="ar-excerpt" id="st-excerpt"></p>
+          <p class="ar-excerpt-note" id="st-excerpt-note" hidden>
              Extract only — open the original for the rest.</p>
         </div>
-        <div class="ev-section" id="ar-coverage-section" hidden>
-          <h3>Also covering this <span id="ar-coverage-count" class="ev-dim"></span></h3>
-          <div id="ar-coverage"></div>
+        <div id="story-map" class="event-map" hidden></div>
+        <div class="ev-section" id="st-timeline-section" hidden>
+          <h3>Every report on this <span id="st-count" class="ev-dim"></span></h3>
+          <div id="st-timeline"></div>
+        </div>
+        <div class="ev-section" id="st-sources-section" hidden>
+          <h3>Covered by</h3>
+          <div class="ev-sources" id="st-sources"></div>
+        </div>
+        <div class="ev-section" id="st-related-section" hidden>
+          <h3>Related stories</h3>
+          <div id="st-related"></div>
         </div>
         <div class="ev-section">
           <h3>Details</h3>
-          <dl class="ar-facts" id="ar-facts"></dl>
+          <dl class="ar-facts" id="st-facts"></dl>
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn" id="btn-ar-event" hidden>⤢ Open the event</button>
         <span class="spacer"></span>
-        <a class="btn" id="ar-archive" target="_blank" rel="noopener" hidden>🔓 archive.ph</a>
-        <a class="btn btn-primary" id="ar-open" target="_blank" rel="noopener">Open original ↗</a>
-      </div>
-    </div>
-  </div>
-
-  <!-- Event focus modal -->
-  <div id="event-backdrop" class="modal-backdrop" hidden>
-    <div class="modal event-modal" role="dialog" aria-modal="true">
-      <div class="modal-head">
-        <h2 id="ev-title">Event</h2>
-        <button class="icon-btn" id="btn-close-event" aria-label="Close event">✕</button>
-      </div>
-      <div class="modal-body" id="ev-body">
-        <div class="ev-badges" id="ev-badges"></div>
-        <p class="ev-summary" id="ev-summary"></p>
-        <div id="event-map" class="event-map" hidden></div>
-        <div class="ev-section">
-          <h3>Timeline <span id="ev-count" class="ev-dim"></span></h3>
-          <div id="ev-timeline"></div>
-        </div>
-        <div class="ev-section">
-          <h3>Covered by</h3>
-          <div class="ev-sources" id="ev-sources"></div>
-        </div>
-        <div class="ev-section" id="ev-related-section">
-          <h3>Related events</h3>
-          <div id="ev-related"></div>
-        </div>
+        <a class="btn" id="st-archive" target="_blank" rel="noopener" hidden>🔓 archive.ph</a>
+        <a class="btn btn-primary" id="st-open" target="_blank" rel="noopener">Open original ↗</a>
       </div>
     </div>
   </div>

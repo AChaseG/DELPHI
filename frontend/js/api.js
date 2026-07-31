@@ -167,9 +167,10 @@ const API = {
   reorderFeeds: (order) => api("/api/feeds/reorder", { method: "POST", body: JSON.stringify({ order }) }),
   feedArticles: (id) => api(`/api/feeds/${id}/articles?limit=40${langQS()}`),
   feedEvents: (id) => api(`/api/feeds/${id}/events?limit=30${langQS()}`),
-  eventDetail: (id) => api(`/api/events/${id}?x=1${langQS()}`),
-  // One story in full, for the focused view a headline opens.
-  article: (id) => api(`/api/articles/${id}?x=1${langQS()}`),
+  // The focused view: one report, plus the story around it when other outlets
+  // are carrying the same thing. Openable from either end.
+  story: (id) => api(`/api/story/${id}?x=1${langQS()}`),
+  storyByEvent: (id) => api(`/api/story/by-event/${id}?x=1${langQS()}`),
   markEventViewed: (id) => api(`/api/events/${id}/viewed`, { method: "POST" }),
   rebuildEvents: () => api("/api/events/rebuild", { method: "POST" }),
 

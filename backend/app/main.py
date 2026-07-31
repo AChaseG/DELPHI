@@ -45,7 +45,7 @@ DISABLE_INGEST = os.environ.get("NEWS_DISABLE_INGEST", "") == "1"
 # How much of a story's body the focused view shows. Enough to judge the piece
 # without it standing in for the outlet's page, which is one click away.
 ARTICLE_EXCERPT_CHARS = 1200
-ARTICLE_SIBLINGS = 8      # other outlets on the same event, listed in the view
+STORY_TIMELINE_MAX = 100  # reports shown for one story, newest first
 
 
 def _ensure_schema():
@@ -871,68 +871,6 @@ async def search_articles(
     return [_article_json(a, tr, viewed, events) for a in articles]
 
 
-@app.get("/api/articles/{article_id}")
-async def article_detail(article_id: int, lang: str = Query(default=""),
-                         user_id: str = Depends(user_id_header),
-                         db: Session = Depends(get_db)):
-    """One article in full, for the focused view a headline opens.
-
-    Everything a reader needs to judge a story before deciding to leave for the
-    outlet: the whole summary rather than the card's truncation, an extract of
-    the body Delphi already fetched for matching, where and when it was
-    published, and who else is covering the same event."""
-    article = db.get(Article, article_id)
-    if not article:
-        raise HTTPException(404, "Article not found")
-    tr = await translate.translate_articles(db, [article], lang)
-    viewed = _viewed_events(db, user_id, [article])
-    out = _article_json(article, tr, viewed, None)
-
-    # The card truncates to 400 characters because a column is narrow; here
-    # there is room for the publisher's summary in full.
-    t = (tr or {}).get(article.id)
-    out["summary"] = t["summary"] if t else (article.summary or "")
-
-    # An extract of the story body, which is fetched for matching anyway. It is
-    # deliberately bounded and always shown beside a link to the outlet: this is
-    # a reading aid for deciding whether to go there, not a copy of the article.
-    body = (article.content or "").strip()
-    out["excerpt"] = body[:ARTICLE_EXCERPT_CHARS]
-    out["excerpt_truncated"] = len(body) > ARTICLE_EXCERPT_CHARS
-    out["fetched_at"] = article.fetched_at.isoformat() + "Z" if article.fetched_at else None
-    if article.source:
-        out["source"] = {**out["source"], "platform": article.source.platform or "news",
-                         "language": article.source.language,
-                         "homepage": article.source.homepage or ""}
-
-    out["event"] = None
-    out["also_covered_by"] = []
-    if article.event_id:
-        event = db.get(Event, article.event_id)
-        siblings = db.scalars(
-            select(Article).where(Article.event_id == article.event_id,
-                                  Article.id != article.id)
-            .order_by(Article.published_at.desc()).limit(ARTICLE_SIBLINGS)
-        ).all()
-        if event:
-            out["event"] = {
-                "id": event.id, "title": event.title,
-                "article_count": event.article_count,
-                "source_count": len({a.source_id for a in siblings} | {article.source_id}),
-                "first_seen": event.first_seen.isoformat() + "Z",
-                "updated_at": event.updated_at.isoformat() + "Z",
-            }
-        strs = await translate.translate_articles(db, siblings, lang)
-        out["also_covered_by"] = [{
-            "id": s.id,
-            "title": (strs.get(s.id) or {}).get("title") or s.title,
-            "url": s.url,
-            "published_at": s.published_at.isoformat() + "Z" if s.published_at else None,
-            "source": {"name": s.source.name, "country": s.source.country} if s.source else None,
-        } for s in siblings]
-    return out
-
-
 @app.post("/api/query/validate")
 def query_validate(body: QueryValidateIn):
     err = validate_query(body.query) if body.query.strip() else None
@@ -1651,67 +1589,132 @@ def events_rebuild(db: Session = Depends(get_db)):
     return {"events": rebuild_events(db)}
 
 
-@app.get("/api/events/{event_id}")
-async def event_detail(event_id: int, lang: str = Query(default=""),
-                       db: Session = Depends(get_db)):
-    """One event in full: article timeline (newest first), the outlets
-    covering it, and related events (headline similarity, with a shared-
-    country fallback)."""
+def _story_related(db: Session, event: Event) -> list[dict]:
+    """Events adjacent to this one: similar headlines first, then same region."""
     from datetime import timedelta
 
     from .scoring import tokens_similarity
 
-    event = db.get(Event, event_id)
-    if not event:
-        raise HTTPException(404, "Event not found")
-    articles = db.scalars(
-        select(Article).where(Article.event_id == event_id)
-        .order_by(Article.published_at.desc()).limit(100)
-    ).all()
-    tr = await translate.translate_articles(db, articles, lang)
-
-    sources = []
-    seen_sources = set()
-    for a in articles:
-        if a.source and a.source.id not in seen_sources:
-            seen_sources.add(a.source.id)
-            sources.append({"id": a.source.id, "name": a.source.name,
-                            "platform": a.source.platform or "news",
-                            "country": a.source.country})
-
-    def _event_brief(e: Event, why: str) -> dict:
+    def brief(e: Event, why: str) -> dict:
         return {"id": e.id, "title": e.title, "importance": e.importance,
                 "article_count": e.article_count,
                 "updated_at": e.updated_at.isoformat() + "Z", "why": why}
 
     recent = db.scalars(select(Event).where(
-        Event.updated_at >= utcnow() - timedelta(days=14), Event.id != event_id
+        Event.updated_at >= utcnow() - timedelta(days=14), Event.id != event.id
     ).order_by(Event.updated_at.desc()).limit(500)).all()
     scored = sorted(
         ((tokens_similarity(event.cluster_tokens, e.cluster_tokens), e) for e in recent),
         key=lambda pair: -pair[0],
     )
-    related = [_event_brief(e, "similar story") for sim, e in scored[:5] if sim >= 0.2]
+    related = [brief(e, "similar story") for sim, e in scored[:5] if sim >= 0.2]
     if len(related) < 5 and (event.countries or []):
         have = {r["id"] for r in related}
         same_place = [e for _, e in scored
                       if e.id not in have and set(e.countries or []) & set(event.countries)]
         same_place.sort(key=lambda e: -e.importance)
-        related += [_event_brief(e, "same region") for e in same_place[:5 - len(related)]]
+        related += [brief(e, "same region") for e in same_place[:5 - len(related)]]
+    return related
+
+
+async def _story(db: Session, article: Article, lang: str, user_id: str) -> dict:
+    """One story, centred on one report of it.
+
+    A story with a single report and a story carried by forty outlets are the
+    same thing seen from different distances, so they are one payload: the
+    report a reader picked, and — when other outlets have it — the whole event
+    around it. `articles` is empty for an unclustered report, which is simply a
+    story nobody else has yet."""
+    event = db.get(Event, article.event_id) if article.event_id else None
+    articles: list[Article] = []
+    sources: list[dict] = []
+    related: list[dict] = []
+    if event:
+        articles = db.scalars(
+            select(Article).where(Article.event_id == event.id)
+            .order_by(Article.published_at.desc()).limit(STORY_TIMELINE_MAX)
+        ).all()
+        seen = set()
+        for a in articles:
+            if a.source and a.source.id not in seen:
+                seen.add(a.source.id)
+                sources.append({"id": a.source.id, "name": a.source.name,
+                                "platform": a.source.platform or "news",
+                                "country": a.source.country})
+        related = _story_related(db, event)
+
+    # The focused report is translated with the rest, so the timeline and the
+    # headline at the top can never disagree about what it says.
+    tr = await translate.translate_articles(db, articles or [article], lang)
+    viewed = _viewed_events(db, user_id, [article])
+    focus = _article_json(article, tr, viewed, None)
+
+    # A column truncates the summary to 400 characters because a column is
+    # narrow; here there is room for the publisher's summary in full.
+    t = (tr or {}).get(article.id)
+    focus["summary"] = t["summary"] if t else (article.summary or "")
+
+    # An extract of the story body, which is fetched for matching anyway. It is
+    # deliberately bounded and always shown beside a link to the outlet: a
+    # reading aid for deciding whether to go there, not a copy of the article.
+    body = (article.content or "").strip()
+    focus["excerpt"] = body[:ARTICLE_EXCERPT_CHARS]
+    focus["excerpt_truncated"] = len(body) > ARTICLE_EXCERPT_CHARS
+    focus["fetched_at"] = article.fetched_at.isoformat() + "Z" if article.fetched_at else None
+    if article.source:
+        focus["source"] = {**focus["source"], "platform": article.source.platform or "news",
+                           "language": article.source.language,
+                           "homepage": article.source.homepage or ""}
 
     return {
-        "id": event.id,
-        "title": event.title,
-        "importance": event.importance,
-        "article_count": event.article_count,
-        "countries": event.countries or [],
-        "categories": event.categories or [],
-        "first_seen": event.first_seen.isoformat() + "Z",
-        "updated_at": event.updated_at.isoformat() + "Z",
-        "articles": [_article_json(a, tr) for a in articles],
+        "article": focus,
+        "event": {
+            "id": event.id,
+            "title": event.title,
+            "importance": event.importance,
+            # Counted from the timeline the reader can actually see, so the
+            # badge can never claim fewer reports than outlets. The stored
+            # count only stands in when the timeline was truncated.
+            "article_count": (event.article_count if len(articles) >= STORY_TIMELINE_MAX
+                              else len(articles)),
+            "source_count": len(sources),
+            "countries": event.countries or [],
+            "categories": event.categories or [],
+            "first_seen": event.first_seen.isoformat() + "Z",
+            "updated_at": event.updated_at.isoformat() + "Z",
+        } if event else None,
+        "articles": [_article_json(a, tr, viewed, None) for a in articles],
         "sources": sources,
         "related": related,
     }
+
+
+@app.get("/api/story/{article_id}")
+async def story(article_id: int, lang: str = Query(default=""),
+                user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+    """The focused view, opened at one report."""
+    article = db.get(Article, article_id)
+    if not article:
+        raise HTTPException(404, "Article not found")
+    return await _story(db, article, lang, user_id)
+
+
+@app.get("/api/story/by-event/{event_id}")
+async def story_by_event(event_id: int, lang: str = Query(default=""),
+                         user_id: str = Depends(user_id_header),
+                         db: Session = Depends(get_db)):
+    """The same view, opened at an event rather than a report — from a grouped
+    card or a related-event link. It centres on the latest report, which is what
+    a reader arriving at a story wants first."""
+    if not db.get(Event, event_id):
+        raise HTTPException(404, "Event not found")
+    article = db.scalars(
+        select(Article).where(Article.event_id == event_id)
+        .order_by(Article.published_at.desc()).limit(1)
+    ).first()
+    if not article:
+        raise HTTPException(404, "That event has no reports left")
+    return await _story(db, article, lang, user_id)
 
 
 @app.get("/api/stream")

@@ -433,20 +433,12 @@ function wireTopbar() {
     await refreshFeeds();
     el("btn-refresh").disabled = false;
   };
-  el("btn-close-event").onclick = () => { el("event-backdrop").hidden = true; };
-  el("event-backdrop").addEventListener("mousedown", (e) => {
-    if (e.target === el("event-backdrop")) el("event-backdrop").hidden = true;
+  el("btn-close-story").onclick = closeStory;
+  el("story-backdrop").addEventListener("mousedown", (e) => {
+    if (e.target === el("story-backdrop")) closeStory();
   });
-  el("btn-close-article").onclick = closeArticleFocus;
-  el("article-backdrop").addEventListener("mousedown", (e) => {
-    if (e.target === el("article-backdrop")) closeArticleFocus();
-  });
-  // Escape closes the topmost of the two story dialogs, so a reader who opened
-  // an article from an event's timeline lands back on the event.
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    if (!el("article-backdrop").hidden) closeArticleFocus();
-    else if (!el("event-backdrop").hidden) el("event-backdrop").hidden = true;
+    if (e.key === "Escape" && !el("story-backdrop").hidden) closeStory();
   });
   el("btn-alerts-panel").onclick = () => { el("alerts-panel").hidden = false; renderAlertsPanel(); };
   el("btn-close-alerts").onclick = () => { el("alerts-panel").hidden = true; };
@@ -1572,43 +1564,70 @@ function eventGroup(g) {
   const meta = document.createElement("div");
   meta.className = "event-open-hint";
   const srcs = g.source_count > 1 ? `${g.source_count} sources` : "1 source";
-  meta.textContent = `🧵 ${g.total_count} report${plural(g.total_count)} · ${srcs} — open event ⤢`;
+  meta.textContent = `🧵 ${g.total_count} report${plural(g.total_count)} · ${srcs} — open ⤢`;
   wrap.appendChild(meta);
-  wrap.onclick = () => openEventFocus(g.event_id);
+  wrap.onclick = () => openStoryByEvent(g.event_id);
   return wrap;
 }
 
-/* ---------- article focus ----------
-   What a headline opens. The card in a column is a teaser — a truncated
-   summary and a few tags — so this is where a story is actually read: the
-   publisher's summary in full, an extract of the body, when and where it was
-   published, and who else is covering it. The outlet is one clearly-marked
-   click away, never an accident. */
-async function openArticleFocus(articleId) {
+/* The map inside the story view. */
+let STORY_MAP = null;
+let STORY_MAP_SEQ = 0;   // which story the map is being drawn for
+
+/* ---------- story focus ----------
+   What a headline opens, and the only place a story is read from. A single
+   report and a story forty outlets are carrying are the same thing at
+   different distances, so this is one view rather than two: the report the
+   reader picked, and — when others have it — the whole event around it.
+
+   A column card is a teaser: a truncated summary, a few tags. Here the
+   publisher's summary is whole, the body has an extract, and the outlet's own
+   page is a marked button, never an accident. */
+let STORY_SEQ = 0;    // which story the view is being drawn for
+
+async function openStory(articleId) {
+  await showStory(() => API.story(articleId));
+}
+
+// From a grouped card or a related story, where the reader has an event rather
+// than one report. The view opens at the latest report of it.
+async function openStoryByEvent(eventId) {
+  markEventRead(eventId);
+  await showStory(() => API.storyByEvent(eventId));
+}
+
+function markEventRead(eventId) {
+  if (!eventId) return;
+  API.markEventViewed(eventId).catch(() => {});
+  for (const card of document.querySelectorAll(`[data-event-id="${eventId}"]`))
+    card.classList.add("event-viewed");
+}
+
+async function showStory(fetcher) {
+  // Switching stories inside the view (a timeline row, a related story) reuses
+  // the same dialog, so a slow answer must never overwrite a newer one.
+  const wanted = ++STORY_SEQ;
   let d;
   try {
-    d = await API.article(articleId);
+    d = await fetcher();
   } catch (e) {
     toast("Could not open the story", e.message);
     return;
   }
+  if (wanted !== STORY_SEQ) return;
 
-  // Opening a story counts as having seen its event, the same as opening the
-  // event itself: the cards dim wherever they appear.
-  if (d.event_id) {
-    API.markEventViewed(d.event_id).catch(() => {});
-    for (const card of document.querySelectorAll(`[data-event-id="${d.event_id}"]`))
-      card.classList.add("event-viewed");
-  }
+  const a = d.article;
+  const ev = d.event;
+  markEventRead(a.event_id);
 
-  el("ar-title").textContent = d.title;
+  el("st-title").textContent = a.title;
 
-  const badges = el("ar-badges");
+  const badges = el("st-badges");
   badges.innerHTML = "";
-  const t = impTier(d.importance);
+  const t = impTier(a.importance);
   const imp = document.createElement("span");
   imp.className = "imp " + t.cls;
-  imp.textContent = `${t.icon} ${t.label} ${d.importance}`;
+  imp.textContent = `${t.icon} ${t.label} ${a.importance}`;
   badges.appendChild(imp);
   const tag = (txt, title = "") => {
     const s = document.createElement("span");
@@ -1616,24 +1635,32 @@ async function openArticleFocus(articleId) {
     if (title) s.title = title;
     badges.appendChild(s);
   };
-  if (d.country) tag(`${flagEmoji(d.country)} ${COUNTRY_NAMES.get(d.country) || d.country}`);
-  for (const c of (d.categories || []).slice(0, 4)) tag(c);
-  for (const n of nearLocations(d)) tag(`📍 ${n.name}`, `Inside your favourite location “${n.name}”`);
-  if (d.paywall) tag("🔒 paywalled", "The outlet limits how much of this you can read");
-  if (d.translated_from) tag(`🌐 translated from ${d.translated_from.toUpperCase()}`);
+  if (ev) {
+    tag(`🧵 ${ev.article_count} report${plural(ev.article_count)} · `
+      + `${ev.source_count} outlet${plural(ev.source_count)}`);
+  }
+  if (a.country) tag(`${flagEmoji(a.country)} ${COUNTRY_NAMES.get(a.country) || a.country}`);
+  for (const c of (a.categories || []).slice(0, 4)) tag(c);
+  for (const n of nearLocations(a)) tag(`📍 ${n.name}`, `Inside your favourite location “${n.name}”`);
+  if (a.paywall) tag("🔒 paywalled", "The outlet limits how much of this you can read");
+  if (a.translated_from) tag(`🌐 translated from ${a.translated_from.toUpperCase()}`);
+  if (ev) {
+    tag("first seen " + timeAgo(ev.first_seen));
+    if (ev.updated_at !== ev.first_seen) tag("updated " + timeAgo(ev.updated_at));
+  }
 
-  // Byline: who published it, and when — the two things a card can only abbreviate.
-  const source = d.source ? d.source.name : "Unknown source";
-  const when = d.published_at
-    ? `${new Date(d.published_at).toLocaleString([], {
+  // Who published it, and when — the two things a card can only abbreviate.
+  const outlet = a.source ? a.source.name : "Unknown source";
+  const when = a.published_at
+    ? `${new Date(a.published_at).toLocaleString([], {
         weekday: "short", year: "numeric", month: "long", day: "numeric",
-        hour: "2-digit", minute: "2-digit" })} · ${timeAgo(d.published_at)}`
+        hour: "2-digit", minute: "2-digit" })} · ${timeAgo(a.published_at)}`
     : "publication date not given";
-  el("ar-byline").textContent = `${source} — ${when}`;
+  el("st-byline").textContent = `${outlet} — ${when}`;
 
-  const img = el("ar-image");
-  if (safeUrl(d.image_url)) {
-    img.src = safeUrl(d.image_url);
+  const img = el("st-image");
+  if (safeUrl(a.image_url)) {
+    img.src = safeUrl(a.image_url);
     img.hidden = false;
     img.onerror = () => { img.hidden = true; };
   } else {
@@ -1641,172 +1668,63 @@ async function openArticleFocus(articleId) {
     img.removeAttribute("src");
   }
 
-  el("ar-summary").textContent = d.summary || "";
-  el("ar-summary").hidden = !d.summary;
+  el("st-summary").textContent = a.summary || "";
+  el("st-summary").hidden = !a.summary;
 
-  // The body extract, when Delphi fetched one. Some sources publish only a
+  // The body extract, when Delphi fetched one. Some outlets publish only a
   // headline and a link, and paywalled ones are stored headline-only by design.
-  const excerpt = (d.excerpt || "").trim();
-  el("ar-excerpt-section").hidden = !excerpt;
-  el("ar-excerpt").textContent = excerpt;
-  el("ar-excerpt-note").hidden = !d.excerpt_truncated;
+  const excerpt = (a.excerpt || "").trim();
+  el("st-excerpt-section").hidden = !excerpt;
+  el("st-excerpt").textContent = excerpt;
+  el("st-excerpt-note").hidden = !a.excerpt_truncated;
 
-  const coverage = d.also_covered_by || [];
-  el("ar-coverage-section").hidden = !coverage.length;
-  el("ar-coverage-count").textContent = coverage.length
-    ? `— ${coverage.length} other report${plural(coverage.length)}` : "";
-  const cov = el("ar-coverage");
-  cov.innerHTML = "";
-  for (const other of coverage) {
-    const row = document.createElement("div");
-    row.className = "ar-cov-row";
-    row.setAttribute("role", "button");
-    row.tabIndex = 0;
-    const head = document.createElement("div");
-    head.className = "ar-cov-title";
-    head.textContent = other.title;
-    const meta = document.createElement("div");
-    meta.className = "ar-cov-meta";
-    const outlet = other.source ? other.source.name : "";
-    const flag = other.source && other.source.country ? flagEmoji(other.source.country) + " " : "";
-    meta.textContent = `${flag}${outlet}  ·  ${timeAgo(other.published_at)}`;
-    row.append(head, meta);
-    const open = () => openArticleFocus(other.id);
-    row.onclick = open;
-    row.onkeydown = (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
-    };
-    cov.appendChild(row);
-  }
+  // The map covers the whole story when several outlets have it, and just this
+  // report when nobody else does.
+  renderStoryMap(d.articles.length ? d.articles : [a]);
 
-  // Everything else worth knowing, in one list rather than scattered tags.
-  const facts = el("ar-facts");
-  facts.innerHTML = "";
-  const fact = (label, value) => {
-    if (!value) return;
-    const dt = document.createElement("dt");
-    dt.textContent = label;
-    const dd = document.createElement("dd");
-    dd.textContent = value;
-    facts.append(dt, dd);
-  };
-  fact("Published", d.published_at ? new Date(d.published_at).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "");
-  fact("Collected", d.fetched_at ? timeAgo(d.fetched_at) : "");
-  if (d.source) {
-    fact("Outlet", d.source.name);
-    fact("Reach", d.source.scope);
-    fact("Platform", d.source.platform);
-  }
-  fact("Language", (d.language || "").toUpperCase());
-  fact("Places named", (d.places || []).map(p => p.name).join(", "));
-  fact("Importance", `${d.importance} of 100 — ${t.label}`);
-  if (d.event) {
-    fact("Event", `${d.event.article_count} report${plural(d.event.article_count)} from `
-      + `${d.event.source_count} outlet${plural(d.event.source_count)}, `
-      + `first seen ${timeAgo(d.event.first_seen)}`);
-  }
-
-  const evBtn = el("btn-ar-event");
-  evBtn.hidden = !d.event;
-  if (d.event) evBtn.onclick = () => { closeArticleFocus(); openEventFocus(d.event.id); };
-
-  const open = el("ar-open");
-  const href = safeUrl(d.url);
-  open.href = href || "#";
-  open.hidden = !href;
-  open.title = href ? `Read this at ${source}` : "";
-  const arch = el("ar-archive");
-  arch.hidden = !safeUrl(d.archive_url);
-  if (!arch.hidden) {
-    arch.href = safeUrl(d.archive_url);
-    arch.title = "Read the full text via archive.ph (the outlet paywalls it)";
-  }
-
-  el("article-backdrop").hidden = false;
-  el("ar-body").scrollTop = 0;
-  el("btn-close-article").focus();
-}
-
-function closeArticleFocus() {
-  el("article-backdrop").hidden = true;
-}
-
-/* ---------- event focus ---------- */
-let EVENT_MAP = null;
-let EVENT_MAP_SEQ = 0;   // which event the map is being drawn for
-
-async function openEventFocus(eventId) {
-  // Remember the view (per account) and dim every card of this event now.
-  API.markEventViewed(eventId).catch(() => {});
-  for (const card of document.querySelectorAll(`[data-event-id="${eventId}"]`))
-    card.classList.add("event-viewed");
-
-  let d;
-  try { d = await API.eventDetail(eventId); }
-  catch (e) { toast("Could not load event", e.message); return; }
-
-  el("ev-title").textContent = (d.articles[0] && d.articles[0].title) || d.title;
-
-  const badges = el("ev-badges");
-  badges.innerHTML = "";
-  const t = impTier(d.importance);
-  const imp = document.createElement("span");
-  imp.className = "imp " + t.cls;
-  imp.textContent = `${t.icon} ${t.label} ${d.importance}`;
-  badges.appendChild(imp);
-  const tag = (txt) => {
-    const s = document.createElement("span");
-    s.className = "tag"; s.textContent = txt;
-    badges.appendChild(s);
-  };
-  tag(`🧵 ${d.article_count} report${plural(d.article_count)} · ${d.sources.length} source${plural(d.sources.length)}`);
-  for (const iso of (d.countries || []).slice(0, 5)) tag(`${flagEmoji(iso)} ${COUNTRY_NAMES.get(iso) || iso}`);
-  for (const c of (d.categories || []).slice(0, 4)) tag(c);
-  tag("first seen " + timeAgo(d.first_seen));
-  if (d.updated_at !== d.first_seen) tag("updated " + timeAgo(d.updated_at));
-
-  // The founding report's summary reads best as the event synopsis.
-  const oldestFirst = [...d.articles].reverse();
-  const synopsis = (oldestFirst.find(a => a.summary) || {}).summary || "";
-  el("ev-summary").textContent = synopsis;
-  el("ev-summary").hidden = !synopsis;
-
-  renderEventMap(d);
-
-  const tl = el("ev-timeline");
+  // Every report on the story, this one included and marked as the one being
+  // read. A story nobody else has yet simply has no timeline.
+  const timeline = d.articles || [];
+  el("st-timeline-section").hidden = timeline.length < 2;
+  el("st-count").textContent = timeline.length
+    ? `— ${timeline.length} report${plural(timeline.length)}, newest first` : "";
+  const tl = el("st-timeline");
   tl.innerHTML = "";
-  el("ev-count").textContent = `— ${d.articles.length} update${plural(d.articles.length)}, newest first`;
-  for (const a of d.articles) tl.appendChild(articleRow(a));
+  for (const other of timeline) {
+    const row = articleRow(other, other.id === a.id ? "current" : "focus");
+    tl.appendChild(row);
+  }
 
-  // Each outlet chip links to that outlet's report of this event.
-  const src = el("ev-sources");
-  src.innerHTML = "";
+  // Each outlet chip goes to that outlet's report of the story.
+  const sourcesBox = el("st-sources");
+  sourcesBox.innerHTML = "";
+  el("st-sources-section").hidden = !(d.sources || []).length;
   const articleBySource = new Map();
-  for (const a of d.articles)
-    if (a.source && !articleBySource.has(a.source.id)) articleBySource.set(a.source.id, a);
-  for (const s of d.sources) {
+  for (const art of timeline)
+    if (art.source && !articleBySource.has(art.source.id)) articleBySource.set(art.source.id, art);
+  for (const s of d.sources || []) {
     const chip = document.createElement("a");
     chip.className = "chip chip-link";
     chip.textContent = `${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name} ↗`;
-    const article = articleBySource.get(s.id);
-    if (article && safeUrl(article.url)) {
-      chip.href = safeUrl(article.url); chip.target = "_blank"; chip.rel = "noopener";
-      chip.title = article.title;
+    const art = articleBySource.get(s.id);
+    if (art && safeUrl(art.url)) {
+      chip.href = safeUrl(art.url); chip.target = "_blank"; chip.rel = "noopener";
+      chip.title = art.title;
     }
-    src.appendChild(chip);
-    if (article && safeUrl(article.archive_url)) {
+    sourcesBox.appendChild(chip);
+    if (art && safeUrl(art.archive_url)) {
       const arch = document.createElement("a");
       arch.className = "chip chip-link archive-chip";
       arch.textContent = "🔓 archive.ph";
-      arch.href = safeUrl(article.archive_url); arch.target = "_blank"; arch.rel = "noopener";
+      arch.href = safeUrl(art.archive_url); arch.target = "_blank"; arch.rel = "noopener";
       arch.title = "Read the full article via archive.ph (paywalled source)";
-      src.appendChild(arch);
+      sourcesBox.appendChild(arch);
     }
   }
 
-  const rel = el("ev-related");
+  const rel = el("st-related");
   rel.innerHTML = "";
-  el("ev-related-section").hidden = !(d.related || []).length;
+  el("st-related-section").hidden = !(d.related || []).length;
   for (const r of d.related || []) {
     const row = document.createElement("button");
     row.className = "ev-related-row";
@@ -1821,39 +1739,85 @@ async function openEventFocus(eventId) {
     why.className = "ev-dim";
     why.textContent = `${r.why} · ${r.article_count} report${plural(r.article_count)} · ${timeAgo(r.updated_at)}`;
     row.append(head, title, why);
-    row.onclick = () => openEventFocus(r.id);
+    row.onclick = () => openStoryByEvent(r.id);
     rel.appendChild(row);
   }
 
-  el("event-backdrop").hidden = false;
-  el("ev-body").scrollTop = 0;
+  // Everything else worth knowing, in one list rather than scattered tags.
+  const facts = el("st-facts");
+  facts.innerHTML = "";
+  const fact = (label, value) => {
+    if (!value) return;
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    facts.append(dt, dd);
+  };
+  fact("Published", a.published_at
+    ? new Date(a.published_at).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "");
+  fact("Collected", a.fetched_at ? timeAgo(a.fetched_at) : "");
+  if (a.source) {
+    fact("Outlet", a.source.name);
+    fact("Reach", a.source.scope);
+    fact("Platform", a.source.platform);
+  }
+  fact("Language", (a.language || "").toUpperCase());
+  fact("Places named", (a.places || []).map(p => p.name).join(", "));
+  fact("Importance", `${a.importance} of 100 — ${t.label}`);
+  if (ev) {
+    fact("Story", `${ev.article_count} report${plural(ev.article_count)} from `
+      + `${ev.source_count} outlet${plural(ev.source_count)}, first seen ${timeAgo(ev.first_seen)}`);
+  }
+
+  const open = el("st-open");
+  const href = safeUrl(a.url);
+  open.href = href || "#";
+  open.hidden = !href;
+  open.title = href ? `Read this at ${outlet}` : "";
+  const arch = el("st-archive");
+  arch.hidden = !safeUrl(a.archive_url);
+  if (!arch.hidden) {
+    arch.href = safeUrl(a.archive_url);
+    arch.title = "Read the full text via archive.ph (the outlet paywalls it)";
+  }
+
+  const first = el("story-backdrop").hidden;
+  el("story-backdrop").hidden = false;
+  el("st-body").scrollTop = 0;      // a switched story starts at its own top
+  if (first) el("btn-close-story").focus();
 }
 
-async function renderEventMap(d) {
-  const box = el("event-map");
+function closeStory() {
+  STORY_SEQ++;                      // an answer still in flight is now stale
+  el("story-backdrop").hidden = true;
+}
+
+async function renderStoryMap(articles) {
+  const box = el("story-map");
   const points = [];
   const seen = new Set();
-  for (const a of d.articles)
+  for (const a of articles)
     for (const p of a.places || [])
       if (!seen.has(p.name)) { seen.add(p.name); points.push({ p, imp: a.importance }); }
   if (!points.length) {
     box.hidden = true;
-    if (EVENT_MAP) { EVENT_MAP.remove(); EVENT_MAP = null; }
+    if (STORY_MAP) { STORY_MAP.remove(); STORY_MAP = null; }
     return;
   }
-  // The map library may still be downloading; if the reader has opened another
-  // event by the time it arrives, those are the points that belong here now.
-  const wanted = ++EVENT_MAP_SEQ;
+  // The map library may still be downloading; if the reader has moved to
+  // another story by the time it arrives, those are the points that belong here.
+  const wanted = ++STORY_MAP_SEQ;
   try { await ensureLeaflet(); } catch (e) { box.hidden = true; return; }
-  if (wanted !== EVENT_MAP_SEQ) return;
+  if (wanted !== STORY_MAP_SEQ) return;
   box.hidden = false;
-  if (EVENT_MAP) { EVENT_MAP.remove(); EVENT_MAP = null; }
-  EVENT_MAP = L.map("event-map", { worldCopyJump: true });
+  if (STORY_MAP) { STORY_MAP.remove(); STORY_MAP = null; }
+  STORY_MAP = L.map("story-map", { worldCopyJump: true });
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(EVENT_MAP);
-  const grp = L.featureGroup().addTo(EVENT_MAP);
+  }).addTo(STORY_MAP);
+  const grp = L.featureGroup().addTo(STORY_MAP);
   for (const { p, imp } of points) {
     const pt = impTier(imp);
     grp.addLayer(L.circleMarker([p.lat, p.lon], {
@@ -1861,14 +1825,15 @@ async function renderEventMap(d) {
     }).bindPopup(p.name));
   }
   setTimeout(() => {
-    EVENT_MAP.invalidateSize();
-    EVENT_MAP.fitBounds(grp.getBounds().pad(0.5), { maxZoom: 6 });
+    STORY_MAP.invalidateSize();
+    STORY_MAP.fitBounds(grp.getBounds().pad(0.5), { maxZoom: 6 });
   }, 80);
 }
 
 function articleRow(a, mode = "focus") {
-  // "focus": selecting the row opens the story in Article Focus
-  // "plain": inert row inside an already-clickable event card
+  // "focus":   selecting the row opens the story
+  // "plain":   inert row inside an already-clickable card
+  // "current": the report being read, inside the story view's own timeline
   //
   // Nothing here navigates. A headline used to be an <a> that took the reader
   // straight to the outlet, which meant one stray click left Delphi for a page
@@ -1877,6 +1842,10 @@ function articleRow(a, mode = "focus") {
   const t = impTier(a.importance);
   const row = document.createElement("div");
   row.className = "article";
+  if (mode === "current") {
+    row.classList.add("article-current");
+    row.setAttribute("aria-current", "true");
+  }
   if (mode === "focus") {
     row.classList.add("article-focus");
     if (a.event_id) row.dataset.eventId = a.event_id;
@@ -1884,9 +1853,9 @@ function articleRow(a, mode = "focus") {
     row.setAttribute("role", "button");
     row.tabIndex = 0;    // it is a button now, so it has to be reachable as one
     row.title = "Open the story: summary, when and where it was published, who else has it";
-    row.onclick = () => openArticleFocus(a.id);
+    row.onclick = () => openStory(a.id);
     row.onkeydown = (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openArticleFocus(a.id); }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openStory(a.id); }
     };
   }
 
@@ -1916,7 +1885,8 @@ function articleRow(a, mode = "focus") {
   }
   if (a.translated_from) bits.push("🌐 translated from " + a.translated_from.toUpperCase());
   if ((a.categories || []).length) bits.push(a.categories.slice(0, 3).join(" · "));
-  if (mode === "focus") bits.push(a.event_id ? "⤢ open · event" : "⤢ open");
+  if (mode === "focus") bits.push("⤢ open");
+  if (mode === "current") bits.push("— you are reading this");
   const span = document.createElement("span");
   span.textContent = bits.join("  ·  ");
   meta.appendChild(span);

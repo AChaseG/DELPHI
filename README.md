@@ -64,13 +64,12 @@ feeds**.
     A 🪄 **query builder** composes the string from fill-in boxes ("at least
     one from each row, none of these") with a live preview and match count —
     no syntax needed
-  - **article focus** — clicking a headline never navigates away: it opens the
-    story in the dashboard (summary in full, an extract of the body, outlet,
-    publication time, places, importance, and who else is covering it), with the
-    outlet's own page a marked button inside it
-  - **event focus** — selecting an event opens a detail panel: synopsis, stats,
-    a map of where it's happening, the full cross-source timeline, the outlets
-    covering it, and related events
+  - **story focus** — clicking a headline never navigates away: it opens the
+    story in the dashboard. One view whether one outlet has it or forty: the
+    report you picked (summary in full, an extract of the body, outlet,
+    publication time, places, importance) and, when others are carrying it, a
+    map, the timeline of every report, the outlets covering it and related
+    stories. The outlet's own page is a marked button inside it
   - **minimum importance** to the international community (Critical / High /
     Notable / Routine tiers)
   - recency window, specific sources, sort by newest or importance
