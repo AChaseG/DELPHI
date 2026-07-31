@@ -38,14 +38,24 @@ _FTS_UNSAFE = re.compile(r"[぀-ヿ㐀-鿿가-힣฀-๿*?]")
 # that a selective query doesn't pay for many round trips.
 _STREAM_BATCH = 256
 
+# The same idea on the index path, where candidates arrive as bare ids: ids are
+# small, so read plenty per round trip, and fetch articles for them a page's
+# worth at a time — enough that most searches hydrate exactly one batch.
+_ID_BATCH = 1024
+_HYDRATE_BATCH = 120
+
 # How far the FTS path may scan before giving up on filling a page. Reached only
 # by a feed whose Python-side predicates reject nearly everything the index
 # offers; see the ladder in query_articles.
 _FTS_SCAN_CAP = 20000
-# Above this many index matches, the index is not narrowing anything: the newest
-# rows are dense with matches, so reading them in publication order is cheaper
-# than sorting every rowid the index returned.
-_FTS_NARROW_MAX = 5000
+# Above this many index matches, the index is not narrowing anything.
+#
+# Reading the candidates the index offers costs about 2µs each; a page instead
+# fills off the newest few hundred rows whenever matches are dense enough that
+# forty of them turn up there — which, on a 30-day archive of a quarter of a
+# million articles, is roughly one article in ten. Below that the index wins,
+# above it the recency scan does, and this is where the two meet.
+_FTS_NARROW_MAX = 20000
 
 # Scan caps tried in order. Each rung is only paid for if the one before it
 # couldn't fill the page, and the ladder always ends at the caller's cap.
@@ -211,11 +221,12 @@ def query_articles(
 ) -> list[Article]:
     """SQL prefilter on cheap columns, then compiled criteria over candidates.
 
-    When the criteria require text and a safe covering term-set exists, an FTS5
-    index narrows candidates to articles actually containing those terms — far
-    fewer rows, and it reaches the whole table instead of only the newest
-    `scan_cap`. The Python matcher below still decides exact membership, so FTS
-    only ever needs to return a superset."""
+    Two routes lead to the same page. The index route asks FTS5 which articles
+    contain the required text and reads those — few rows, and it reaches the
+    whole table rather than only the newest `scan_cap`. The recency route reads
+    the newest articles in order and lets the matcher sift them, which is
+    cheaper whenever the text is common enough to turn up there. Either way the
+    SQL only has to return a superset: the Python matcher decides membership."""
     matcher = CriteriaMatcher(criteria)
 
     base = select(Article).options(joinedload(Article.source))
@@ -224,27 +235,23 @@ def query_articles(
     if not matcher.needs_text:
         base = base.options(defer(Article.content))
 
-    # The index narrows the candidates — but only when it narrows them a lot.
-    #
-    # Handing it a term a third of the corpus contains costs more than it
-    # saves: SQLite materializes every matching rowid and then sorts that pile
-    # by publication date (measured: 119ms for 78,562 rows), where reading the
-    # newest rows straight off the published_at index costs nothing and the
-    # matcher rejects the misses just as fast. So the size of the candidate set
-    # is probed first — bounded, so a common word costs half a millisecond to
-    # recognize as common — and the index is used only when it is selective.
+    # Which way round to work — ask the index, or read the newest articles and
+    # let the matcher sift them — comes down to one number: how many articles
+    # the index would offer. Counting them is bounded, so it costs about a
+    # millisecond either way, and it is the difference between 2ms and 20ms for
+    # an unusual phrase and between 180ms and 8ms for an everyday word.
     fts_expr = _fts_expr(matcher) if matcher.needs_text else None
-    fts_narrow = False
+    index_narrows = False
     if fts_expr:
-        probe = db.execute(
+        offered = db.execute(
             text("SELECT count(*) FROM (SELECT rowid FROM articles_fts "
                  "WHERE articles_fts MATCH :ftsq LIMIT :cap)"),
             {"ftsq": fts_expr, "cap": _FTS_NARROW_MAX + 1},
         ).scalar() or 0
-        fts_narrow = probe <= _FTS_NARROW_MAX
+        index_narrows = offered <= _FTS_NARROW_MAX
 
-    def with_fts(stmt):
-        """Restrict to what the index matched.
+    def _fts_where():
+        """The condition "this article is one the index matched".
 
         Deliberately unbounded. Capping this subquery (ORDER BY rowid DESC
         LIMIT n) roughly halves the cost of searching a very common term, but
@@ -255,31 +262,36 @@ def query_articles(
         this system can do."""
         sub = (text("SELECT rowid FROM articles_fts WHERE articles_fts MATCH :ftsq")
                .bindparams(ftsq=fts_expr).columns(rowid=Article.id.type))
-        return stmt.where(Article.id.in_(select(sub.subquery().c.rowid)))
+        return Article.id.in_(select(sub.subquery().c.rowid))
 
-    stmt = with_fts(base) if fts_narrow else base
+    conds = []
     if matcher.since:
-        stmt = stmt.where(Article.published_at >= matcher.since)
+        conds.append(Article.published_at >= matcher.since)
     if matcher.date_from:
-        stmt = stmt.where(Article.published_at >= matcher.date_from)
+        conds.append(Article.published_at >= matcher.date_from)
     if matcher.date_to:
-        stmt = stmt.where(Article.published_at < matcher.date_to)
+        conds.append(Article.published_at < matcher.date_to)
     if matcher.min_importance:
-        stmt = stmt.where(Article.importance >= matcher.min_importance)
+        conds.append(Article.importance >= matcher.min_importance)
     if matcher.source_ids:
-        stmt = stmt.where(Article.source_id.in_(matcher.source_ids))
+        conds.append(Article.source_id.in_(matcher.source_ids))
 
-    if sort == "importance":
-        stmt = stmt.order_by(Article.importance.desc(), Article.published_at.desc())
-    else:
-        stmt = stmt.order_by(Article.published_at.desc())
+    # Id breaks ties last. Outlets publish on the minute, so thousands of
+    # articles share a timestamp exactly, and without a tiebreak which of them
+    # lands in the fortieth slot is up to whichever route the search took —
+    # the same search could return a slightly different page each time. Ids
+    # descend with publication order in the index, so this costs nothing.
+    order = ((Article.importance.desc(), Article.published_at.desc(), Article.id.desc())
+             if sort == "importance"
+             else (Article.published_at.desc(), Article.id.desc()))
 
     # Stream the candidates instead of materializing all of them: the loop stops
     # as soon as `limit` matches are found, so a query that fills its page early
     # pays for only the rows it read.
     def scan(cap: int) -> list[Article]:
         found: list[Article] = []
-        rows = db.scalars(stmt.limit(cap).execution_options(yield_per=_STREAM_BATCH))
+        rows = db.scalars(base.where(*conds).order_by(*order).limit(cap)
+                          .execution_options(yield_per=_STREAM_BATCH))
         for article in rows:
             if matcher.matches(article):
                 found.append(article)
@@ -287,6 +299,40 @@ def query_articles(
                     rows.close()      # stop the server-side cursor, don't drain it
                     break
         return found
+
+    def scan_indexed(cap: int) -> list[Article]:
+        """The same scan, but ordering identifiers rather than articles.
+
+        Restricting to what the index matched costs SQLite its index on
+        publication date, so it sorts the candidates itself — and in one query
+        that sort carries whole articles, bodies and all, through a temp B-tree
+        only to discard all but a page of them. Ordering bare ids and then
+        fetching the few that a page actually needs measured 96ms → 24ms on a
+        5,174-candidate search of 244,000 articles."""
+        ids = db.scalars(select(Article.id).where(*conds).where(_fts_where())
+                         .order_by(*order).limit(cap)
+                         .execution_options(yield_per=_ID_BATCH))
+        found: list[Article] = []
+        batch: list[int] = []
+
+        def take(batch: list[int]) -> None:
+            by_id = {a.id: a for a in db.scalars(base.where(Article.id.in_(batch)))}
+            for article_id in batch:       # the batch is already in scan order
+                article = by_id.get(article_id)
+                if article is not None and matcher.matches(article):
+                    found.append(article)
+
+        for article_id in ids:
+            batch.append(article_id)
+            if len(batch) >= _HYDRATE_BATCH:
+                take(batch)
+                batch = []
+                if len(found) >= limit:
+                    ids.close()
+                    return found[:limit]
+        if batch:
+            take(batch)
+        return found[:limit]
 
     # Widen the scan only when a page couldn't be filled.
     #
@@ -300,14 +346,15 @@ def query_articles(
     # A small cap alone would be a recall bug: predicates the SQL can't express
     # (excluded keywords, map areas, staleness) reject candidates in Python, so a
     # narrow feed may need to look at thousands of rows to find forty. Hence the
-    # ladder — the last rung is the old behaviour, so nothing that used to be
-    # findable stops being findable; the fast rungs just spare the common case a
-    # sort it never needed.
-    if fts_narrow:
-        # Few enough candidates that the whole set is cheaper than a ladder:
-        # measured at 15ms for 5,174 rows, against 18ms for the same query
-        # capped at 20,000. There is nothing to climb.
-        return scan(_FTS_SCAN_CAP)
+    # ladder — its last rung reaches as far as the search ever did, so nothing
+    # that used to be findable stops being findable; the fast rungs just spare
+    # the common case a sort it never needed.
+    #
+    if index_narrows:
+        # The index offers few enough articles to be worth reading whole: there
+        # is nothing for a ladder to climb, and a rung would be pure overhead —
+        # a search this selective has almost nothing among the newest rows.
+        return scan_indexed(max(scan_cap, _FTS_SCAN_CAP))
 
     for cap in _SCAN_LADDER:
         if cap >= scan_cap:
@@ -318,10 +365,9 @@ def query_articles(
     if fts_expr:
         # A page the recency rungs could not fill, on text the index was too
         # blunt to narrow: the remaining matches are older than the rows read so
-        # far. Ask the index after all, and skip the plain deep scan on the way
-        # — the index returns a superset of every match in the whole table, so
-        # it reaches strictly further than the newest `scan_cap` rows would,
-        # and paying for both was a wasted 20,000-row sort (measured: 170ms).
-        stmt = with_fts(stmt)
-        return scan(max(scan_cap, _FTS_SCAN_CAP))
+        # far. Ask the index anyway, and skip the plain deep scan on the way —
+        # the index returns a superset of every match in the whole table, so it
+        # reaches strictly further than the newest `scan_cap` rows would, and
+        # paying for both was a wasted 20,000-row sort (measured: 170ms).
+        return scan_indexed(max(scan_cap, _FTS_SCAN_CAP))
     return scan(scan_cap)

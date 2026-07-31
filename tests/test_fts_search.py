@@ -182,20 +182,21 @@ def test_scan_ladder_does_not_change_results(deep, label, crit, sort):
     assert laddered == full, label
 
 
-def _probed_and_always_indexed(db, crit, sort="newest", limit=40):
-    """The same query as the search runs it — the index used only when the
-    probe finds it selective — and with the probe defeated so the index is
-    always used, which is what the search did before it learned to skip it."""
-    probed = [a.id for a in query_articles(db, crit, sort=sort, limit=limit)]
-    db.expire_all()
+def _by_route(db, crit, sort="newest", limit=40):
+    """The same query down each route: candidates chosen by the index, and
+    candidates read newest-first and sifted. The search picks between them on
+    how much the index would narrow things; both have to agree."""
     saved = matching._FTS_NARROW_MAX
-    matching._FTS_NARROW_MAX = 10 ** 9
+    pages = []
     try:
-        indexed = [a.id for a in query_articles(db, crit, sort=sort, limit=limit)]
+        for threshold in (10 ** 9, 0):        # always index, then never index
+            matching._FTS_NARROW_MAX = threshold
+            pages.append([a.id for a in
+                          query_articles(db, crit, sort=sort, limit=limit)])
+            db.expire_all()
     finally:
         matching._FTS_NARROW_MAX = saved
-    db.expire_all()
-    return probed, indexed
+    return pages
 
 
 @pytest.mark.parametrize("label,crit,sort", [
@@ -212,8 +213,32 @@ def test_skipping_a_blunt_index_does_not_change_results(deep, label, crit, sort)
     """Deciding whether to consult the index has to be invisible in the output.
     Both routes return a superset the matcher then judges, so the page they
     produce must be identical — otherwise the faster route is a recall bug."""
-    probed, indexed = _probed_and_always_indexed(deep, crit, sort=sort)
-    assert probed == indexed, label
+    indexed, recency = _by_route(deep, crit, sort=sort)
+    assert indexed == recency, label
+
+
+@pytest.mark.parametrize("sort", ["newest", "importance"])
+def test_articles_sharing_a_timestamp_come_back_in_a_fixed_order(db, sort):
+    """Outlets publish on the minute, so a page boundary usually falls in the
+    middle of a group of articles with identical timestamps. Which of them makes
+    the page has to be settled, or the same search returns different pages
+    depending on which route it took."""
+    src = Source(name="S", rss_url="http://t/f", scope="national", tier=2)
+    db.add(src)
+    db.flush()
+    stamp = utcnow()
+    for i in range(30):                      # every one published at the same instant
+        db.add(Article(source_id=src.id, url=f"http://t/{i}", guid=str(i),
+                       title=f"Report {i} on flooding", summary="", content="",
+                       published_at=stamp, importance=50, language="en",
+                       country="US", categories=[], places=[]))
+    db.commit()
+
+    page = [a.id for a in query_articles(db, {"keywords": ["flooding"]},
+                                         sort=sort, limit=10)]
+    assert page == sorted(page, reverse=True)      # newest arrival first
+    indexed, recency = _by_route(db, {"keywords": ["flooding"]}, sort=sort, limit=10)
+    assert indexed == recency == page
 
 
 def test_blunt_term_still_reaches_past_the_scan_cap(deep):
