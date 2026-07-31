@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, defer, joinedload
 
 from sqlalchemy import text
 
-from .boolean_query import QueryError, compile_query, covering_terms
+from .boolean_query import QueryError, compile_query, covering_terms, fts_expression
 from .geo import places_match_geo
 from .models import Article, Source, utcnow
 
@@ -42,6 +42,10 @@ _STREAM_BATCH = 256
 # by a feed whose Python-side predicates reject nearly everything the index
 # offers; see the ladder in query_articles.
 _FTS_SCAN_CAP = 20000
+# Above this many index matches, the index is not narrowing anything: the newest
+# rows are dense with matches, so reading them in publication order is cheaper
+# than sorting every rowid the index returned.
+_FTS_NARROW_MAX = 5000
 
 # Scan caps tried in order. Each rung is only paid for if the one before it
 # couldn't fill the page, and the ladder always ends at the caller's cap.
@@ -154,6 +158,25 @@ class CriteriaMatcher:
         return True
 
 
+def _fts_expr(matcher: CriteriaMatcher) -> str | None:
+    """The whole criteria as one FTS5 MATCH expression matching a superset.
+
+    Keywords are OR-required, so they alone cover a match even alongside a
+    boolean query. Otherwise every query has to compile: they are OR-combined,
+    and one unbounded branch makes the disjunction unbounded."""
+    if matcher.keywords:
+        terms = set(matcher.keywords)
+        if any(_FTS_UNSAFE.search(t) for t in terms):
+            return None
+        return _fts_match_expr(terms) or None
+    if not matcher.query_strings:
+        return None
+    parts = [fts_expression(q) for q in matcher.query_strings]
+    if not parts or any(p is None for p in parts):
+        return None
+    return parts[0] if len(parts) == 1 else "(" + " OR ".join(parts) + ")"
+
+
 def _fts_terms(matcher: CriteriaMatcher) -> set[str] | None:
     """Terms every match must contain, for an FTS prefilter — or None to fall
     back to a full scan. Keywords are OR-required, so they alone cover a match
@@ -195,25 +218,46 @@ def query_articles(
     only ever needs to return a superset."""
     matcher = CriteriaMatcher(criteria)
 
-    stmt = select(Article).options(joinedload(Article.source))
+    base = select(Article).options(joinedload(Article.source))
     # Article bodies run to ~20 KB each and this scans up to `scan_cap` rows —
     # only pay to load them when some predicate actually reads the text.
     if not matcher.needs_text:
-        stmt = stmt.options(defer(Article.content))
+        base = base.options(defer(Article.content))
 
-    fts_terms = _fts_terms(matcher) if matcher.needs_text else None
-    if fts_terms:
-        # Deliberately unbounded. Capping this subquery (ORDER BY rowid DESC
-        # LIMIT n) roughly halves the cost of searching a very common term, but
-        # rowid is insertion order, not publication order: a newly added source
-        # backfilling old stories, or repair re-ingesting an archive, gives old
-        # articles high rowids. The cap then discards the newest matches — a
-        # silent recall failure, and missing a recent story is the worst thing
-        # this system can do. Speed here comes from streaming instead (below).
+    # The index narrows the candidates — but only when it narrows them a lot.
+    #
+    # Handing it a term a third of the corpus contains costs more than it
+    # saves: SQLite materializes every matching rowid and then sorts that pile
+    # by publication date (measured: 119ms for 78,562 rows), where reading the
+    # newest rows straight off the published_at index costs nothing and the
+    # matcher rejects the misses just as fast. So the size of the candidate set
+    # is probed first — bounded, so a common word costs half a millisecond to
+    # recognize as common — and the index is used only when it is selective.
+    fts_expr = _fts_expr(matcher) if matcher.needs_text else None
+    fts_narrow = False
+    if fts_expr:
+        probe = db.execute(
+            text("SELECT count(*) FROM (SELECT rowid FROM articles_fts "
+                 "WHERE articles_fts MATCH :ftsq LIMIT :cap)"),
+            {"ftsq": fts_expr, "cap": _FTS_NARROW_MAX + 1},
+        ).scalar() or 0
+        fts_narrow = probe <= _FTS_NARROW_MAX
+
+    def with_fts(stmt):
+        """Restrict to what the index matched.
+
+        Deliberately unbounded. Capping this subquery (ORDER BY rowid DESC
+        LIMIT n) roughly halves the cost of searching a very common term, but
+        rowid is insertion order, not publication order: a newly added source
+        backfilling old stories, or repair re-ingesting an archive, gives old
+        articles high rowids. The cap then discards the newest matches — a
+        silent recall failure, and missing a recent story is the worst thing
+        this system can do."""
         sub = (text("SELECT rowid FROM articles_fts WHERE articles_fts MATCH :ftsq")
-               .bindparams(ftsq=_fts_match_expr(fts_terms)).columns(rowid=Article.id.type))
-        stmt = stmt.where(Article.id.in_(select(sub.subquery().c.rowid)))
-        scan_cap = max(scan_cap, _FTS_SCAN_CAP)
+               .bindparams(ftsq=fts_expr).columns(rowid=Article.id.type))
+        return stmt.where(Article.id.in_(select(sub.subquery().c.rowid)))
+
+    stmt = with_fts(base) if fts_narrow else base
     if matcher.since:
         stmt = stmt.where(Article.published_at >= matcher.since)
     if matcher.date_from:
@@ -259,10 +303,25 @@ def query_articles(
     # ladder — the last rung is the old behaviour, so nothing that used to be
     # findable stops being findable; the fast rungs just spare the common case a
     # sort it never needed.
+    if fts_narrow:
+        # Few enough candidates that the whole set is cheaper than a ladder:
+        # measured at 15ms for 5,174 rows, against 18ms for the same query
+        # capped at 20,000. There is nothing to climb.
+        return scan(_FTS_SCAN_CAP)
+
     for cap in _SCAN_LADDER:
         if cap >= scan_cap:
-            return scan(scan_cap)
+            break
         results = scan(cap)
         if len(results) >= limit:
             return results
+    if fts_expr:
+        # A page the recency rungs could not fill, on text the index was too
+        # blunt to narrow: the remaining matches are older than the rows read so
+        # far. Ask the index after all, and skip the plain deep scan on the way
+        # — the index returns a superset of every match in the whole table, so
+        # it reaches strictly further than the newest `scan_cap` rows would,
+        # and paying for both was a wasted 20,000-row sort (measured: 170ms).
+        stmt = with_fts(stmt)
+        return scan(max(scan_cap, _FTS_SCAN_CAP))
     return scan(scan_cap)

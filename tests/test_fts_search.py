@@ -182,6 +182,57 @@ def test_scan_ladder_does_not_change_results(deep, label, crit, sort):
     assert laddered == full, label
 
 
+def _probed_and_always_indexed(db, crit, sort="newest", limit=40):
+    """The same query as the search runs it — the index used only when the
+    probe finds it selective — and with the probe defeated so the index is
+    always used, which is what the search did before it learned to skip it."""
+    probed = [a.id for a in query_articles(db, crit, sort=sort, limit=limit)]
+    db.expire_all()
+    saved = matching._FTS_NARROW_MAX
+    matching._FTS_NARROW_MAX = 10 ** 9
+    try:
+        indexed = [a.id for a in query_articles(db, crit, sort=sort, limit=limit)]
+    finally:
+        matching._FTS_NARROW_MAX = saved
+    db.expire_all()
+    return probed, indexed
+
+
+@pytest.mark.parametrize("label,crit,sort", [
+    # "common" is in every article: the probe should decline the index here.
+    ("blunt term", {"keywords": ["common"]}, "newest"),
+    ("blunt term by importance", {"keywords": ["common"]}, "importance"),
+    # "needle" is in 30 of 1500: selective enough for the index to earn its keep.
+    ("selective term", {"keywords": ["needle"]}, "newest"),
+    ("selective boolean", {"queries": ["common AND needle"]}, "newest"),
+    ("blunt term with an exclusion",
+     {"keywords": ["common"], "exclude_keywords": ["filler"]}, "newest"),
+])
+def test_skipping_a_blunt_index_does_not_change_results(deep, label, crit, sort):
+    """Deciding whether to consult the index has to be invisible in the output.
+    Both routes return a superset the matcher then judges, so the page they
+    produce must be identical — otherwise the faster route is a recall bug."""
+    probed, indexed = _probed_and_always_indexed(deep, crit, sort=sort)
+    assert probed == indexed, label
+
+
+def test_blunt_term_still_reaches_past_the_scan_cap(deep):
+    """The tail of the ladder. When a term is too common for the index to
+    narrow, the recency rungs run first — but a match older than everything
+    they read must still be found, so the search falls back to the index."""
+    src_id = deep.query(Article).first().source_id
+    buried = Article(source_id=src_id, url="http://d/buried", guid="buried",
+                     title="Report from far back", summary="common routine",
+                     content="common routine", country="FR", language="en",
+                     categories=["world"], places=[],
+                     published_at=utcnow() - timedelta(days=30), importance=50)
+    deep.add(buried)
+    deep.commit()
+    got = query_articles(deep, {"keywords": ["common"], "countries": ["FR"]},
+                         limit=40, scan_cap=500)
+    assert [a.id for a in got] == [buried.id]
+
+
 def test_sparse_term_still_fills_its_page(deep):
     """The guard for the ladder's premise: a term appearing once every 50
     articles must still return a full page, which means rung one (400 rows)

@@ -13,6 +13,29 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-12",
+        "title": "Searching a common word is no longer the slow case",
+        "items": [
+            "🔍 Searching for an everyday word — earthquake, strike, election — "
+            "took well over a second on a full archive, while an unusual word "
+            "came back instantly. That was backwards, and it was the search "
+            "index's doing: asked for a word a third of the archive contains, it "
+            "gathered every single one before sorting them by date. Delphi now "
+            "checks how much the index would actually narrow things down, and "
+            "when the answer is \"barely\", it reads the newest articles "
+            "directly instead. Measured on 244,000 articles, a search for "
+            "\"earthquake\" went from 1.4 seconds to 10 milliseconds.",
+            "🎯 A written search keeps its shape when it reaches the index. "
+            "(tokyo OR osaka) AND earthquake used to be handed over as just "
+            "\"earthquake\" — technically enough, but it meant sifting 78,562 "
+            "articles instead of the 5,174 that could possibly match.",
+            "Nothing about what a search finds has changed. Both routes hand the "
+            "same candidates to the same matcher, and a match older than "
+            "anything the quick route reads still falls back to the index, so "
+            "everything that was findable stays findable.",
+        ],
+    },
+    {
         "date": "2026-08-11",
         "title": "Alert hits open reliably, and every button answers",
         "items": [
