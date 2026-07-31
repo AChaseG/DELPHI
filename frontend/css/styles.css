@@ -835,6 +835,31 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 /* ---------- in-flight button state ---------- */
 /* Applied by feedback() while a button's async handler runs, so even an
    icon-only button visibly acknowledges the click. */
+/* ---------- press feedback ----------
+   Every control answers a click at once, before whatever it triggers has had
+   time to happen. :active alone is not enough: a handler that starts work on
+   the same tick can keep the browser from ever painting it, and on a touch
+   screen the state is gone before the finger lifts. So a class is added on
+   press and taken off a fifth of a second later, which always gets a frame. */
+button:active, .chip:active, .loc-result:active,
+.article-focus:active, .event-clickable:active, .src-pick-row:active,
+.ev-related-row:active, .ar-cov-row:active {
+  transform: translateY(1px);
+}
+button.pressed, .chip.pressed, .loc-result.pressed, .src-pick-row.pressed,
+.ev-related-row.pressed, .ar-cov-row.pressed {
+  filter: brightness(1.25);
+}
+.article-focus.pressed, .event-clickable.pressed { background: var(--surface-2); }
+/* Buttons that carry their own colour shift instead, so brightness on a green
+   primary doesn't wash it out. */
+.btn-primary.pressed { filter: brightness(0.88); }
+@media (prefers-reduced-motion: reduce) {
+  button:active, .chip:active, .loc-result:active, .article-focus:active,
+  .event-clickable:active, .src-pick-row:active, .ev-related-row:active,
+  .ar-cov-row:active { transform: none; }
+}
+
 button.working {
   position: relative;
   opacity: 0.65;
@@ -888,31 +913,6 @@ button.working::after {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pop-menu button:hover { background: var(--accent-strong); color: var(--accent-ink); }
-
-/* ---------- Boolean search builder ---------- */
-.qb-legend { margin: 0 0 4px; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
-.qb-legend li { font-size: 12px; color: var(--ink-2); }
-.qb-legend b { color: var(--ink); }
-.qb-legend em { color: var(--ink-muted); font-style: normal; }
-.qb-modal { width: 560px; }
-#qb-groups { display: flex; flex-direction: column; gap: 6px; }
-.qb-group { display: flex; gap: 6px; align-items: center; }
-.qb-group .chip-input { flex: 1; }
-.qb-conj {
-  font-size: 11px; font-weight: 700; color: var(--gold);
-  letter-spacing: 1px; padding: 1px 0 1px 12px;
-}
-#qb-near { display: flex; flex-direction: column; gap: 6px; }
-.qb-near-row { display: flex; gap: 6px; align-items: center; }
-.qb-near-row input[type="text"] { flex: 1; min-width: 0; }
-.qb-near-row span { font-size: 12px; color: var(--ink-muted); white-space: nowrap; }
-.qb-near-n { width: 60px; }
-.qb-preview {
-  display: block; background: var(--surface-2);
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: 9px 11px; font-size: 12.5px; word-break: break-word;
-  color: var(--ink);
-}
 
 /* ---------- event focus modal ---------- */
 .ev-badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

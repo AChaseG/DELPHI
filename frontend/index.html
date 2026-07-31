@@ -272,8 +272,8 @@
               you'll recognize). Add <b>keywords</b> — press Enter after each; an article
               matching <em>any</em> of them qualifies. Add <b>exclude keywords</b> to drop
               matches containing them. For anything more precise, write a <b>Boolean
-              search</b>, or press <b>🪄 build</b> beside the row to assemble one from
-              boxes. <b>+ Add another Boolean search</b> gives the feed a second, separate
+              search</b> — the row checks it as you type and says whether it is valid.
+              <b>+ Add another Boolean search</b> gives the feed a second, separate
               search — matches from all of them fill the same column.</li>
             <li><b>Where.</b> Pick countries (Ctrl or ⌘-click for several; none means
               everywhere), and/or press <b>Draw area on map</b> and draw a polygon,
@@ -375,25 +375,6 @@
              appears, straight away and on every device you sign in from, so a second
              pass over the board shows you only what you haven't triaged. Hover a
              dimmed row to read it at full strength.</p>
-        </details>
-
-        <details>
-          <summary>🪄 Building a Boolean search from boxes</summary>
-          <ol>
-            <li>In the wizard's <b>Topic</b> step, press <b>🪄 build</b> beside a search row.</li>
-            <li>Under <b>Must include</b>, each row is a requirement — every row must be
-              satisfied. Put alternatives in the same row and any one of them counts
-              ("Tokyo, Osaka, Kyoto" in one row, "earthquake" in another).</li>
-            <li><b>+ AND another requirement</b> adds another row that must also be met.</li>
-            <li><b>Near each other</b> pairs two words that must appear close together,
-              with the distance you choose.</li>
-            <li><b>Must NOT include</b> takes the words that disqualify an article.</li>
-            <li>Watch <b>Generated search</b> build itself as you type, and the status
-              line confirm it's valid.</li>
-            <li>Press <b>Use this search</b> to drop it into the row you started from.</li>
-          </ol>
-          <p>You can edit the generated text afterwards — the builder is a starting
-             point, not a cage.</p>
         </details>
 
         <details>
@@ -753,9 +734,8 @@
              means NEAR/10; chains like <code>a NEAR/3 b NEAR/3 c</code> check each
              adjacent pair).</p>
           <p>A feed can hold <b>several searches</b> — each runs separately, all fill the
-             same feed. Prefer boxes over syntax? Click <b>🪄 build</b> next to any search
-             row: requirement rows, proximity pairs, excluded terms — every operator type,
-             no syntax needed, with a live match count.</p>
+             same feed. Each row validates as you type, so a stray bracket is caught
+             before you save rather than after.</p>
         </details>
 
         <details>
@@ -1468,53 +1448,6 @@
     </div>
   </div>
 
-  <div id="qb-backdrop" class="modal-backdrop" hidden>
-    <div class="modal qb-modal" role="dialog" aria-modal="true">
-      <div class="modal-head">
-        <h2>🪄 Build a Boolean search</h2>
-        <button class="icon-btn" id="btn-close-qb" aria-label="Close the search builder">✕</button>
-      </div>
-      <div class="modal-body">
-        <p class="wiz-guide">Boolean searching uses operators to define relationships between
-           keywords — requiring all terms, allowing any synonymous terms, or excluding unwanted
-           concepts — to narrow or broaden your results. Fill the boxes and the search writes
-           itself:</p>
-        <ul class="qb-legend">
-          <li><b>AND</b> <em>(or just spaces)</em> — narrows: every term must be present</li>
-          <li><b>OR</b> — broadens: results may feature any of the terms</li>
-          <li><b>NOT</b> <em>(or -term)</em> — excludes words to remove irrelevant results</li>
-          <li><b>"quotation marks"</b> — exact phrase in the exact order (multi-word terms are quoted for you)</li>
-          <li><b>( parentheses )</b> — group terms to control the logic (added around each OR row for you)</li>
-          <li><b>strik*</b> / <b>organi?ation</b> — wildcards: any word ending / exactly one character</li>
-          <li><b>NEAR/5</b> — proximity: terms at most 5 words apart</li>
-        </ul>
-        <div class="field">
-          <span>Must include — every row is required (AND); any term within a row counts (OR)</span>
-          <div id="qb-groups"></div>
-          <div><button class="btn small" id="btn-qb-add-group">+ AND another requirement</button></div>
-        </div>
-        <div class="field">
-          <span>Near each other — words that must appear close together <em>(optional — NEAR)</em></span>
-          <div id="qb-near"></div>
-          <div><button class="btn small" id="btn-qb-add-near">+ Add a proximity requirement</button></div>
-        </div>
-        <div class="field">
-          <span>Must NOT include any of these <em>(NOT — excludes)</em></span>
-          <div id="qb-not"></div>
-        </div>
-        <div class="field">
-          <span>Generated search</span>
-          <code id="qb-preview" class="qb-preview">—</code>
-          <span id="qb-status" class="query-status"></span>
-        </div>
-      </div>
-      <div class="modal-foot">
-        <span class="spacer"></span>
-        <button class="btn" id="btn-qb-cancel">Cancel</button>
-        <button class="btn btn-primary" id="btn-qb-insert">Use this search</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Story focus. A single report and a story forty outlets are carrying are
        the same thing seen from different distances, so they are one view: the

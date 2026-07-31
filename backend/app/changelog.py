@@ -13,6 +13,28 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-11",
+        "title": "Alert hits open reliably, and every button answers",
+        "items": [
+            "🔔 Clicking a hit in the alerts panel sometimes did nothing at all. "
+            "Every alert that fires rebuilds that panel, and if the rebuild "
+            "landed between pressing a hit and letting go, the row was no longer "
+            "there — at which point the browser fires no click whatsoever, so "
+            "nothing could act on it. The panel now leaves its rows alone when "
+            "nothing about them has changed, and a press whose row is replaced "
+            "mid-click still opens the story it was aimed at.",
+            "👆 Every button, chip and row now answers a press immediately, "
+            "before whatever it does has begun — a click that starts work on the "
+            "same tick could otherwise leave the browser no chance to show "
+            "anything. Buttons that go on to wait for the server keep the "
+            "spinner they had, and a few that were missing it (Pantheons, the "
+            "operator console, signing out, saving a source) have it now.",
+            "🪄 The Boolean search builder has been removed. Writing a search by "
+            "hand is unchanged, and every row still tells you whether what you "
+            "have typed is valid.",
+        ],
+    },
+    {
         "date": "2026-08-10",
         "title": "The location search finds addresses now",
         "items": [

@@ -83,6 +83,8 @@ async function boot() {
   };
   wireTopbar();
   initBoardScrollbar();
+  wirePressFeedback();
+  wireRowPressRecovery();
   renderStats();
 
   // A board from the disk copy, on screen before the server has answered.
@@ -767,6 +769,7 @@ function wireAuth() {
     Session.clear();
     location.reload();
   };
+  feedback(el("btn-profile"));
 }
 
 function wireGate() {
@@ -1577,6 +1580,54 @@ function eventGroup(g) {
 let STORY_MAP = null;
 let STORY_MAP_SEQ = 0;   // which story the map is being drawn for
 
+/* A row can be taken out from under a press. Columns refresh on a timer and the
+   alerts panel rebuilds every time an alert fires; if that lands between the
+   press and the release, the row the reader aimed at is no longer in the
+   document — and Chrome then fires no click at all, so nothing acts on it. The
+   press is remembered and honoured on release instead.
+
+   Only when the row really was removed: a press deliberately released somewhere
+   else leaves the row in place, its own click still fires, and this stays out of
+   the way. A drag or a scroll moves too far to count. */
+let PRESSED_ROW = null;
+const PRESS_SLOP_PX = 12;
+
+/* Every control acknowledges the press itself, whatever it goes on to do.
+   A handler that starts work synchronously can stop the browser painting
+   :active at all, and on a touch screen that state is gone before the finger
+   lifts — so the class is added on press and removed on a timer, which always
+   survives a frame. Delegated, so anything rendered later is covered too. */
+const PRESS_FLASH_MS = 200;
+
+function wirePressFeedback() {
+  const PRESSABLE = "button, .chip, .loc-result, .article-focus, .event-clickable,"
+    + " .src-pick-row, .ev-related-row, .ar-cov-row";
+  document.addEventListener("pointerdown", (e) => {
+    const target = e.target.closest && e.target.closest(PRESSABLE);
+    if (!target || target.disabled) return;
+    target.classList.add("pressed");
+    setTimeout(() => target.classList.remove("pressed"), PRESS_FLASH_MS);
+  }, true);
+}
+
+function wireRowPressRecovery() {
+  document.addEventListener("pointerdown", (e) => {
+    const row = e.target.closest && e.target.closest(".article-focus");
+    PRESSED_ROW = row && row.dataset.articleId
+      ? { id: +row.dataset.articleId, node: row, x: e.clientX, y: e.clientY }
+      : null;
+  }, true);
+  document.addEventListener("pointercancel", () => { PRESSED_ROW = null; }, true);
+  document.addEventListener("pointerup", (e) => {
+    const pressed = PRESSED_ROW;
+    PRESSED_ROW = null;
+    if (!pressed || pressed.node.isConnected) return;   // its own click will run
+    if (Math.abs(e.clientX - pressed.x) > PRESS_SLOP_PX
+        || Math.abs(e.clientY - pressed.y) > PRESS_SLOP_PX) return;   // a drag
+    openStory(pressed.id);
+  }, true);
+}
+
 /* ---------- story focus ----------
    What a headline opens, and the only place a story is read from. A single
    report and a story forty outlets are carrying are the same thing at
@@ -1930,6 +1981,7 @@ function articleRow(a, mode = "focus") {
     row.setAttribute("role", "button");
     row.tabIndex = 0;    // it is a button now, so it has to be reachable as one
     row.title = "Open the story: summary, when and where it was published, who else has it";
+    row.dataset.articleId = a.id;      // so a press can be honoured after a rebuild
     // The row's own article opens the view immediately; the rest of the story
     // fills in behind it. Pointing at a row is enough to start fetching.
     row.onclick = () => openStory(a);
@@ -2077,6 +2129,7 @@ function wirePantheons() {
     await refreshPantheons();
     renderPantheonsPanel();
   };
+  feedback(el("btn-pantheons"));
   el("btn-close-pantheons").onclick = () => { el("pantheons-panel").hidden = true; };
   wirePantheonModal();
   el("btn-create-pantheon").onclick = () => PantheonModal.open();
@@ -2189,6 +2242,7 @@ function wireAdmin() {
     el("admin-panel").hidden = false;
     await renderAdminUsers();
   };
+  feedback(el("btn-admin"));
   el("btn-close-admin").onclick = () => { el("admin-panel").hidden = true; };
   let t;
   el("admin-search").addEventListener("input", () => {
@@ -3013,6 +3067,7 @@ async function refreshAlerts(preloaded = null) {
 /* Which render owns the panel. Every alert that fires re-renders it, so on a
    busy account this runs constantly. */
 let alertsPanelSeq = 0;
+let alertsPanelShowing = null;   // signature of what the panel currently shows
 
 async function renderAlertsPanel() {
   const box = el("alerts-list");
@@ -3030,6 +3085,13 @@ async function renderAlertsPanel() {
   // A later render started while this one was fetching; it owns the panel now.
   if (wanted !== alertsPanelSeq) return;
   renderAlertsMap(eventsByAlert);
+  // An alert firing re-renders this panel, and most of those changes nothing
+  // here — a hit on another alert, a repeat of one already listed. Rebuilding
+  // anyway takes every row out from under whatever the reader was reaching for.
+  const signature = JSON.stringify(eventsByAlert.map(({ alert, events }) =>
+    [alert.id, alert.active, alert.unseen, events.map(e => [e.event_id, e.seen])]));
+  if (signature === alertsPanelShowing && el("alerts-list").children.length) return;
+  alertsPanelShowing = signature;
   // Built off-screen and swapped in one go. Emptying the panel first and
   // filling it after the requests came back left it blank for as long as they
   // took — and a hit clicked in that window landed on nothing at all, which is
@@ -3291,6 +3353,7 @@ function sourceEditor(s) {
       toast("Source updated", name.value.trim());
     } catch (e) { toast("Could not save source", e.message); }
   };
+  feedback(save, "Saving…");
   const cancel = document.createElement("button");
   cancel.className = "btn"; cancel.textContent = "Cancel";
   cancel.onclick = () => renderSourcesPanel();

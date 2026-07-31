@@ -60,10 +60,8 @@ feeds**.
   - free keywords + exclude-keywords
   - **user-written boolean queries** — `("supply chain" OR semiconductor) AND
     (china OR taiwan) NOT rumor` — with live validation; a feed can hold
-    **several queries**, each running separately, all populating the same feed.
-    A 🪄 **query builder** composes the string from fill-in boxes ("at least
-    one from each row, none of these") with a live preview and match count —
-    no syntax needed
+    **several queries**, each running separately, all populating the same feed,
+    each validated as you type
   - **story focus** — clicking a headline never navigates away: it opens the
     story in the dashboard. One view whether one outlet has it or forty: the
     report you picked (summary in full, an extract of the body, outlet,
