@@ -1,5 +1,8 @@
 """In-process API tests (FastAPI TestClient): auth, account settings, and the
 Pantheon share/permission flow across accounts."""
+from pathlib import Path
+
+
 def test_register_login_and_gate(client, register):
     hdr = register("alice")
     # protected route needs the token
@@ -175,3 +178,30 @@ def test_demo_endpoints_are_gone(client, register):
     hdr = register("nodemo")
     for path in ("/api/demo/seed", "/api/demo/purge"):
         assert client.post(path, headers=hdr).status_code == 404
+
+
+def test_text_responses_are_compressed_but_live_updates_are_not(client, register):
+    """Compression is most of what a phone away from wi-fi is waiting for, and
+    it must not reach the alert stream: an event held back until a compression
+    buffer fills is an alert that arrives late."""
+    from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES
+
+    hdr = register("zipper")
+
+    page = client.get("/js/app.js", headers={"Accept-Encoding": "gzip"})
+    assert page.headers.get("content-encoding") == "gzip"
+    assert "Accept-Encoding" in page.headers.get("vary", "")
+    # A client that says it cannot take gzip is still served plain text.
+    plain = client.get("/js/app.js", headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in plain.headers
+
+    listing = client.get("/api/sources?slim=1", headers={**hdr, "Accept-Encoding": "gzip"})
+    assert listing.headers.get("content-encoding") == "gzip"
+
+    # The live stream is exempt by its content type. Reading the stream itself
+    # here would never return — it stays open for the life of the session — so
+    # what is checked is the exemption the middleware applies to it.
+    assert "text/event-stream" in DEFAULT_EXCLUDED_CONTENT_TYPES
+    assert 'media_type="text/event-stream"' in \
+        (Path(__file__).resolve().parent.parent
+         / "backend" / "app" / "main.py").read_text()

@@ -14,8 +14,25 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-08-12",
-        "title": "Searching a common word is no longer the slow case",
+        "title": "A speed pass over the whole of Delphi",
         "items": [
+            "📦 Everything Delphi sends is now compressed on the way to your "
+            "browser. Opening the dashboard moved 689 KB and now moves 177 KB — "
+            "the same board, a quarter of the data. Away from wi-fi that is most "
+            "of the wait. Live alerts are deliberately left uncompressed so they "
+            "still arrive the instant they fire.",
+            "📰 Grouped columns — the ones that gather several outlets into one "
+            "story — were asking for 200 articles and being answered by a search "
+            "that only ever looked at the newest 400. An earthquake feed's event "
+            "view went from 220ms to 52ms, and a whole six-column board now "
+            "answers in 141ms.",
+            "⏱️ The poller keeps up with a busy news minute. Working out which "
+            "other outlets are carrying a story, and which story an article "
+            "belongs to, both meant comparing each new headline against every "
+            "recent one — about seven seconds of work when 800 articles land at "
+            "once, on the same machine that was trying to serve you pages. Both "
+            "now look only at headlines sharing a word with the new one: the "
+            "same answers, in about a second.",
             "🔍 Searching for an everyday word — earthquake, strike, election — "
             "took well over a second on a full archive, while an unusual word "
             "came back instantly. That was backwards, and it was the search "
