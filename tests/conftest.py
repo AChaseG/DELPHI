@@ -58,7 +58,7 @@ def client():
 @pytest.fixture
 def register(client):
     """Returns register(username) -> Authorization header for a new account."""
-    def _register(username="alice", email=None, password="password123"):
+    def _register(username="alice", email=None, password="correct-horse-staple"):
         r = client.post("/api/auth/register", json={
             "username": username, "email": email or f"{username}@example.com",
             "password": password})

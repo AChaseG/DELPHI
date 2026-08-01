@@ -8,7 +8,7 @@ def test_register_login_and_gate(client, register):
     # protected route needs the token
     assert client.get("/api/feeds").status_code == 401
     assert client.get("/api/feeds", headers=hdr).status_code == 200
-    r = client.post("/api/auth/login", json={"username": "alice", "password": "password123"})
+    r = client.post("/api/auth/login", json={"username": "alice", "password": "correct-horse-staple"})
     assert r.status_code == 200 and r.json()["token"]
     assert client.post("/api/auth/login",
                        json={"username": "alice", "password": "wrong"}).status_code == 401
@@ -59,10 +59,10 @@ def test_pantheon_share_and_permissions(client, register):
 
 def test_registration_requires_valid_email_and_password(client):
     assert client.post("/api/auth/register",
-                       json={"username": "x", "email": "a@b.com", "password": "password123"}
+                       json={"username": "x", "email": "a@b.com", "password": "correct-horse-staple"}
                        ).status_code == 422  # username too short
     assert client.post("/api/auth/register",
-                       json={"username": "gooduser", "email": "nope", "password": "password123"}
+                       json={"username": "gooduser", "email": "nope", "password": "correct-horse-staple"}
                        ).status_code == 422  # bad email
     assert client.post("/api/auth/register",
                        json={"username": "gooduser", "email": "a@b.com", "password": "short"}
@@ -84,7 +84,7 @@ def test_action_links_use_a_path_segment(client, monkeypatch):
     monkeypatch.setenv("NEWS_PUBLIC_URL", "https://delphi-news.com")
 
     client.post("/api/auth/register", json={
-        "username": "linkuser", "email": "linkuser@example.com", "password": "password123"})
+        "username": "linkuser", "email": "linkuser@example.com", "password": "correct-horse-staple"})
     client.post("/api/auth/forgot", json={"email": "linkuser@example.com"})
 
     assert sent, "no action link was generated"

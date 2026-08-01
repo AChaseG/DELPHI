@@ -26,8 +26,8 @@ from sqlalchemy.orm import Session
 
 import re as _username_re
 
-from . import (auth, export, geocode, home, ingest, langdetect, mailer, ratelimit,
-               repair, safefetch, translate)
+from . import (auth, export, geocode, home, ingest, langdetect, mailer, passwords,
+               ratelimit, repair, safefetch, translate)
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -668,6 +668,20 @@ def _action_link(request: Request, param: str, token: str) -> str:
     return f"{_action_base_url(request)}/{param}/{urllib.parse.quote(token, safe='')}"
 
 
+def _acceptable_password(password: str, *, username: str = "", email: str = "") -> str:
+    """A password Delphi will store, or a 422 explaining what is wrong with it.
+
+    Applied everywhere a password is chosen — registration, a reset, a change,
+    and an operator setting one — because a rule enforced at three of the four
+    is not a rule. See backend/app/passwords.py for what it refuses and why.
+    """
+    try:
+        passwords.check(password, username=username, email=email)
+    except passwords.WeakPassword as exc:
+        raise HTTPException(422, str(exc))
+    return password
+
+
 @app.post("/api/auth/register", status_code=201)
 def register(body: dict, request: Request, background: BackgroundTasks,
              db: Session = Depends(get_db)):
@@ -679,8 +693,7 @@ def register(body: dict, request: Request, background: BackgroundTasks,
         raise HTTPException(422, "Username must be 3-32 characters: letters, digits, _ . -")
     if not _EMAIL_RE.match(email):
         raise HTTPException(422, "A valid email address is required")
-    if len(password) < 8:
-        raise HTTPException(422, "Password must be at least 8 characters")
+    _acceptable_password(password, username=username, email=email)
     if db.scalar(select(User).where(User.username == username)):
         # Usernames stay tellable. They have to be unique, so the form has to
         # say when one is gone or nobody could complete it — and they are
@@ -811,8 +824,7 @@ def reset_password(body: dict, request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(400, "This reset link is invalid or has expired")
     password = body.get("password") or ""
-    if len(password) < 8:
-        raise HTTPException(422, "Password must be at least 8 characters")
+    _acceptable_password(password, username=user.username, email=user.email)
     user.password_hash = auth.hash_password(password)
     user.email_verified = True  # proving inbox access verifies the email too
     # The reason most people reset a password is that they think someone else
@@ -877,8 +889,7 @@ def change_password(body: dict, request: Request,
     if not auth.verify_password(body.get("current") or "", user.password_hash):
         raise HTTPException(403, "That isn't your current password")
     new = body.get("new") or ""
-    if len(new) < 8:
-        raise HTTPException(422, "Password must be at least 8 characters")
+    _acceptable_password(new, username=user.username, email=user.email)
     if auth.verify_password(new, user.password_hash):
         # Not pedantry: going through with it would end this account's other
         # sessions for a change that changed nothing, which is a confusing way
@@ -2822,8 +2833,9 @@ def admin_reset_password(uid: int, body: dict, admin: User = Depends(require_adm
     when email delivery isn't configured."""
     u = _admin_target(db, uid)
     pw = body.get("password") or ""
-    if len(pw) < 8:
-        raise HTTPException(422, "Password must be at least 8 characters")
+    # An operator picking a temporary password is exactly when "Welcome123"
+    # gets typed, so the same rules apply here as anywhere else.
+    _acceptable_password(pw, username=u.username, email=u.email)
     u.password_hash = auth.hash_password(pw)
     u.email_verified = True
     # An operator resetting somebody's password is often responding to a

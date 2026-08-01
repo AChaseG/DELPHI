@@ -306,8 +306,18 @@ GET  /api/stream                   SSE: live article batches + alert hits
   and tune the weights to taste.
 - Accounts are self-serve; passwords are PBKDF2-hashed with HMAC-signed
   session tokens (`NEWS_SECRET` env or an auto-generated key beside the DB).
-  Every API route except sign-in/register requires a session. **Passwords can
-  be changed in the app** (Settings → Account security), which needs no SMTP —
+  Every API route except sign-in/register requires a session. **Common
+  passwords are refused** wherever one is set — registration, an emailed reset,
+  a change, and an operator setting one: the 10,000 most common
+  (`backend/data/common_passwords.txt`, from SecLists, MIT), matched through
+  padding and leetspeak so `password`, `Password123` and `P@ssw0rd1` are all
+  the same answer, plus all-digit passwords and any containing the account's
+  own username or email name. Not a strength meter — counting character classes
+  pushes people towards `P@ssw0rd1`, which is on every list. It exists for the
+  case the other defences miss entirely: credentials reused from a site that
+  was breached and replayed here, where nothing is guessed and there is nothing
+  to rate-limit. Measured at zero false positives across 25,000 generated
+  passwords and passphrases. **Passwords can be changed in the app** (Settings → Account security), which needs no SMTP —
   the emailed reset flow is for someone locked out. It requires the current
   password even though the caller is signed in: a session is not proof of
   ownership (an unlocked laptop, a copied token), and without that check brief

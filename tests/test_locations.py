@@ -187,7 +187,7 @@ def test_rejects_impossible_coordinates(client, register):
 def test_shared_location_flags_articles_for_other_members(client, db, corpus):
     def reg(name):
         r = client.post("/api/auth/register", json={
-            "username": name, "email": f"{name}@example.com", "password": "password123"})
+            "username": name, "email": f"{name}@example.com", "password": "correct-horse-staple"})
         return {"Authorization": "Bearer " + r.json()["token"]}
 
     owner, member = reg("owner"), reg("member")

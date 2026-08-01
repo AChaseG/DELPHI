@@ -8,7 +8,7 @@ from backend.app.database import SessionLocal
 from backend.app.models import Alert, Feed, User
 
 
-def _register(client, username, password="password123"):
+def _register(client, username, password="correct-horse-staple"):
     r = client.post("/api/auth/register", json={
         "username": username, "email": f"{username}@example.com", "password": password})
     assert r.status_code == 201, r.text
@@ -17,7 +17,7 @@ def _register(client, username, password="password123"):
 
 
 def _hdr_for(client, uid_username):
-    r = client.post("/api/auth/login", json={"username": uid_username, "password": "password123"})
+    r = client.post("/api/auth/login", json={"username": uid_username, "password": "correct-horse-staple"})
     assert r.status_code == 200, r.text
     return {"Authorization": "Bearer " + r.json()["token"]}
 
@@ -38,16 +38,16 @@ def test_designated_operator_bypasses_broken_email(client, monkeypatch):
 
     # An ordinary account is held at the verification gate, as designed.
     r = client.post("/api/auth/register", json={
-        "username": "alice", "email": "alice@example.com", "password": "password123"})
+        "username": "alice", "email": "alice@example.com", "password": "correct-horse-staple"})
     assert r.status_code == 201 and r.json().get("verification_sent") is True
     assert client.post("/api/auth/login",
-                       json={"username": "alice", "password": "password123"}).status_code == 403
+                       json={"username": "alice", "password": "correct-horse-staple"}).status_code == 403
 
     # The designated operator gets straight in and can reach the console.
     r = client.post("/api/auth/register", json={
-        "username": "boss", "email": "boss@example.com", "password": "password123"})
+        "username": "boss", "email": "boss@example.com", "password": "correct-horse-staple"})
     assert r.status_code == 201, r.text
-    login = client.post("/api/auth/login", json={"username": "boss", "password": "password123"})
+    login = client.post("/api/auth/login", json={"username": "boss", "password": "correct-horse-staple"})
     assert login.status_code == 200, login.text
     hdr = {"Authorization": "Bearer " + login.json()["token"]}
     assert client.get("/api/admin/users", headers=hdr).status_code == 200
@@ -57,7 +57,7 @@ def test_designated_operator_bypasses_broken_email(client, monkeypatch):
                 if u["username"] == "alice"][0]
     assert client.post(f"/api/admin/users/{alice_id}/verify", headers=hdr).status_code == 200
     assert client.post("/api/auth/login",
-                       json={"username": "alice", "password": "password123"}).status_code == 200
+                       json={"username": "alice", "password": "correct-horse-staple"}).status_code == 200
 
 
 def test_non_admin_is_denied(client):
@@ -121,12 +121,12 @@ def test_suspend_blocks_login_and_reinstate_restores(client, admin_env):
     _, alice_id = _register(client, "alice")
     assert client.post(f"/api/admin/users/{alice_id}/disable", json={"disabled": True},
                        headers=boss_hdr).status_code == 200
-    r = client.post("/api/auth/login", json={"username": "alice", "password": "password123"})
+    r = client.post("/api/auth/login", json={"username": "alice", "password": "correct-horse-staple"})
     assert r.status_code == 403
     assert client.post(f"/api/admin/users/{alice_id}/disable", json={"disabled": False},
                        headers=boss_hdr).status_code == 200
     assert client.post("/api/auth/login",
-                       json={"username": "alice", "password": "password123"}).status_code == 200
+                       json={"username": "alice", "password": "correct-horse-staple"}).status_code == 200
 
 
 def test_suspension_revokes_an_existing_session(client, admin_env):
@@ -164,7 +164,7 @@ def test_reset_password(client, admin_env):
     assert client.post(f"/api/admin/users/{alice_id}/reset-password",
                        json={"password": "brandnew99"}, headers=boss_hdr).status_code == 200
     assert client.post("/api/auth/login",
-                       json={"username": "alice", "password": "password123"}).status_code == 401
+                       json={"username": "alice", "password": "correct-horse-staple"}).status_code == 401
     assert client.post("/api/auth/login",
                        json={"username": "alice", "password": "brandnew99"}).status_code == 200
 

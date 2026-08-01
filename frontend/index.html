@@ -588,6 +588,24 @@
         </details>
 
         <details>
+          <summary>🚫 "That password is one of the most common in use"</summary>
+          <p>Delphi checks new passwords against the ten thousand most common
+             ones — the list attackers work through first — and refuses them.
+             It also catches the padded versions, so <b>password</b>,
+             <b>Password123</b> and <b>P@ssw0rd1</b> are all the same answer.</p>
+          <p>This isn't about mixing in symbols. The reason is simpler: most
+             break-ins aren't someone guessing <em>your</em> password, they're
+             someone replaying an address and password taken from a different
+             site that got breached. A password nobody else has ever used
+             can't arrive that way.</p>
+          <p><b>What works:</b> a few unrelated words — <b>quartz-heron-lantern</b>
+             — or whatever your password manager generates. Both are accepted;
+             the words are just easier to type on a phone. Delphi also refuses
+             passwords containing your own username or email name, and ones
+             that are only digits.</p>
+        </details>
+
+        <details>
           <summary>🔑 How do I change my password?</summary>
           <p><b>⚙ Settings → Account security → Change password.</b> You'll need
              your current one, then the new one twice. No email involved, so it
@@ -1216,7 +1234,7 @@
       </div>
 
       <div id="gate-reset" hidden>
-        <label class="field"><span>New password (min 8 characters)</span>
+        <label class="field"><span>New password <em class="note-muted">(8+ characters; a few unrelated words work well and are easy to remember)</em></span>
           <input id="reset-password" type="password" autocomplete="new-password"></label>
         <button class="btn btn-primary gate-btn" id="btn-reset">Set new password</button>
       </div>
@@ -1226,7 +1244,7 @@
           <input id="reg-username" type="text" autocomplete="username"></label>
         <label class="field"><span>Email address</span>
           <input id="reg-email" type="email" autocomplete="email"></label>
-        <label class="field"><span>Password (min 8 characters)</span>
+        <label class="field"><span>Password <em class="note-muted">(8+ characters; a few unrelated words work well and are easy to remember)</em></span>
           <input id="reg-password" type="password" autocomplete="new-password"></label>
         <button class="btn btn-primary gate-btn" id="btn-register">Create account</button>
         <p class="gate-switch">Already registered? <a href="#" id="gate-to-signin">Sign in</a></p>
@@ -1724,7 +1742,7 @@
       <div class="modal-body">
         <label class="field"><span>Current password</span>
           <input id="pw-current" type="password" autocomplete="current-password"></label>
-        <label class="field gap-sm"><span>New password (min 8 characters)</span>
+        <label class="field gap-sm"><span>New password <em class="note-muted">(8+ characters; a few unrelated words work well and are easy to remember)</em></span>
           <input id="pw-new" type="password" autocomplete="new-password"></label>
         <label class="field gap-sm"><span>New password again</span>
           <input id="pw-confirm" type="password" autocomplete="new-password"></label>

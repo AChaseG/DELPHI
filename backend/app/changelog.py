@@ -13,6 +13,27 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-22",
+        "title": "Delphi now turns down the passwords attackers try first",
+        "items": [
+            "🚫 New passwords are checked against the ten thousand most common "
+            "ones and refused if they match — including the padded versions, "
+            "so “password”, “Password123” and “P@ssw0rd1” all get the same "
+            "answer. Existing passwords still work; this applies when you set "
+            "a new one.",
+            "🎯 The reason is narrower than “be more secure”: most break-ins "
+            "are not somebody guessing your password, they are somebody "
+            "replaying an address and password taken from a different site "
+            "that was breached. A password nobody else has used cannot arrive "
+            "that way.",
+            "💡 A few unrelated words — quartz-heron-lantern — are accepted and "
+            "are far stronger than a short one with symbols in it. So is "
+            "anything a password manager generates.",
+            "🙅 Also refused: passwords containing your own username or email "
+            "name, and ones made only of digits.",
+        ],
+    },
+    {
         "date": "2026-08-21",
         "title": "Change your password without leaving the app",
         "items": [
