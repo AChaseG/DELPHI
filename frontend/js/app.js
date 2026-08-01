@@ -2703,8 +2703,12 @@ const LocationsPanel = {
     this.map.on("click", (e) => this.setPoint(e.latlng.lat, e.latlng.lng));
   },
 
-  setPoint(lat, lon, name) {
-    this.point = { lat, lon };
+  setPoint(lat, lon, name, country) {
+    // Two different things, kept apart on purpose. `place` is what the place
+    // is called — the string worth looking for in a headline and worth asking
+    // a news search for. The name field is the reader's label, theirs to
+    // change to "Dad's house", which is neither of those.
+    this.point = { lat, lon, place: name || "", country: country || "" };
     if (name && !el("loc-name").value.trim()) el("loc-name").value = name;
     el("loc-coords").textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
     el("btn-loc-save").disabled = false;
@@ -2810,7 +2814,7 @@ const LocationsPanel = {
     el("loc-radius-val").textContent = `${loc.radius_km} km`;
     el("btn-loc-save").textContent = "Save changes";
     el("btn-loc-cancel").hidden = false;
-    this.setPoint(loc.lat, loc.lon);
+    this.setPoint(loc.lat, loc.lon, loc.place_name, loc.country);
   },
 
   cancelEdit() {
@@ -2830,7 +2834,14 @@ const LocationsPanel = {
     const name = el("loc-name").value.trim();
     if (!name) { this.showError("Give the location a name."); el("loc-name").focus(); return; }
     if (!this.point) { this.showError("Pick a point — search for a place or click the map."); return; }
-    const body = { name, lat: this.point.lat, lon: this.point.lon, radius_km: this.radiusKm() };
+    const body = {
+      name, lat: this.point.lat, lon: this.point.lon, radius_km: this.radiusKm(),
+      // Sent alongside the label so the server can gather news about the place
+      // and recognise it in headlines. Empty for a point clicked on the map,
+      // which has no name to carry.
+      place_name: this.point.place || "",
+      country: this.point.country || "",
+    };
     try {
       if (this.editing) {
         await API.updateLocation(this.editing.id, body);
@@ -2953,7 +2964,7 @@ function wirePlaceSearch() {
         b.appendChild(sub);
       }
       b.onclick = () => {
-        LocationsPanel.setPoint(h.lat, h.lon, h.name);
+        LocationsPanel.setPoint(h.lat, h.lon, h.name, h.country);
         dismiss();
         input.value = "";
       };

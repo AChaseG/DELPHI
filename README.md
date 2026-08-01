@@ -96,6 +96,20 @@ feeds**.
   date-time group “112036Z JUL 26”), toast position, alert sound volume with a
   test button, and desktop notifications for alert hits while the tab is in
   the background.
+- **Favourite locations** are watched by name as well as by position. An article
+  is only given coordinates when its text names one of the ~600 cities in the
+  bundled gazetteer, so a circle around anywhere smaller — a town, a district,
+  an address — could never contain anything, while the picker happily offers
+  any address OpenStreetMap knows. A watched place now carries the name it was
+  picked under: matched in headlines (with the country disambiguating Reading,
+  England from Reading, Pennsylvania), and asked of a news search so coverage
+  is *gathered* rather than merely filtered for. The reader's label for the
+  place is kept separate from the place's own name — "Dad's house" is a fine
+  label and a useless search term. Renaming moves the source; deleting removes
+  it, unless someone else watches the same place. A location feed also scans
+  four times deeper than an ordinary one, because it has no text to hand the
+  index (measured: 2,000 rows found 4 of 100 matches, 8,000 found 16, at ~28µs
+  a row).
 - **Draw on a map.** In the feed/alert builder, draw a polygon, rectangle, or
   circle on a world map (Leaflet + Leaflet.draw). Only news geolocated inside
   that area (via its tagged places, falling back to the country centroid) will

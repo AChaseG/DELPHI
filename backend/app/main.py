@@ -83,6 +83,9 @@ def _ensure_schema():
                   "is_admin": "BOOLEAN DEFAULT 0",
                   "disabled": "BOOLEAN DEFAULT 0",
                   "token_version": "INTEGER DEFAULT 0"},
+        "favorite_locations": {"place_name": "VARCHAR(120) DEFAULT ''",
+                               "country": "VARCHAR(2) DEFAULT ''",
+                               "source_id": "INTEGER"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -2504,8 +2507,14 @@ async def geo_search(q: str = Query(default=""), request: Request = None,
 def _location_json(loc: FavoriteLocation, mine: bool = True) -> dict:
     return {
         "id": loc.id, "name": loc.name,
+        # What it was picked as, so editing round-trips it rather than losing
+        # the searchable name the moment somebody renames their own label.
+        "place_name": loc.place_name or "", "country": loc.country or "",
         "lat": loc.lat, "lon": loc.lon, "radius_km": loc.radius_km,
         "color": loc.color, "feed_id": loc.feed_id,
+        # Whether this place has news of its own being gathered, or is only
+        # filtering what the catalog happens to bring in.
+        "has_source": bool(loc.source_id),
         "pantheon_id": loc.pantheon_id, "shared_by": loc.shared_by,
         "mine": mine,
     }
@@ -2523,7 +2532,93 @@ def _visible_locations(db: Session, user_id: str) -> list[FavoriteLocation]:
 
 
 def _location_circle(loc: FavoriteLocation) -> dict:
-    return {"type": "Circle", "center": [loc.lat, loc.lon], "radius_km": loc.radius_km}
+    """The watched area, with the name it was picked under.
+
+    The name is not decoration. An article is only given coordinates when its
+    text names one of the 577 cities in the bundled gazetteer, so a circle
+    around anywhere else could never contain anything — while the picker
+    happily offers any address OpenStreetMap knows. Carrying the name lets the
+    matcher recognise "Reading" in a headline without Delphi needing to hold a
+    coordinate for Reading.
+    """
+    return {"type": "Circle", "center": [loc.lat, loc.lon], "radius_km": loc.radius_km,
+            "name": loc.place_name or "", "country": (loc.country or "").upper()}
+
+
+def _location_query(loc: FavoriteLocation) -> str:
+    """What to ask a news search for, to actually gather coverage of a place.
+
+    The place's own name, never the reader's label for it: "Dad's house" is a
+    perfectly good thing to call a location and a useless thing to search for.
+    """
+    return (loc.place_name or "").strip()
+
+
+def _sync_location_source(db: Session, loc: FavoriteLocation) -> None:
+    """Keep a news-search source pointed at this location, and only this one.
+
+    Saving a location used to create a filter and nothing else, so it could
+    only ever surface news the catalog had already gathered for other reasons.
+    For anywhere without its own local outlet in the catalog — which is most
+    places — that is an empty column by construction. This gives every watched
+    place a source of its own, the way a topic tracker does.
+
+    Moved and removed rather than accumulated: the source id lives on the
+    location, so renaming edits that source instead of minting a second one,
+    and deleting takes it away. A source nothing points at is still polled
+    forever, which is how a catalog quietly fills with orphans.
+    """
+    query = _location_query(loc)
+    existing = db.get(Source, loc.source_id) if loc.source_id else None
+
+    if not query:
+        # A point clicked on the map has no name to search for. Nothing to
+        # gather; the circle still flags whatever the catalog brings in.
+        if existing is not None and not _source_shared_with_others(db, loc):
+            db.delete(existing)
+        loc.source_id = None
+        return
+
+    from . import cities
+    country = (loc.country or "").upper()
+    lang = cities.language_for(country)
+    rss = cities.search_feed_url(query, country)
+
+    if existing is not None and existing.rss_url == rss:
+        return                                        # already pointed there
+
+    # Somebody else may already watch this place; one source serves them all.
+    shared = db.scalar(select(Source).where(Source.rss_url == rss))
+    if shared is not None:
+        if existing is not None and existing.id != shared.id \
+                and not _source_shared_with_others(db, loc):
+            db.delete(existing)
+        loc.source_id = shared.id
+        return
+
+    if existing is not None and not _source_shared_with_others(db, loc):
+        existing.rss_url = rss                        # a rename: move it
+        existing.name = f"Local: {query}"
+        existing.country = country
+        existing.language = lang
+        return
+
+    source = Source(name=f"Local: {query}", rss_url=rss,
+                    homepage="https://news.google.com", country=country,
+                    region="Local", language=lang, scope="local",
+                    categories=[], tier=3, added_by="location")
+    db.add(source)
+    db.flush()
+    loc.source_id = source.id
+
+
+def _source_shared_with_others(db: Session, loc: FavoriteLocation) -> bool:
+    """Is another location relying on this same source?"""
+    if not loc.source_id:
+        return False
+    return bool(db.scalar(select(FavoriteLocation.id).where(
+        FavoriteLocation.source_id == loc.source_id,
+        FavoriteLocation.id != loc.id).limit(1)))
 
 
 LOCATIONS_FEED_NAME = "📍 Favourite Locations"
@@ -2619,10 +2714,19 @@ def create_location(body: dict, user_id: str = Depends(user_id_header),
     if not 0 < radius <= 5000:
         raise HTTPException(422, "Radius must be between 0 and 5000 km")
 
+    # `place_name` is what the picked place is called; `name` is the reader's
+    # label for it. When the point came from the search box they are usually
+    # the same string, but only the first is worth searching news for — and a
+    # map click has no place name at all, which is a real and supported case.
+    place_name = (body.get("place_name") or "").strip()[:120]
     loc = FavoriteLocation(user_id=user_id, name=name, lat=lat, lon=lon,
-                           radius_km=radius, color=(body.get("color") or "gold")[:16])
+                           radius_km=radius, color=(body.get("color") or "gold")[:16],
+                           place_name=place_name,
+                           country=(body.get("country") or "").strip().upper()[:2])
     db.add(loc)
     db.flush()
+    # Gather coverage of the place, rather than only filtering for it.
+    _sync_location_source(db, loc)
     # One board for every watched place, so the locations are somewhere you
     # can read as well as markers on other feeds.
     if body.get("create_feed", True):
@@ -2650,6 +2754,12 @@ def update_location(loc_id: int, body: dict, user_id: str = Depends(user_id_head
                 raise HTTPException(422, f"{key} must be a number")
     if "color" in body:
         loc.color = (body["color"] or "gold")[:16]
+    if "place_name" in body:
+        loc.place_name = (body["place_name"] or "").strip()[:120]
+    if "country" in body:
+        loc.country = (body["country"] or "").strip().upper()[:2]
+    # Move the source with it rather than leaving the old one polling forever.
+    _sync_location_source(db, loc)
     # Keep the locations feed pointing at the areas it now covers.
     _sync_locations_feed(db, user_id)
     db.commit()
@@ -2663,8 +2773,15 @@ def delete_location(loc_id: int, keep_feed: bool = Query(default=False),
     if not loc or loc.user_id != user_id:
         raise HTTPException(404, "Location not found")
     orphan = loc.feed_id
+    # Take the location's news source with it, unless somebody else's location
+    # watches the same place. Left behind, it would be polled every few minutes
+    # for a place nobody is watching, for as long as the server runs.
+    stale_source = (db.get(Source, loc.source_id)
+                    if loc.source_id and not _source_shared_with_others(db, loc) else None)
     db.delete(loc)
     db.flush()
+    if stale_source is not None:
+        db.delete(stale_source)
     # The feed covers whatever is left; it only goes when nothing is, and
     # keep_feed holds on to an emptied one.
     _sync_locations_feed(db, user_id, keep_empty=keep_feed, also=orphan)

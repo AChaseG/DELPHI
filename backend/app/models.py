@@ -247,7 +247,18 @@ class FavoriteLocation(Base):
     pantheon_id: Mapped[int | None] = mapped_column(ForeignKey("pantheons.id"),
                                                     nullable=True, index=True, default=None)
     shared_by: Mapped[str] = mapped_column(String(32), default="")
+    # What the reader called it. Theirs to choose — "Dad's house", "the office"
+    # — so it is a label and nothing more.
     name: Mapped[str] = mapped_column(String(120))
+    # What the place is actually called, from whatever was picked in the search
+    # box. Kept apart from `name` precisely because `name` is a nickname: this
+    # is the string worth looking for in a headline and worth asking a news
+    # search for, and "Dad's house" is neither. Empty when the point came from
+    # a click on the map, which is a real case with no name to have.
+    place_name: Mapped[str] = mapped_column(String(120), default="")
+    # ISO-2, when the pick knew it. Tells Reading in England from Reading in
+    # Pennsylvania, and picks the right Google News edition.
+    country: Mapped[str] = mapped_column(String(2), default="")
     lat: Mapped[float] = mapped_column(Float)
     lon: Mapped[float] = mapped_column(Float)
     radius_km: Mapped[float] = mapped_column(Float, default=25.0)
@@ -256,6 +267,11 @@ class FavoriteLocation(Base):
     # The feed created for this location, so deleting the location can clean up.
     feed_id: Mapped[int | None] = mapped_column(ForeignKey("feeds.id"),
                                                 nullable=True, default=None)
+    # The news-search source that gathers coverage of this place. Held by id so
+    # a rename can move it and a deletion can take it away — a source nothing
+    # points at any more still gets polled forever otherwise.
+    source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.id"),
+                                                  nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

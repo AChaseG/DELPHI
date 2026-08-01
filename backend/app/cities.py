@@ -234,6 +234,31 @@ def _feed_url(city: str, lang: str, cc: str) -> str:
             f"&hl={lang}-{cc}&gl={cc}&ceid={cc}:{lang}")
 
 
+def language_for(country: str) -> str:
+    """The Google News edition language this catalog uses for a country.
+
+    Derived from the catalog itself rather than kept as a second list, so a
+    watched place asks for news in the same language its country's own city
+    feeds do. English when the country is unknown to the catalog.
+    """
+    cc = (country or "").upper()
+    for countries in WORLD.values():
+        entry = countries.get(cc)
+        if entry:
+            return entry[0]
+    return "en"
+
+
+def search_feed_url(query: str, country: str = "") -> str:
+    """A Google News search feed for any query, in a country's edition.
+
+    Shares _feed_url with the city catalog so there is one place that knows
+    the shape of these URLs.
+    """
+    cc = (country or "").upper() or "US"
+    return _feed_url(query, language_for(cc), cc)
+
+
 def build_city_sources() -> list[dict]:
     """One local-news Source row per catalog city (Source column kwargs)."""
     rows: list[dict] = []

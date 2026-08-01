@@ -13,6 +13,28 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-24",
+        "title": "Favourite locations actually carry news now",
+        "items": [
+            "📍 If your 📍 Favourite Locations column has been empty, this is why: "
+            "a story only counted as being near your location if it named one "
+            "of the ~600 cities Delphi recognises by position. Anywhere smaller "
+            "— a town, a district, an address, a spot on the map — could never "
+            "match anything, however long you waited. It now also recognises "
+            "the place by name, so watching somewhere small works.",
+            "📰 Saving a location now starts gathering news about it, instead of "
+            "only filtering what was already being collected. Rename the place "
+            "and the search follows; delete the location and it stops.",
+            "🏷 The name you give a location is yours — “Home”, “Dad's house”. "
+            "Delphi remembers separately what the place is actually called, and "
+            "that is what it searches for, so your own label never has to be a "
+            "sensible search term.",
+            "🔎 The column also looks further back than an ordinary feed. A "
+            "watched place gives the search index nothing to work with, so it "
+            "reads deeper instead — four times as far as before.",
+        ],
+    },
+    {
         "date": "2026-08-23",
         "title": "Delphi now clears out old news properly, and says when it's tight",
         "items": [

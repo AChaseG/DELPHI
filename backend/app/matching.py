@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
+from functools import lru_cache
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, defer, joinedload
@@ -61,6 +62,20 @@ _FTS_NARROW_MAX = 20000
 # couldn't fill the page, and the ladder always ends at the caller's cap.
 _SCAN_LADDER = (400, 4000)
 
+# How deep a watched-place feed reads. It has no text to hand the index — a
+# place is matched by name *or* by coordinates, and the index cannot express
+# the second — so the recency route is the only route, and the default 2,000
+# rows is a couple of hours on a busy catalog. Measured on 50,000 articles with
+# the place appearing in one in five hundred:
+#
+#     2,000 rows ->  4 articles,  56ms      12,000 -> 24 articles, 340ms
+#     8,000 rows -> 16 articles, 218ms      20,000 -> 40 articles, 598ms
+#
+# Cost is linear at ~28µs a row, all of it streaming rows rather than testing
+# them, so there is no cleverness to buy back. 8,000 is where four times the
+# reach still costs a fifth of a second on one column.
+_GEO_SCAN_CAP = 8000
+
 # ...but a rung has to be big enough to hold the page being asked for. The
 # grouped views ask for 200 articles to cluster, and a rung of 400 rows only
 # holds 200 matches if half the news matches — so those queries always fell
@@ -77,6 +92,26 @@ def _kw_regex(kw: str) -> re.Pattern:
 def article_text(article: Article) -> str:
     """Everything a text predicate searches: headline, summary, and body."""
     return f"{article.title}\n{article.summary}\n{article.content or ''}"
+
+
+def headline_text(article: Article) -> str:
+    """Headline and summary only — no body.
+
+    What a watched place is matched against. Two reasons, and they agree: a
+    story *about* somewhere names it up front, while a passing mention buried
+    in the body is usually somebody's dateline or a list of other places; and
+    leaving the body out keeps it deferred in SQL, which is what lets a
+    location feed scan deeply enough to find anything at all.
+    """
+    return f"{article.title}\n{article.summary}"
+
+
+@lru_cache(maxsize=1024)
+def _place_re(name: str) -> re.Pattern | None:
+    """Word-boundary matcher for a place name, compiled once per name."""
+    name = (name or "").strip()
+    # Two characters match half the world; a place that short is not a signal.
+    return _kw_regex(name) if len(name) >= 3 else None
 
 
 class CriteriaMatcher:
@@ -180,10 +215,41 @@ class CriteriaMatcher:
             return False
         if self.query_preds and not any(pred(text) for pred in self.query_preds):
             return False
-        if self.geos and not any(
-                places_match_geo(article.places or [], article.country, g) for g in self.geos):
+        if self.geos and not any(self._in_area(article, g) for g in self.geos):
             return False
         return True
+
+    def _in_area(self, article: Article, area: dict) -> bool:
+        """Is this article about that place — by coordinates or by name?
+
+        Coordinates alone were not enough, and the reason is the gazetteer:
+        an article is only given a position when its text names one of the 577
+        cities Delphi ships. Anything else gets no position, so it can never
+        fall inside a circle, so a watched place that is not one of those 577
+        matched nothing at all — permanently, not rarely. The picker meanwhile
+        offers any address OpenStreetMap knows, which is most of the ways to
+        choose a place that can never work.
+
+        So the name the place was picked under is checked too. A headline
+        saying "Reading" is about Reading whether or not Delphi holds a
+        coordinate for it, and that is the whole of what a reader means by
+        watching somewhere.
+
+        The country, when the pick knew it, keeps Reading in England apart from
+        Reading in Pennsylvania — but only when the article states a country
+        at all, since most do not and rejecting those would trade one kind of
+        empty column for another.
+        """
+        # Name first, geography second, and the order is a measurement rather
+        # than a preference: the name test is a regex over a short string,
+        # while the geographic test walks the article's tagged places. Most
+        # rows in a deep scan fail both, so the cheaper question goes first.
+        pattern = _place_re(area.get("name") or "")
+        if pattern is not None and pattern.search(headline_text(article)):
+            wanted = (area.get("country") or "").upper()
+            if not (wanted and article.country and article.country.upper() != wanted):
+                return True
+        return places_match_geo(article.places or [], article.country, area)
 
 
 def _fts_expr(matcher: CriteriaMatcher) -> str | None:
@@ -226,6 +292,11 @@ def query_articles(
     cheaper whenever the text is common enough to turn up there. Either way the
     SQL only has to return a superset: the Python matcher decides membership."""
     matcher = CriteriaMatcher(criteria)
+
+    # Bodies stay deferred for a watched place (names are matched on the
+    # headline), which is what makes reading this far affordable.
+    if matcher.geos and not matcher.needs_text:
+        scan_cap = max(scan_cap, _GEO_SCAN_CAP)
 
     base = select(Article).options(joinedload(Article.source))
     # Article bodies run to ~20 KB each and this scans up to `scan_cap` rows —
