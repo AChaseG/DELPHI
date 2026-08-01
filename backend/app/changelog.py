@@ -13,6 +13,42 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-16",
+        "title": "Delphi reads more of the world, more often",
+        "items": [
+            "🌍 The source catalog has gone from 86 feeds in 4 languages to "
+            "148 in 23, across 59 countries. Delphi now reads the news in "
+            "Arabic, Spanish, Portuguese, German, French, Russian, Ukrainian, "
+            "Chinese, Japanese, Hindi, Indonesian, Vietnamese, Turkish, "
+            "Persian, Swahili, Hausa, Dutch, Swedish, Norwegian, Danish and "
+            "Finnish — where before it read almost everything in English and "
+            "translated the rest.",
+            "🗞️ Brazil, Colombia, Chile, Taiwan, the Philippines, Indonesia, "
+            "Vietnam, Malaysia, Bangladesh, Nepal, Kenya, Tanzania, Ethiopia, "
+            "Ghana, the Netherlands, Sweden, Norway, Denmark, Finland, "
+            "Ireland, Greece, Austria, Portugal and Lebanon all have national "
+            "outlets of their own now, rather than being seen only through an "
+            "aggregator.",
+            "⏱️ Wires refresh every 3 minutes instead of 5, and city feeds "
+            "every hour instead of every 90 minutes. That is affordable "
+            "because polling is now conditional: Delphi remembers what each "
+            "publisher last sent and asks only for what has changed, so an "
+            "unchanged feed answers in a few hundred bytes with nothing to "
+            "read. Ten polls of an unchanged feed moved 4.9 KB where they used "
+            "to move 48.8 KB.",
+            "📄 Article bodies now catch up. A busy minute brings more stories "
+            "than one cycle can fetch the full text of, and the rest used to "
+            "stay headline-only forever — which quietly cost you matches, "
+            "since alerts and searches read the body. The leftovers are picked "
+            "up on the quiet minutes that follow, newest first.",
+            "🔎 Delphi hunts harder for outlets' own feeds. When it sees a "
+            "publisher it doesn't know, it goes looking for their feed rather "
+            "than continuing to read them second-hand — now eight at a time "
+            "per cycle instead of three, and in parallel rather than one after "
+            "another.",
+        ],
+    },
+    {
         "date": "2026-08-15",
         "title": "Take a column with you, and read means read",
         "items": [

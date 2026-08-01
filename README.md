@@ -20,8 +20,8 @@ feeds**.
   and country; edit everything about an existing source in place (name, URL,
   platform, scope, country, language, categories); enable/disable or delete;
   per-source health dots show the last fetch status.
-- **Global ingestion.** A background engine polls a curated catalog of 70+
-  RSS/Atom feeds spanning every continent — wire-level internationals (BBC, Al
+- **Global ingestion.** A background engine polls a curated catalog of 148
+  RSS/Atom feeds in 23 languages spanning every continent — wire-level internationals (BBC, Al
   Jazeera, DW, France 24, UN News, ReliefWeb…), national outlets (Times of
   India, Dawn, CBC, ABC AU, Mail & Guardian, Times of Israel…), and local ones
   (Texas Tribune, Gothamist, Manchester Evening News…). Add any RSS URL as a
@@ -197,7 +197,7 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` / `HOST` | `8000` / `127.0.0.1` | bind address (run.sh) |
-| `NEWS_FETCH_INTERVAL` | `300` | seconds between ingest cycles |
+| `NEWS_FETCH_INTERVAL` | `180` | seconds between polls of a news wire |
 | `NEWS_FETCH_CONCURRENCY` | `10` | parallel source fetches |
 | `NEWS_DB_PATH` | `backend/data/news.db` | SQLite location |
 | `NEWS_DISABLE_INGEST` | unset | `1` disables the background poller |
@@ -294,16 +294,24 @@ GET  /api/stream                   SSE: live article batches + alert hits
   language, and auto-discovery grows its real local outlets from there.
   `NEWS_SEED_CITIES=0` skips the whole city catalog.
 - **Ingestion is a continuous rolling poller.** Each source refreshes on its
-  own cadence (wires every few minutes, city feeds hourly, quiet ones less
+  own cadence (wires every three minutes, city feeds hourly, quiet ones less
   often) with per-host pacing, so a large catalog on a rate-limited host
   (Google News) never blocks or bursts. Tunable via `NEWS_CITY_INTERVAL`,
   `NEWS_POLL_TICK`, `NEWS_GOOGLE_GAP`.
+- **Polling is conditional.** Each source remembers the `ETag` and
+  `Last-Modified` the publisher last sent and asks with them, so an unchanged
+  feed answers `304` with no body and nothing to parse. That is what makes the
+  intervals above affordable — measured against a stub publisher, ten polls of
+  an unchanged feed moved 4.9 KB instead of 48.8 KB.
+- **Article bodies catch up.** A busy minute brings more articles than one
+  cycle fetches bodies for; the remainder are picked up on the quiet ticks that
+  follow, newest first. A page that cannot be fetched is not retried for
+  `NEWS_BACKFILL_RETRY_HOURS`, so one dead URL never blocks the backlog.
 
 ## Roadmap ideas
 
 - Push channels for alerts (email / Slack / webhook / mobile push)
 - Entity extraction and multilingual event clustering (current clustering is
   token-based, so same-story coverage in different languages forms separate events)
-- More non-English catalog sources
 - PostgreSQL + PostGIS for precise geofencing at scale
 - Full-text article fetch for sources whose feeds only carry snippets

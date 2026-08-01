@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 import feedparser
 import httpx
-from sqlalchemy import delete as sa_delete, exists, select
+from sqlalchemy import delete as sa_delete, exists, or_, select
 
 from . import discovery, home, langdetect, mailer, repair
 from .clustering import assign_events
@@ -33,7 +33,6 @@ from .scoring import classify_categories, cluster_tokens, score_importance
 
 log = logging.getLogger("ingest")
 
-FETCH_INTERVAL = int(os.environ.get("NEWS_FETCH_INTERVAL", "300"))
 FETCH_TIMEOUT = float(os.environ.get("NEWS_FETCH_TIMEOUT", "20"))
 CONCURRENCY = int(os.environ.get("NEWS_FETCH_CONCURRENCY", "10"))
 
@@ -45,8 +44,13 @@ CONCURRENCY = int(os.environ.get("NEWS_FETCH_CONCURRENCY", "10"))
 POLL_TICK = float(os.environ.get("NEWS_POLL_TICK", "15"))        # seconds between ticks
 POLL_BATCH = int(os.environ.get("NEWS_POLL_BATCH", "80"))         # max non-city fetches per tick
 CITY_PER_TICK = int(os.environ.get("NEWS_CITY_PER_TICK", "20"))   # max city feeds per tick (bounds the google drip)
-BASE_INTERVAL = int(os.environ.get("NEWS_FETCH_INTERVAL", "300"))  # non-city refresh (s)
-CITY_INTERVAL = int(os.environ.get("NEWS_CITY_INTERVAL", "5400"))  # city local refresh (s, 90m)
+# Refresh intervals. Both came down when polling became conditional: a feed
+# that hasn't changed now answers 304 with no body and nothing to parse, so the
+# cost of asking more often is a request rather than a download. Wires moved
+# 5min → 3min and city feeds 90min → 60min, which at 497 city feeds is 8.3
+# Google requests a minute against the 30/min the host pacer allows.
+BASE_INTERVAL = int(os.environ.get("NEWS_FETCH_INTERVAL", "180"))   # non-city refresh (s)
+CITY_INTERVAL = int(os.environ.get("NEWS_CITY_INTERVAL", "3600"))   # city local refresh (s, 60m)
 CITY_IDLE_BACKOFF_MAX = int(os.environ.get("NEWS_CITY_IDLE_BACKOFF_MAX", "4"))  # ×2^n cap
 GOOGLE_GAP = float(os.environ.get("NEWS_GOOGLE_GAP", "2.0"))       # min gap between google hits
 SHARED_HOST_GAP = float(os.environ.get("NEWS_SHARED_HOST_GAP", "1.0"))  # other multi-feed hosts
@@ -113,16 +117,55 @@ def _entry_image(entry) -> str:
     return ""
 
 
+# The status a source gets when the publisher says nothing has changed. Not an
+# error and not a poll that found news — the caller has to tell all three apart.
+UNCHANGED = "ok: unchanged"
+
+
+def _conditional_headers(source: Source) -> dict:
+    """Ask the publisher to answer only if the feed has actually changed.
+
+    Most polls change nothing, and without these every one of them downloads
+    and re-parses the whole feed. With them the publisher answers 304 in a few
+    hundred bytes and there is nothing to parse — which is what makes it
+    reasonable to poll more often rather than less."""
+    headers = {"User-Agent": USER_AGENT, "Accept": ACCEPT}
+    if source.etag:
+        headers["If-None-Match"] = source.etag
+    if source.last_modified:
+        headers["If-Modified-Since"] = source.last_modified
+    return headers
+
+
+def _remember_validators(source: Source, resp) -> None:
+    """Keep whatever the publisher gave us to ask with next time.
+
+    Only overwritten when the server sends one: a server that offers an ETag
+    on one response and omits it on the next has not withdrawn it, and
+    forgetting would silently turn conditional polling back off."""
+    etag = resp.headers.get("ETag")
+    modified = resp.headers.get("Last-Modified")
+    if etag:
+        source.etag = etag[:200]
+    if modified:
+        source.last_modified = modified[:80]
+
+
 async def fetch_source(client: httpx.AsyncClient, source: Source) -> tuple[Source, list, str]:
     until = _backoff_until.get(source.id)
     if until and utcnow() < until:
         return source, [], f"rate-limited; retrying after {until:%H:%M} UTC"
     try:
-        resp = await client.get(source.rss_url,
-                                headers={"User-Agent": USER_AGENT, "Accept": ACCEPT})
+        resp = await client.get(source.rss_url, headers=_conditional_headers(source))
         if resp.status_code == 403:
-            resp = await client.get(source.rss_url,
-                                    headers={"User-Agent": BROWSER_UA, "Accept": ACCEPT})
+            retry = dict(_conditional_headers(source), **{"User-Agent": BROWSER_UA})
+            resp = await client.get(source.rss_url, headers=retry)
+        if resp.status_code == 304:
+            # Nothing new since last time. The cheapest possible poll: no body
+            # to download, no feed to parse, and the source is healthy.
+            _backoff_until.pop(source.id, None)
+            _remember_validators(source, resp)
+            return source, [], UNCHANGED
         if resp.status_code == 429:
             try:
                 retry_after = int(resp.headers.get("Retry-After", "0"))
@@ -140,6 +183,7 @@ async def fetch_source(client: httpx.AsyncClient, source: Source) -> tuple[Sourc
         parsed = feedparser.parse(resp.content)
         if parsed.bozo and not parsed.entries:
             return source, [], f"parse error: {parsed.get('bozo_exception', 'unknown')}"[:200]
+        _remember_validators(source, resp)
         return source, parsed.entries, "ok"
     except httpx.HTTPStatusError as exc:  # clean "error: 404 Not Found" statuses
         r = exc.response
@@ -286,6 +330,12 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
     todo = todo[:cap if cap is not None else CONTENT_MAX_PER_CYCLE]
     if not todo:
         return 0
+    # Stamped before the fetch, not after, and whether or not it succeeds: this
+    # is "we have tried", which is what stops the backlog below returning the
+    # same unreachable page on every tick from now on.
+    attempted = utcnow()
+    for article in todo:
+        article.content_tried_at = attempted
     sem = asyncio.Semaphore(CONTENT_CONCURRENCY)
     async with httpx.AsyncClient(timeout=CONTENT_TIMEOUT, follow_redirects=True) as client:
         async def one(article):
@@ -308,6 +358,47 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
         fetched += 1
     db.commit()
     return fetched
+
+
+# How far back the backlog reaches, and how long before an article whose page
+# could not be fetched is worth another go. A page that 404s or times out
+# usually always will; a page that was briefly down deserves one more attempt
+# before it ages out of the window entirely.
+BACKFILL_HOURS = float(os.environ.get("NEWS_BACKFILL_HOURS", "48"))
+BACKFILL_RETRY_HOURS = float(os.environ.get("NEWS_BACKFILL_RETRY_HOURS", "6"))
+
+
+async def backfill_content(db, spare: int) -> int:
+    """Spend a tick's unused body-fetch capacity on articles that missed it.
+
+    A busy minute brings more articles than one cycle fetches bodies for, and
+    the remainder used to stay headline-only permanently — nothing ever went
+    back for them. Since alerts and searches match against the body, that was a
+    silent loss of recall on exactly the busiest news.
+
+    Only the leftovers of the cap are used, so a tick that is already at its
+    limit does no extra work, and a quiet tick catches the backlog up.
+    """
+    if spare <= 0:
+        return 0
+    since = utcnow() - timedelta(hours=BACKFILL_HOURS)
+    retry_before = utcnow() - timedelta(hours=BACKFILL_RETRY_HOURS)
+    candidates = db.scalars(
+        select(Article)
+        .join(Source, Source.id == Article.source_id)
+        .where(Article.content == "",
+               Article.published_at >= since,
+               Source.paywall.is_(False),
+               # Never tried, or tried long enough ago to be worth one retry.
+               or_(Article.content_tried_at.is_(None),
+                   Article.content_tried_at < retry_before))
+        # Newest first: the articles a reader is most likely to be looking at.
+        .order_by(Article.published_at.desc())
+        .limit(spare)
+    ).all()
+    if not candidates:
+        return 0
+    return await enrich_with_content(db, candidates, cap=spare)
 
 
 def evaluate_alerts(db, new_articles: list[Article]) -> list[dict]:
@@ -476,9 +567,21 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     ok_sources = 0
     seen_urls: set[str] = set()
     publishers: dict[str, tuple[str, str]] = {}  # outlets named by entries' <source> tags
+    unchanged = 0
     for source, entries, fetch_status in results:
         source.last_fetched_at = utcnow()
         source.last_status = fetch_status
+        if fetch_status == UNCHANGED:
+            # A healthy poll that found nothing new. It counts as a success —
+            # the source answered — but there is nothing to parse, and a city
+            # feed that keeps saying this should still back off.
+            source.consecutive_failures = 0
+            source.last_article_count = 0
+            if _is_city(source):
+                source.idle_polls = (source.idle_polls or 0) + 1
+            unchanged += 1
+            ok_sources += 1
+            continue
         if fetch_status != "ok":
             source.consecutive_failures = (source.consecutive_failures or 0) + 1
             continue
@@ -551,8 +654,13 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
 
     # Pull article bodies BEFORE alert evaluation so alerts see full text.
     content_fetched = 0
+    backfilled = 0
     if CONTENT_FETCH:
         content_fetched = await enrich_with_content(db, all_new)
+        # Whatever the cap did not spend on this batch goes to the articles
+        # earlier batches had to skip, so a busy spell is caught up on the
+        # quiet minutes that follow it rather than being lost.
+        backfilled = await backfill_content(db, CONTENT_MAX_PER_CYCLE - content_fetched)
 
     # Clustering and alert matching scale with the batch and are equally
     # blocking — same treatment, so a large batch can't stall the server.
@@ -575,11 +683,17 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
         "last_error": None,
         "last_new_events": new_events,
         "last_content_fetched": content_fetched,
+        "last_backfilled": backfilled,
         "last_new_articles": len(all_new),
         "last_repaired": repaired,
         "last_discovered": discovered,
         "sources_ok": ok_sources,
         "sources_total": len(sources),
+        # How many polls the publisher answered with "nothing changed". The
+        # higher this is, the more of the poll budget conditional requests are
+        # giving back — an operator watching it can judge whether the intervals
+        # could come down further.
+        "last_unchanged": unchanged,
         "cycles": status.get("cycles", 0) + 1,
     })
     broadcaster.publish({"type": "cycle", "sources_ok": ok_sources,
@@ -588,11 +702,13 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
         broadcaster.publish({"type": "articles", "count": len(all_new)})
     for hit in hits:
         broadcaster.publish({"type": "alert", **hit})
-    log.info("ingest batch: %d/%d sources ok, %d new articles, %d alert hits, "
-             "%d repaired, %d discovered",
-             ok_sources, len(sources), len(all_new), len(hits), repaired, discovered)
-    return {"new_articles": len(all_new), "new_events": new_events,
+    log.info("ingest batch: %d/%d sources ok (%d unchanged), %d new articles, "
+             "%d alert hits, %d repaired, %d discovered",
+             ok_sources, len(sources), unchanged, len(all_new), len(hits),
+             repaired, discovered)
+    return {"new_articles": len(all_new), "new_events": new_events, "unchanged": unchanged,
             "alert_hits": len(hits), "content_fetched": content_fetched,
+            "backfilled": backfilled,
             "repaired": repaired, "discovered": discovered,
             "sources_ok": ok_sources, "sources_total": len(sources)}
 

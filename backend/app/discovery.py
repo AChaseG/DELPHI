@@ -14,6 +14,7 @@ probed again. NEWS_AUTO_DISCOVER=0 turns the whole mechanism off.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import timedelta
@@ -28,7 +29,15 @@ from .repair import COMMON_PATHS, REPAIR_TIMEOUT, _FeedLinkParser, _get, _valida
 log = logging.getLogger("discovery")
 
 AUTO_DISCOVER = os.environ.get("NEWS_AUTO_DISCOVER", "1") == "1"
-DISCOVER_MAX_PER_CYCLE = int(os.environ.get("NEWS_DISCOVER_MAX_PER_CYCLE", "3"))
+# How many unknown publishers to chase per tick, and how many at once.
+#
+# Every domain converted from "seen in Google's coverage" into a feed of its
+# own is both better coverage — an outlet's whole output rather than Google's
+# ranked slice of it — and one less thing competing for the Google budget. The
+# work is self-limiting: a domain is recorded once and not re-probed for
+# RECHECK_DAYS, so the unknown set shrinks as the catalog grows.
+DISCOVER_MAX_PER_CYCLE = int(os.environ.get("NEWS_DISCOVER_MAX_PER_CYCLE", "8"))
+DISCOVER_CONCURRENCY = int(os.environ.get("NEWS_DISCOVER_CONCURRENCY", "4"))
 RECHECK_DAYS = float(os.environ.get("NEWS_DISCOVER_RECHECK_DAYS", "30"))
 MAX_CANDIDATES = 8
 
@@ -127,9 +136,21 @@ async def discover_new_sources(db, publishers: dict[str, tuple[str, str]]
         return []
     taken = set(db.scalars(select(Source.rss_url)))
     added: list[tuple[Source, list]] = []
+    # Probe together, record one at a time.
+    #
+    # Each probe is a homepage fetch plus a walk of the common feed paths, and
+    # doing them one after another put the whole tick behind them — eight
+    # unresponsive domains at the 8s timeout is over a minute during which no
+    # source is polled. The network work now overlaps; the database work stays
+    # serial, because the session is not safe to share.
+    sem = asyncio.Semaphore(DISCOVER_CONCURRENCY)
     async with httpx.AsyncClient(timeout=REPAIR_TIMEOUT, follow_redirects=True) as client:
-        for dom, name, homepage in todo:
-            found = await _find_site_feed(client, homepage)
+        async def probe(entry):
+            async with sem:
+                return entry, await _find_site_feed(client, entry[2])
+
+        probed = await asyncio.gather(*(probe(e) for e in todo))
+        for (dom, name, homepage), found in probed:
             if found and found[0] not in taken:
                 feed_url, entries = found
                 source = Source(

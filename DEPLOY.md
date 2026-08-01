@@ -80,12 +80,16 @@ paced into a steady drip instead of a burst. Knobs:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NEWS_FETCH_INTERVAL` | `300` | Refresh interval for news wires (seconds). |
-| `NEWS_CITY_INTERVAL` | `5400` | Refresh interval for city local feeds (seconds; ~90 min). Quiet feeds back off further automatically. |
+| `NEWS_FETCH_INTERVAL` | `180` | Refresh interval for news wires (seconds). Polls are conditional, so an unchanged feed costs a request and no body. |
+| `NEWS_CITY_INTERVAL` | `3600` | Refresh interval for city local feeds (seconds; ~60 min). Quiet feeds back off further automatically. |
 | `NEWS_POLL_TICK` | `15` | Seconds between scheduler ticks. |
 | `NEWS_POLL_BATCH` | `80` | Max news wires fetched per tick. |
 | `NEWS_CITY_PER_TICK` | `20` | Max city feeds fetched per tick (bounds the Google drip). |
 | `NEWS_GOOGLE_GAP` | `2.0` | Min seconds between requests to news.google.com. |
+| `NEWS_BACKFILL_HOURS` | `48` | How far back the article-body backlog reaches. |
+| `NEWS_BACKFILL_RETRY_HOURS` | `6` | Before an article whose page could not be fetched is tried again. |
+| `NEWS_DISCOVER_MAX_PER_CYCLE` | `8` | Unknown publishers probed for a feed of their own per tick. |
+| `NEWS_DISCOVER_CONCURRENCY` | `4` | How many of those probes run at once. |
 | `NEWS_RETENTION_DAYS` | `30` | Prune articles (and their translations/alert history) older than this; `0` keeps everything forever. |
 | `NEWS_SEED_CITIES` | `1` | Seed ~500 city local-news sources on first run (`0` to skip). |
 | `NEWS_AUTO_DISCOVER` | `1` | Auto-add local outlets found in coverage (`0` to disable). |

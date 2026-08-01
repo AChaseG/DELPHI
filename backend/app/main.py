@@ -57,7 +57,8 @@ STORY_TIMELINE_MAX = 100  # reports shown for one story, newest first
 def _ensure_schema():
     """Additive migrations for databases created by earlier versions."""
     wanted = {
-        "articles": {"event_id": "INTEGER", "content": "TEXT DEFAULT ''"},
+        "articles": {"event_id": "INTEGER", "content": "TEXT DEFAULT ''",
+                     "content_tried_at": "DATETIME"},
         "feeds": {"group_events": "BOOLEAN DEFAULT 0",
                   "pantheon_id": "INTEGER",
                   "shared_by": "VARCHAR(32) DEFAULT ''"},
@@ -70,7 +71,9 @@ def _ensure_schema():
                     "repaired_from": "VARCHAR(500) DEFAULT ''",
                     "last_repair_at": "DATETIME",
                     "idle_polls": "INTEGER DEFAULT 0",
-                    "paywall": "BOOLEAN DEFAULT 0"},
+                    "paywall": "BOOLEAN DEFAULT 0",
+                    "etag": "VARCHAR(200) DEFAULT ''",
+                    "last_modified": "VARCHAR(80) DEFAULT ''"},
         "users": {"email": "VARCHAR(200) DEFAULT ''",
                   "email_verified": "BOOLEAN DEFAULT 0",
                   "last_seen_at": "DATETIME",

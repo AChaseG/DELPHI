@@ -1,88 +1,1875 @@
 [
-  {"name": "BBC News — World", "rss_url": "https://feeds.bbci.co.uk/news/world/rss.xml", "homepage": "https://www.bbc.com/news", "country": "GB", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 1},
-  {"name": "BBC News — Business", "rss_url": "https://feeds.bbci.co.uk/news/business/rss.xml", "homepage": "https://www.bbc.com/news/business", "country": "GB", "region": "Global", "language": "en", "scope": "international", "categories": ["business"], "tier": 1},
-  {"name": "BBC News — Technology", "rss_url": "https://feeds.bbci.co.uk/news/technology/rss.xml", "homepage": "https://www.bbc.com/news/technology", "country": "GB", "region": "Global", "language": "en", "scope": "international", "categories": ["technology"], "tier": 1},
-  {"name": "BBC News — Science & Environment", "rss_url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml", "homepage": "https://www.bbc.com/news/science_and_environment", "country": "GB", "region": "Global", "language": "en", "scope": "international", "categories": ["science", "environment"], "tier": 1},
-  {"name": "Al Jazeera English", "rss_url": "https://www.aljazeera.com/xml/rss/all.xml", "homepage": "https://www.aljazeera.com", "country": "QA", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 1},
-  {"name": "The Guardian — World", "rss_url": "https://www.theguardian.com/world/rss", "homepage": "https://www.theguardian.com/world", "country": "GB", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 1},
-  {"name": "The New York Times — World", "rss_url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "homepage": "https://www.nytimes.com/section/world", "country": "US", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 1},
-  {"name": "The New York Times — Home Page", "rss_url": "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml", "homepage": "https://www.nytimes.com", "country": "US", "region": "North America", "language": "en", "scope": "national", "categories": ["world", "politics"], "tier": 1},
-  {"name": "NPR — News", "rss_url": "https://feeds.npr.org/1001/rss.xml", "homepage": "https://www.npr.org", "country": "US", "region": "North America", "language": "en", "scope": "national", "categories": ["world", "politics"], "tier": 1},
-  {"name": "The Washington Post — World", "rss_url": "https://feeds.washingtonpost.com/rss/world", "homepage": "https://www.washingtonpost.com/world", "country": "US", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 1},
-  {"name": "CNBC — Top News", "rss_url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114", "homepage": "https://www.cnbc.com", "country": "US", "region": "North America", "language": "en", "scope": "national", "categories": ["business", "economy"], "tier": 1},
-  {"name": "Fox News — Latest", "rss_url": "https://moxie.foxnews.com/google-publisher/latest.xml", "homepage": "https://www.foxnews.com", "country": "US", "region": "North America", "language": "en", "scope": "national", "categories": ["politics", "world"], "tier": 2},
-  {"name": "Deutsche Welle — All", "rss_url": "https://rss.dw.com/rdf/rss-en-all", "homepage": "https://www.dw.com", "country": "DE", "region": "Europe", "language": "en", "scope": "international", "categories": ["world"], "tier": 1},
-  {"name": "Der Spiegel — International", "rss_url": "https://www.spiegel.de/international/index.rss", "homepage": "https://www.spiegel.de/international", "country": "DE", "region": "Europe", "language": "en", "scope": "national", "categories": ["world", "politics"], "tier": 2},
-  {"name": "France 24 — English", "rss_url": "https://www.france24.com/en/rss", "homepage": "https://www.france24.com/en", "country": "FR", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 1},
-  {"name": "RFI — English", "rss_url": "https://www.rfi.fr/en/rss", "homepage": "https://www.rfi.fr/en", "country": "FR", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 2},
-  {"name": "Le Monde — À la une", "rss_url": "https://www.lemonde.fr/rss/une.xml", "homepage": "https://www.lemonde.fr", "country": "FR", "region": "Europe", "language": "fr", "scope": "national", "categories": ["world", "politics"], "tier": 1},
-  {"name": "El País — Portada", "rss_url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada", "homepage": "https://elpais.com", "country": "ES", "region": "Europe", "language": "es", "scope": "national", "categories": ["world", "politics"], "tier": 1},
-  {"name": "ANSA — Top News", "rss_url": "https://www.ansa.it/sito/ansait_rss.xml", "homepage": "https://www.ansa.it", "country": "IT", "region": "Europe", "language": "it", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "Euronews", "rss_url": "https://www.euronews.com/rss", "homepage": "https://www.euronews.com", "country": "FR", "region": "Europe", "language": "en", "scope": "international", "categories": ["world"], "tier": 2},
-  {"name": "POLITICO Europe", "rss_url": "https://www.politico.eu/feed/", "homepage": "https://www.politico.eu", "country": "BE", "region": "Europe", "language": "en", "scope": "international", "categories": ["politics"], "tier": 2},
-  {"name": "The Kyiv Independent", "rss_url": "https://kyivindependent.com/feed/", "homepage": "https://kyivindependent.com", "country": "UA", "region": "Europe", "language": "en", "scope": "national", "categories": ["world", "conflict"], "tier": 2},
-  {"name": "The Moscow Times", "rss_url": "https://www.themoscowtimes.com/rss/news", "homepage": "https://www.themoscowtimes.com", "country": "RU", "region": "Europe", "language": "en", "scope": "national", "categories": ["world", "politics"], "tier": 2},
-  {"name": "Notes from Poland", "rss_url": "https://notesfrompoland.com/feed/", "homepage": "https://notesfrompoland.com", "country": "PL", "region": "Europe", "language": "en", "scope": "national", "categories": ["politics"], "tier": 3},
-  {"name": "The Japan Times", "rss_url": "https://www.japantimes.co.jp/feed/", "homepage": "https://www.japantimes.co.jp", "country": "JP", "region": "Asia", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "The Korea Herald", "rss_url": "https://www.koreaherald.com/rss/newsAll", "homepage": "https://www.koreaherald.com", "country": "KR", "region": "Asia", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "South China Morning Post — News", "rss_url": "https://www.scmp.com/rss/91/feed", "homepage": "https://www.scmp.com", "country": "HK", "region": "Asia", "language": "en", "scope": "international", "categories": ["world", "business"], "tier": 1},
-  {"name": "China Daily — World", "rss_url": "https://www.chinadaily.com.cn/rss/world_rss.xml", "homepage": "https://www.chinadaily.com.cn", "country": "CN", "region": "Asia", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "The Times of India — Top Stories", "rss_url": "https://timesofindia.indiatimes.com/rssfeedstopstories.cms", "homepage": "https://timesofindia.indiatimes.com", "country": "IN", "region": "Asia", "language": "en", "scope": "national", "categories": ["world", "politics"], "tier": 1},
-  {"name": "The Hindu — National", "rss_url": "https://www.thehindu.com/news/national/feeder/default.rss", "homepage": "https://www.thehindu.com", "country": "IN", "region": "Asia", "language": "en", "scope": "national", "categories": ["politics"], "tier": 2},
-  {"name": "Dawn — Home", "rss_url": "https://www.dawn.com/feeds/home", "homepage": "https://www.dawn.com", "country": "PK", "region": "Asia", "language": "en", "scope": "national", "categories": ["world", "politics"], "tier": 2},
-  {"name": "The Straits Times — World", "rss_url": "https://www.straitstimes.com/news/world/rss.xml", "homepage": "https://www.straitstimes.com", "country": "SG", "region": "Asia", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "Bangkok Post — Top Stories", "rss_url": "https://www.bangkokpost.com/rss/data/topstories.xml", "homepage": "https://www.bangkokpost.com", "country": "TH", "region": "Asia", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "ABC News Australia — Just In", "rss_url": "https://www.abc.net.au/news/feed/51120/rss.xml", "homepage": "https://www.abc.net.au/news", "country": "AU", "region": "Oceania", "language": "en", "scope": "national", "categories": ["world"], "tier": 1},
-  {"name": "The Sydney Morning Herald", "rss_url": "https://www.smh.com.au/rss/feed.xml", "homepage": "https://www.smh.com.au", "country": "AU", "region": "Oceania", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "RNZ — National", "rss_url": "https://www.rnz.co.nz/rss/national.xml", "homepage": "https://www.rnz.co.nz", "country": "NZ", "region": "Oceania", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "CBC News — Top Stories", "rss_url": "https://www.cbc.ca/webfeed/rss/rss-topstories", "homepage": "https://www.cbc.ca/news", "country": "CA", "region": "North America", "language": "en", "scope": "national", "categories": ["world"], "tier": 1},
-  {"name": "Mexico News Daily", "rss_url": "https://mexiconewsdaily.com/feed/", "homepage": "https://mexiconewsdaily.com", "country": "MX", "region": "North America", "language": "en", "scope": "national", "categories": ["world"], "tier": 3},
-  {"name": "Buenos Aires Times", "rss_url": "https://www.batimes.com.ar/feed", "homepage": "https://www.batimes.com.ar", "country": "AR", "region": "South America", "language": "en", "scope": "national", "categories": ["world"], "tier": 3},
-  {"name": "MercoPress — South Atlantic News", "rss_url": "https://en.mercopress.com/rss/", "homepage": "https://en.mercopress.com", "country": "UY", "region": "South America", "language": "en", "scope": "international", "categories": ["world"], "tier": 3},
-  {"name": "AllAfrica — Latest", "rss_url": "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf", "homepage": "https://allafrica.com", "country": "", "region": "Africa", "language": "en", "scope": "international", "categories": ["world"], "tier": 2},
-  {"name": "Mail & Guardian", "rss_url": "https://mg.co.za/feed/", "homepage": "https://mg.co.za", "country": "ZA", "region": "Africa", "language": "en", "scope": "national", "categories": ["world", "politics"], "tier": 2},
-  {"name": "Premium Times Nigeria", "rss_url": "https://www.premiumtimesng.com/feed", "homepage": "https://www.premiumtimesng.com", "country": "NG", "region": "Africa", "language": "en", "scope": "national", "categories": ["politics"], "tier": 2},
-  {"name": "Egypt Independent", "rss_url": "https://egyptindependent.com/feed/", "homepage": "https://egyptindependent.com", "country": "EG", "region": "Africa", "language": "en", "scope": "national", "categories": ["world"], "tier": 3},
-  {"name": "Middle East Eye", "rss_url": "https://www.middleeasteye.net/rss", "homepage": "https://www.middleeasteye.net", "country": "GB", "region": "Middle East", "language": "en", "scope": "international", "categories": ["world", "politics"], "tier": 2},
-  {"name": "The Times of Israel", "rss_url": "https://www.timesofisrael.com/feed/", "homepage": "https://www.timesofisrael.com", "country": "IL", "region": "Middle East", "language": "en", "scope": "national", "categories": ["world", "politics"], "tier": 2},
-  {"name": "The Jerusalem Post", "rss_url": "https://www.jpost.com/rss/rssfeedsfrontpage.aspx", "homepage": "https://www.jpost.com", "country": "IL", "region": "Middle East", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "Arab News", "rss_url": "https://www.arabnews.com/rss.xml", "homepage": "https://www.arabnews.com", "country": "SA", "region": "Middle East", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "Tehran Times", "rss_url": "https://www.tehrantimes.com/rss", "homepage": "https://www.tehrantimes.com", "country": "IR", "region": "Middle East", "language": "en", "scope": "national", "categories": ["world"], "tier": 3},
-  {"name": "Hürriyet Daily News", "rss_url": "https://www.hurriyetdailynews.com/rss", "homepage": "https://www.hurriyetdailynews.com", "country": "TR", "region": "Middle East", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "The Texas Tribune", "rss_url": "https://www.texastribune.org/feeds/main/", "homepage": "https://www.texastribune.org", "country": "US", "region": "North America", "language": "en", "scope": "local", "categories": ["politics"], "tier": 3},
-  {"name": "Gothamist (New York)", "rss_url": "https://gothamist.com/feed", "homepage": "https://gothamist.com", "country": "US", "region": "North America", "language": "en", "scope": "local", "categories": ["world"], "tier": 3},
-  {"name": "Los Angeles Times — California", "rss_url": "https://www.latimes.com/california/rss2.0.xml", "homepage": "https://www.latimes.com", "country": "US", "region": "North America", "language": "en", "scope": "local", "categories": ["world"], "tier": 3},
-  {"name": "The Seattle Times", "rss_url": "https://www.seattletimes.com/feed/", "homepage": "https://www.seattletimes.com", "country": "US", "region": "North America", "language": "en", "scope": "local", "categories": ["world"], "tier": 3},
-  {"name": "The Denver Post", "rss_url": "https://www.denverpost.com/feed/", "homepage": "https://www.denverpost.com", "country": "US", "region": "North America", "language": "en", "scope": "local", "categories": ["world"], "tier": 3},
-  {"name": "Block Club Chicago", "rss_url": "https://blockclubchicago.org/feed/", "homepage": "https://blockclubchicago.org", "country": "US", "region": "North America", "language": "en", "scope": "local", "categories": ["world"], "tier": 3},
-  {"name": "Manchester Evening News", "rss_url": "https://www.manchestereveningnews.co.uk/news/?service=rss", "homepage": "https://www.manchestereveningnews.co.uk", "country": "GB", "region": "Europe", "language": "en", "scope": "local", "categories": ["world"], "tier": 3},
-  {"name": "Evening Standard (London)", "rss_url": "https://www.standard.co.uk/rss", "homepage": "https://www.standard.co.uk", "country": "GB", "region": "Europe", "language": "en", "scope": "local", "categories": ["world"], "tier": 3},
-  {"name": "Google News — World (EN)", "rss_url": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en", "homepage": "https://news.google.com", "country": "", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 2},
-  {"name": "Google News — Business (EN)", "rss_url": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en", "homepage": "https://news.google.com", "country": "", "region": "Global", "language": "en", "scope": "international", "categories": ["business"], "tier": 2},
-  {"name": "Google News — Technology (EN)", "rss_url": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en", "homepage": "https://news.google.com", "country": "", "region": "Global", "language": "en", "scope": "international", "categories": ["technology"], "tier": 2},
-  {"name": "Google News — Top Stories US", "rss_url": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en", "homepage": "https://news.google.com", "country": "US", "region": "North America", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "Google News — Top Stories UK", "rss_url": "https://news.google.com/rss?hl=en-GB&gl=GB&ceid=GB:en", "homepage": "https://news.google.com", "country": "GB", "region": "Europe", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "Google News — Top Stories India", "rss_url": "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en", "homepage": "https://news.google.com", "country": "IN", "region": "Asia", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "Google News — Top Stories Australia", "rss_url": "https://news.google.com/rss?hl=en-AU&gl=AU&ceid=AU:en", "homepage": "https://news.google.com", "country": "AU", "region": "Oceania", "language": "en", "scope": "national", "categories": ["world"], "tier": 2},
-  {"name": "Science Daily — Top News", "rss_url": "https://www.sciencedaily.com/rss/top/science.xml", "homepage": "https://www.sciencedaily.com", "country": "US", "region": "Global", "language": "en", "scope": "international", "categories": ["science"], "tier": 2},
-  {"name": "WHO — News", "rss_url": "https://www.who.int/rss-feeds/news-english.xml", "homepage": "https://www.who.int", "country": "CH", "region": "Global", "language": "en", "scope": "international", "categories": ["health"], "tier": 1},
-  {"name": "UN News — Global", "rss_url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml", "homepage": "https://news.un.org", "country": "", "region": "Global", "language": "en", "scope": "international", "categories": ["world"], "tier": 1},
-  {"name": "ReliefWeb — Headlines", "rss_url": "https://reliefweb.int/updates/rss.xml", "homepage": "https://reliefweb.int", "country": "", "region": "Global", "language": "en", "scope": "international", "categories": ["disaster", "world"], "tier": 1},
-  {"name": "ESPN — Top Headlines", "rss_url": "https://www.espn.com/espn/rss/news", "homepage": "https://www.espn.com", "country": "US", "region": "Global", "language": "en", "scope": "international", "categories": ["sports"], "tier": 2},
-  {"name": "Variety — Entertainment", "rss_url": "https://variety.com/feed/", "homepage": "https://variety.com", "country": "US", "region": "Global", "language": "en", "scope": "international", "categories": ["entertainment"], "tier": 2},
-  {"name": "TechCrunch", "rss_url": "https://techcrunch.com/feed/", "homepage": "https://techcrunch.com", "country": "US", "region": "Global", "language": "en", "scope": "international", "categories": ["technology", "business"], "tier": 2},
-  {"name": "Ars Technica", "rss_url": "https://feeds.arstechnica.com/arstechnica/index", "homepage": "https://arstechnica.com", "country": "US", "region": "Global", "language": "en", "scope": "international", "categories": ["technology", "science"], "tier": 2},
-  {"name": "Reddit — r/worldnews", "rss_url": "https://www.reddit.com/r/worldnews/.rss", "homepage": "https://www.reddit.com/r/worldnews", "country": "", "region": "Social", "language": "en", "scope": "international", "categories": ["world"], "tier": 3, "platform": "reddit"},
-  {"name": "Reddit — r/news", "rss_url": "https://www.reddit.com/r/news/.rss", "homepage": "https://www.reddit.com/r/news", "country": "US", "region": "Social", "language": "en", "scope": "national", "categories": ["world"], "tier": 3, "platform": "reddit"},
-  {"name": "Reddit — r/geopolitics", "rss_url": "https://www.reddit.com/r/geopolitics/.rss", "homepage": "https://www.reddit.com/r/geopolitics", "country": "", "region": "Social", "language": "en", "scope": "international", "categories": ["politics"], "tier": 3, "platform": "reddit"},
-  {"name": "Reddit — r/Economics", "rss_url": "https://www.reddit.com/r/Economics/.rss", "homepage": "https://www.reddit.com/r/Economics", "country": "", "region": "Social", "language": "en", "scope": "international", "categories": ["economy", "business"], "tier": 3, "platform": "reddit"},
-  {"name": "Reddit — r/technology", "rss_url": "https://www.reddit.com/r/technology/.rss", "homepage": "https://www.reddit.com/r/technology", "country": "", "region": "Social", "language": "en", "scope": "international", "categories": ["technology"], "tier": 3, "platform": "reddit"},
-  {"name": "YouTube — Al Jazeera English", "rss_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCNye-wNBqNL5ZzHSJj3l8Bg", "homepage": "https://www.youtube.com/@aljazeeraenglish", "country": "QA", "region": "Social", "language": "en", "scope": "international", "categories": ["world"], "tier": 2, "platform": "youtube"},
-  {"name": "YouTube — DW News", "rss_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg", "homepage": "https://www.youtube.com/@dwnews", "country": "DE", "region": "Social", "language": "en", "scope": "international", "categories": ["world"], "tier": 2, "platform": "youtube"},
-  {"name": "YouTube — Sky News", "rss_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCoMdktPbSTixAyNGwb-UYkQ", "homepage": "https://www.youtube.com/@SkyNews", "country": "GB", "region": "Social", "language": "en", "scope": "national", "categories": ["world"], "tier": 2, "platform": "youtube"},
-  {"name": "Mastodon — #news", "rss_url": "https://mastodon.social/tags/news.rss", "homepage": "https://mastodon.social/tags/news", "country": "", "region": "Social", "language": "en", "scope": "international", "categories": ["world"], "tier": 3, "platform": "mastodon"},
-  {"name": "Mastodon — #worldnews", "rss_url": "https://mastodon.social/tags/worldnews.rss", "homepage": "https://mastodon.social/tags/worldnews", "country": "", "region": "Social", "language": "en", "scope": "international", "categories": ["world"], "tier": 3, "platform": "mastodon"},
-  {"name": "Bluesky — AP News", "rss_url": "https://bsky.app/profile/apnews.com/rss", "homepage": "https://bsky.app/profile/apnews.com", "country": "US", "region": "Social", "language": "en", "scope": "international", "categories": ["world"], "tier": 2, "platform": "bluesky"},
-  {"name": "Bluesky — NPR", "rss_url": "https://bsky.app/profile/npr.org/rss", "homepage": "https://bsky.app/profile/npr.org", "country": "US", "region": "Social", "language": "en", "scope": "national", "categories": ["world"], "tier": 2, "platform": "bluesky"},
-  {"name": "Bluesky — The Guardian", "rss_url": "https://bsky.app/profile/theguardian.com/rss", "homepage": "https://bsky.app/profile/theguardian.com", "country": "GB", "region": "Social", "language": "en", "scope": "international", "categories": ["world"], "tier": 2, "platform": "bluesky"}
+  {
+    "name": "BBC News — World",
+    "rss_url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "homepage": "https://www.bbc.com/news",
+    "country": "GB",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC News — Business",
+    "rss_url": "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "homepage": "https://www.bbc.com/news/business",
+    "country": "GB",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "business"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC News — Technology",
+    "rss_url": "https://feeds.bbci.co.uk/news/technology/rss.xml",
+    "homepage": "https://www.bbc.com/news/technology",
+    "country": "GB",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "technology"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC News — Science & Environment",
+    "rss_url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+    "homepage": "https://www.bbc.com/news/science_and_environment",
+    "country": "GB",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "science",
+      "environment"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Al Jazeera English",
+    "rss_url": "https://www.aljazeera.com/xml/rss/all.xml",
+    "homepage": "https://www.aljazeera.com",
+    "country": "QA",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "The Guardian — World",
+    "rss_url": "https://www.theguardian.com/world/rss",
+    "homepage": "https://www.theguardian.com/world",
+    "country": "GB",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "The New York Times — World",
+    "rss_url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+    "homepage": "https://www.nytimes.com/section/world",
+    "country": "US",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "The New York Times — Home Page",
+    "rss_url": "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
+    "homepage": "https://www.nytimes.com",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "NPR — News",
+    "rss_url": "https://feeds.npr.org/1001/rss.xml",
+    "homepage": "https://www.npr.org",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "The Washington Post — World",
+    "rss_url": "https://feeds.washingtonpost.com/rss/world",
+    "homepage": "https://www.washingtonpost.com/world",
+    "country": "US",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "CNBC — Top News",
+    "rss_url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
+    "homepage": "https://www.cnbc.com",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "business",
+      "economy"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Fox News — Latest",
+    "rss_url": "https://moxie.foxnews.com/google-publisher/latest.xml",
+    "homepage": "https://www.foxnews.com",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "politics",
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Deutsche Welle — All",
+    "rss_url": "https://rss.dw.com/rdf/rss-en-all",
+    "homepage": "https://www.dw.com",
+    "country": "DE",
+    "region": "Europe",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Der Spiegel — International",
+    "rss_url": "https://www.spiegel.de/international/index.rss",
+    "homepage": "https://www.spiegel.de/international",
+    "country": "DE",
+    "region": "Europe",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "France 24 — English",
+    "rss_url": "https://www.france24.com/en/rss",
+    "homepage": "https://www.france24.com/en",
+    "country": "FR",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "RFI — English",
+    "rss_url": "https://www.rfi.fr/en/rss",
+    "homepage": "https://www.rfi.fr/en",
+    "country": "FR",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Le Monde — À la une",
+    "rss_url": "https://www.lemonde.fr/rss/une.xml",
+    "homepage": "https://www.lemonde.fr",
+    "country": "FR",
+    "region": "Europe",
+    "language": "fr",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "El País — Portada",
+    "rss_url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada",
+    "homepage": "https://elpais.com",
+    "country": "ES",
+    "region": "Europe",
+    "language": "es",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "ANSA — Top News",
+    "rss_url": "https://www.ansa.it/sito/ansait_rss.xml",
+    "homepage": "https://www.ansa.it",
+    "country": "IT",
+    "region": "Europe",
+    "language": "it",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Euronews",
+    "rss_url": "https://www.euronews.com/rss",
+    "homepage": "https://www.euronews.com",
+    "country": "FR",
+    "region": "Europe",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "POLITICO Europe",
+    "rss_url": "https://www.politico.eu/feed/",
+    "homepage": "https://www.politico.eu",
+    "country": "BE",
+    "region": "Europe",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "The Kyiv Independent",
+    "rss_url": "https://kyivindependent.com/feed/",
+    "homepage": "https://kyivindependent.com",
+    "country": "UA",
+    "region": "Europe",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "conflict"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "The Moscow Times",
+    "rss_url": "https://www.themoscowtimes.com/rss/news",
+    "homepage": "https://www.themoscowtimes.com",
+    "country": "RU",
+    "region": "Europe",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Notes from Poland",
+    "rss_url": "https://notesfrompoland.com/feed/",
+    "homepage": "https://notesfrompoland.com",
+    "country": "PL",
+    "region": "Europe",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "politics"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "The Japan Times",
+    "rss_url": "https://www.japantimes.co.jp/feed/",
+    "homepage": "https://www.japantimes.co.jp",
+    "country": "JP",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "The Korea Herald",
+    "rss_url": "https://www.koreaherald.com/rss/newsAll",
+    "homepage": "https://www.koreaherald.com",
+    "country": "KR",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "South China Morning Post — News",
+    "rss_url": "https://www.scmp.com/rss/91/feed",
+    "homepage": "https://www.scmp.com",
+    "country": "HK",
+    "region": "Asia",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world",
+      "business"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "China Daily — World",
+    "rss_url": "https://www.chinadaily.com.cn/rss/world_rss.xml",
+    "homepage": "https://www.chinadaily.com.cn",
+    "country": "CN",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "The Times of India — Top Stories",
+    "rss_url": "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+    "homepage": "https://timesofindia.indiatimes.com",
+    "country": "IN",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "The Hindu — National",
+    "rss_url": "https://www.thehindu.com/news/national/feeder/default.rss",
+    "homepage": "https://www.thehindu.com",
+    "country": "IN",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Dawn — Home",
+    "rss_url": "https://www.dawn.com/feeds/home",
+    "homepage": "https://www.dawn.com",
+    "country": "PK",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "The Straits Times — World",
+    "rss_url": "https://www.straitstimes.com/news/world/rss.xml",
+    "homepage": "https://www.straitstimes.com",
+    "country": "SG",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Bangkok Post — Top Stories",
+    "rss_url": "https://www.bangkokpost.com/rss/data/topstories.xml",
+    "homepage": "https://www.bangkokpost.com",
+    "country": "TH",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "ABC News Australia — Just In",
+    "rss_url": "https://www.abc.net.au/news/feed/51120/rss.xml",
+    "homepage": "https://www.abc.net.au/news",
+    "country": "AU",
+    "region": "Oceania",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "The Sydney Morning Herald",
+    "rss_url": "https://www.smh.com.au/rss/feed.xml",
+    "homepage": "https://www.smh.com.au",
+    "country": "AU",
+    "region": "Oceania",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "RNZ — National",
+    "rss_url": "https://www.rnz.co.nz/rss/national.xml",
+    "homepage": "https://www.rnz.co.nz",
+    "country": "NZ",
+    "region": "Oceania",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "CBC News — Top Stories",
+    "rss_url": "https://www.cbc.ca/webfeed/rss/rss-topstories",
+    "homepage": "https://www.cbc.ca/news",
+    "country": "CA",
+    "region": "North America",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Mexico News Daily",
+    "rss_url": "https://mexiconewsdaily.com/feed/",
+    "homepage": "https://mexiconewsdaily.com",
+    "country": "MX",
+    "region": "North America",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Buenos Aires Times",
+    "rss_url": "https://www.batimes.com.ar/feed",
+    "homepage": "https://www.batimes.com.ar",
+    "country": "AR",
+    "region": "South America",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "MercoPress — South Atlantic News",
+    "rss_url": "https://en.mercopress.com/rss/",
+    "homepage": "https://en.mercopress.com",
+    "country": "UY",
+    "region": "South America",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "AllAfrica — Latest",
+    "rss_url": "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf",
+    "homepage": "https://allafrica.com",
+    "country": "",
+    "region": "Africa",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Mail & Guardian",
+    "rss_url": "https://mg.co.za/feed/",
+    "homepage": "https://mg.co.za",
+    "country": "ZA",
+    "region": "Africa",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Premium Times Nigeria",
+    "rss_url": "https://www.premiumtimesng.com/feed",
+    "homepage": "https://www.premiumtimesng.com",
+    "country": "NG",
+    "region": "Africa",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Egypt Independent",
+    "rss_url": "https://egyptindependent.com/feed/",
+    "homepage": "https://egyptindependent.com",
+    "country": "EG",
+    "region": "Africa",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Middle East Eye",
+    "rss_url": "https://www.middleeasteye.net/rss",
+    "homepage": "https://www.middleeasteye.net",
+    "country": "GB",
+    "region": "Middle East",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "The Times of Israel",
+    "rss_url": "https://www.timesofisrael.com/feed/",
+    "homepage": "https://www.timesofisrael.com",
+    "country": "IL",
+    "region": "Middle East",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world",
+      "politics"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "The Jerusalem Post",
+    "rss_url": "https://www.jpost.com/rss/rssfeedsfrontpage.aspx",
+    "homepage": "https://www.jpost.com",
+    "country": "IL",
+    "region": "Middle East",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Arab News",
+    "rss_url": "https://www.arabnews.com/rss.xml",
+    "homepage": "https://www.arabnews.com",
+    "country": "SA",
+    "region": "Middle East",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Tehran Times",
+    "rss_url": "https://www.tehrantimes.com/rss",
+    "homepage": "https://www.tehrantimes.com",
+    "country": "IR",
+    "region": "Middle East",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Hürriyet Daily News",
+    "rss_url": "https://www.hurriyetdailynews.com/rss",
+    "homepage": "https://www.hurriyetdailynews.com",
+    "country": "TR",
+    "region": "Middle East",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "The Texas Tribune",
+    "rss_url": "https://www.texastribune.org/feeds/main/",
+    "homepage": "https://www.texastribune.org",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "local",
+    "categories": [
+      "politics"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Gothamist (New York)",
+    "rss_url": "https://gothamist.com/feed",
+    "homepage": "https://gothamist.com",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "local",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Los Angeles Times — California",
+    "rss_url": "https://www.latimes.com/california/rss2.0.xml",
+    "homepage": "https://www.latimes.com",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "local",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "The Seattle Times",
+    "rss_url": "https://www.seattletimes.com/feed/",
+    "homepage": "https://www.seattletimes.com",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "local",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "The Denver Post",
+    "rss_url": "https://www.denverpost.com/feed/",
+    "homepage": "https://www.denverpost.com",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "local",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Block Club Chicago",
+    "rss_url": "https://blockclubchicago.org/feed/",
+    "homepage": "https://blockclubchicago.org",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "local",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Manchester Evening News",
+    "rss_url": "https://www.manchestereveningnews.co.uk/news/?service=rss",
+    "homepage": "https://www.manchestereveningnews.co.uk",
+    "country": "GB",
+    "region": "Europe",
+    "language": "en",
+    "scope": "local",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Evening Standard (London)",
+    "rss_url": "https://www.standard.co.uk/rss",
+    "homepage": "https://www.standard.co.uk",
+    "country": "GB",
+    "region": "Europe",
+    "language": "en",
+    "scope": "local",
+    "categories": [
+      "world"
+    ],
+    "tier": 3
+  },
+  {
+    "name": "Google News — World (EN)",
+    "rss_url": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
+    "homepage": "https://news.google.com",
+    "country": "",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Google News — Business (EN)",
+    "rss_url": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
+    "homepage": "https://news.google.com",
+    "country": "",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "business"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Google News — Technology (EN)",
+    "rss_url": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en",
+    "homepage": "https://news.google.com",
+    "country": "",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "technology"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Google News — Top Stories US",
+    "rss_url": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+    "homepage": "https://news.google.com",
+    "country": "US",
+    "region": "North America",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Google News — Top Stories UK",
+    "rss_url": "https://news.google.com/rss?hl=en-GB&gl=GB&ceid=GB:en",
+    "homepage": "https://news.google.com",
+    "country": "GB",
+    "region": "Europe",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Google News — Top Stories India",
+    "rss_url": "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
+    "homepage": "https://news.google.com",
+    "country": "IN",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Google News — Top Stories Australia",
+    "rss_url": "https://news.google.com/rss?hl=en-AU&gl=AU&ceid=AU:en",
+    "homepage": "https://news.google.com",
+    "country": "AU",
+    "region": "Oceania",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Science Daily — Top News",
+    "rss_url": "https://www.sciencedaily.com/rss/top/science.xml",
+    "homepage": "https://www.sciencedaily.com",
+    "country": "US",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "science"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "WHO — News",
+    "rss_url": "https://www.who.int/rss-feeds/news-english.xml",
+    "homepage": "https://www.who.int",
+    "country": "CH",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "health"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "UN News — Global",
+    "rss_url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+    "homepage": "https://news.un.org",
+    "country": "",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "ReliefWeb — Headlines",
+    "rss_url": "https://reliefweb.int/updates/rss.xml",
+    "homepage": "https://reliefweb.int",
+    "country": "",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "disaster",
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "ESPN — Top Headlines",
+    "rss_url": "https://www.espn.com/espn/rss/news",
+    "homepage": "https://www.espn.com",
+    "country": "US",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "sports"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Variety — Entertainment",
+    "rss_url": "https://variety.com/feed/",
+    "homepage": "https://variety.com",
+    "country": "US",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "entertainment"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "TechCrunch",
+    "rss_url": "https://techcrunch.com/feed/",
+    "homepage": "https://techcrunch.com",
+    "country": "US",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "technology",
+      "business"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Ars Technica",
+    "rss_url": "https://feeds.arstechnica.com/arstechnica/index",
+    "homepage": "https://arstechnica.com",
+    "country": "US",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "technology",
+      "science"
+    ],
+    "tier": 2
+  },
+  {
+    "name": "Reddit — r/worldnews",
+    "rss_url": "https://www.reddit.com/r/worldnews/.rss",
+    "homepage": "https://www.reddit.com/r/worldnews",
+    "country": "",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 3,
+    "platform": "reddit"
+  },
+  {
+    "name": "Reddit — r/news",
+    "rss_url": "https://www.reddit.com/r/news/.rss",
+    "homepage": "https://www.reddit.com/r/news",
+    "country": "US",
+    "region": "Social",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 3,
+    "platform": "reddit"
+  },
+  {
+    "name": "Reddit — r/geopolitics",
+    "rss_url": "https://www.reddit.com/r/geopolitics/.rss",
+    "homepage": "https://www.reddit.com/r/geopolitics",
+    "country": "",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "politics"
+    ],
+    "tier": 3,
+    "platform": "reddit"
+  },
+  {
+    "name": "Reddit — r/Economics",
+    "rss_url": "https://www.reddit.com/r/Economics/.rss",
+    "homepage": "https://www.reddit.com/r/Economics",
+    "country": "",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "economy",
+      "business"
+    ],
+    "tier": 3,
+    "platform": "reddit"
+  },
+  {
+    "name": "Reddit — r/technology",
+    "rss_url": "https://www.reddit.com/r/technology/.rss",
+    "homepage": "https://www.reddit.com/r/technology",
+    "country": "",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "technology"
+    ],
+    "tier": 3,
+    "platform": "reddit"
+  },
+  {
+    "name": "YouTube — Al Jazeera English",
+    "rss_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCNye-wNBqNL5ZzHSJj3l8Bg",
+    "homepage": "https://www.youtube.com/@aljazeeraenglish",
+    "country": "QA",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 2,
+    "platform": "youtube"
+  },
+  {
+    "name": "YouTube — DW News",
+    "rss_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg",
+    "homepage": "https://www.youtube.com/@dwnews",
+    "country": "DE",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 2,
+    "platform": "youtube"
+  },
+  {
+    "name": "YouTube — Sky News",
+    "rss_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCoMdktPbSTixAyNGwb-UYkQ",
+    "homepage": "https://www.youtube.com/@SkyNews",
+    "country": "GB",
+    "region": "Social",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2,
+    "platform": "youtube"
+  },
+  {
+    "name": "Mastodon — #news",
+    "rss_url": "https://mastodon.social/tags/news.rss",
+    "homepage": "https://mastodon.social/tags/news",
+    "country": "",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 3,
+    "platform": "mastodon"
+  },
+  {
+    "name": "Mastodon — #worldnews",
+    "rss_url": "https://mastodon.social/tags/worldnews.rss",
+    "homepage": "https://mastodon.social/tags/worldnews",
+    "country": "",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 3,
+    "platform": "mastodon"
+  },
+  {
+    "name": "Bluesky — AP News",
+    "rss_url": "https://bsky.app/profile/apnews.com/rss",
+    "homepage": "https://bsky.app/profile/apnews.com",
+    "country": "US",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 2,
+    "platform": "bluesky"
+  },
+  {
+    "name": "Bluesky — NPR",
+    "rss_url": "https://bsky.app/profile/npr.org/rss",
+    "homepage": "https://bsky.app/profile/npr.org",
+    "country": "US",
+    "region": "Social",
+    "language": "en",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 2,
+    "platform": "bluesky"
+  },
+  {
+    "name": "Bluesky — The Guardian",
+    "rss_url": "https://bsky.app/profile/theguardian.com/rss",
+    "homepage": "https://bsky.app/profile/theguardian.com",
+    "country": "GB",
+    "region": "Social",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 2,
+    "platform": "bluesky"
+  },
+  {
+    "name": "BBC Mundo (Spanish)",
+    "rss_url": "https://feeds.bbci.co.uk/mundo/rss.xml",
+    "homepage": "https://www.bbc.com/mundo",
+    "country": "GB",
+    "region": "Global",
+    "language": "es",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Brasil (Portuguese)",
+    "rss_url": "https://feeds.bbci.co.uk/portuguese/rss.xml",
+    "homepage": "https://www.bbc.com/portuguese",
+    "country": "GB",
+    "region": "Global",
+    "language": "pt",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Arabic",
+    "rss_url": "https://feeds.bbci.co.uk/arabic/rss.xml",
+    "homepage": "https://www.bbc.com/arabic",
+    "country": "GB",
+    "region": "Middle East",
+    "language": "ar",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Persian",
+    "rss_url": "https://feeds.bbci.co.uk/persian/rss.xml",
+    "homepage": "https://www.bbc.com/persian",
+    "country": "GB",
+    "region": "Middle East",
+    "language": "fa",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Russian",
+    "rss_url": "https://feeds.bbci.co.uk/russian/rss.xml",
+    "homepage": "https://www.bbc.com/russian",
+    "country": "GB",
+    "region": "Europe",
+    "language": "ru",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Ukrainian",
+    "rss_url": "https://feeds.bbci.co.uk/ukrainian/rss.xml",
+    "homepage": "https://www.bbc.com/ukrainian",
+    "country": "GB",
+    "region": "Europe",
+    "language": "uk",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Turkish",
+    "rss_url": "https://feeds.bbci.co.uk/turkce/rss.xml",
+    "homepage": "https://www.bbc.com/turkce",
+    "country": "GB",
+    "region": "Middle East",
+    "language": "tr",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Chinese",
+    "rss_url": "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml",
+    "homepage": "https://www.bbc.com/zhongwen",
+    "country": "GB",
+    "region": "Asia",
+    "language": "zh",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Hindi",
+    "rss_url": "https://feeds.bbci.co.uk/hindi/rss.xml",
+    "homepage": "https://www.bbc.com/hindi",
+    "country": "GB",
+    "region": "Asia",
+    "language": "hi",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Indonesian",
+    "rss_url": "https://feeds.bbci.co.uk/indonesia/rss.xml",
+    "homepage": "https://www.bbc.com/indonesia",
+    "country": "GB",
+    "region": "Asia",
+    "language": "id",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Vietnamese",
+    "rss_url": "https://feeds.bbci.co.uk/vietnamese/rss.xml",
+    "homepage": "https://www.bbc.com/vietnamese",
+    "country": "GB",
+    "region": "Asia",
+    "language": "vi",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Japanese",
+    "rss_url": "https://feeds.bbci.co.uk/japanese/rss.xml",
+    "homepage": "https://www.bbc.com/japanese",
+    "country": "GB",
+    "region": "Asia",
+    "language": "ja",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Swahili",
+    "rss_url": "https://feeds.bbci.co.uk/swahili/rss.xml",
+    "homepage": "https://www.bbc.com/swahili",
+    "country": "GB",
+    "region": "Africa",
+    "language": "sw",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Hausa",
+    "rss_url": "https://feeds.bbci.co.uk/hausa/rss.xml",
+    "homepage": "https://www.bbc.com/hausa",
+    "country": "GB",
+    "region": "Africa",
+    "language": "ha",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "BBC Afrique (French)",
+    "rss_url": "https://feeds.bbci.co.uk/afrique/rss.xml",
+    "homepage": "https://www.bbc.com/afrique",
+    "country": "GB",
+    "region": "Africa",
+    "language": "fr",
+    "scope": "international",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Tagesschau (Germany)",
+    "rss_url": "https://www.tagesschau.de/xml/rss2/",
+    "homepage": "https://www.tagesschau.de",
+    "country": "DE",
+    "region": "Europe",
+    "language": "de",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Der Spiegel — Schlagzeilen",
+    "rss_url": "https://www.spiegel.de/schlagzeilen/tops/index.rss",
+    "homepage": "https://www.spiegel.de",
+    "country": "DE",
+    "region": "Europe",
+    "language": "de",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Deutsche Welle (German)",
+    "rss_url": "https://rss.dw.com/rdf/rss-de-all",
+    "homepage": "https://www.dw.com/de",
+    "country": "DE",
+    "region": "Europe",
+    "language": "de",
+    "scope": "international",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Die Zeit",
+    "rss_url": "https://newsfeed.zeit.de/index",
+    "homepage": "https://www.zeit.de",
+    "country": "DE",
+    "region": "Europe",
+    "language": "de",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "ORF News (Austria)",
+    "rss_url": "https://rss.orf.at/news.xml",
+    "homepage": "https://orf.at",
+    "country": "AT",
+    "region": "Europe",
+    "language": "de",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "France Info",
+    "rss_url": "https://www.francetvinfo.fr/titres.rss",
+    "homepage": "https://www.francetvinfo.fr",
+    "country": "FR",
+    "region": "Europe",
+    "language": "fr",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Le Figaro — Actualités",
+    "rss_url": "https://www.lefigaro.fr/rss/figaro_actualites.xml",
+    "homepage": "https://www.lefigaro.fr",
+    "country": "FR",
+    "region": "Europe",
+    "language": "fr",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "RFI (French)",
+    "rss_url": "https://www.rfi.fr/fr/rss",
+    "homepage": "https://www.rfi.fr",
+    "country": "FR",
+    "region": "Europe",
+    "language": "fr",
+    "scope": "international",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "NOS Nieuws (Netherlands)",
+    "rss_url": "https://feeds.nos.nl/nosnieuwsalgemeen",
+    "homepage": "https://nos.nl",
+    "country": "NL",
+    "region": "Europe",
+    "language": "nl",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "SVT Nyheter (Sweden)",
+    "rss_url": "https://www.svt.se/nyheter/rss.xml",
+    "homepage": "https://www.svt.se/nyheter",
+    "country": "SE",
+    "region": "Europe",
+    "language": "sv",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "NRK (Norway)",
+    "rss_url": "https://www.nrk.no/toppsaker.rss",
+    "homepage": "https://www.nrk.no",
+    "country": "NO",
+    "region": "Europe",
+    "language": "no",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "DR Nyheder (Denmark)",
+    "rss_url": "https://www.dr.dk/nyheder/service/feeds/allenyheder",
+    "homepage": "https://www.dr.dk/nyheder",
+    "country": "DK",
+    "region": "Europe",
+    "language": "da",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Yle Uutiset (Finland)",
+    "rss_url": "https://feeds.yle.fi/uutiset/v1/majorHeadlines/YLE_UUTISET.rss",
+    "homepage": "https://yle.fi/uutiset",
+    "country": "FI",
+    "region": "Europe",
+    "language": "fi",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "RTÉ News (Ireland)",
+    "rss_url": "https://www.rte.ie/feeds/rss/?index=/news/",
+    "homepage": "https://www.rte.ie/news",
+    "country": "IE",
+    "region": "Europe",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Kathimerini English (Greece)",
+    "rss_url": "https://www.ekathimerini.com/feed/",
+    "homepage": "https://www.ekathimerini.com",
+    "country": "GR",
+    "region": "Europe",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Ukrainska Pravda",
+    "rss_url": "https://www.pravda.com.ua/rss/",
+    "homepage": "https://www.pravda.com.ua",
+    "country": "UA",
+    "region": "Europe",
+    "language": "uk",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Meduza (Russian)",
+    "rss_url": "https://meduza.io/rss/all",
+    "homepage": "https://meduza.io",
+    "country": "RU",
+    "region": "Europe",
+    "language": "ru",
+    "scope": "international",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Público (Portugal)",
+    "rss_url": "https://feeds.publico.pt/ultimas",
+    "homepage": "https://www.publico.pt",
+    "country": "PT",
+    "region": "Europe",
+    "language": "pt",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "G1 (Brazil)",
+    "rss_url": "https://g1.globo.com/rss/g1/",
+    "homepage": "https://g1.globo.com",
+    "country": "BR",
+    "region": "South America",
+    "language": "pt",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Folha de S.Paulo — Em cima da hora",
+    "rss_url": "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml",
+    "homepage": "https://www.folha.uol.com.br",
+    "country": "BR",
+    "region": "South America",
+    "language": "pt",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Agência Brasil",
+    "rss_url": "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml",
+    "homepage": "https://agenciabrasil.ebc.com.br",
+    "country": "BR",
+    "region": "South America",
+    "language": "pt",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Clarín — Lo último (Argentina)",
+    "rss_url": "https://www.clarin.com/rss/lo-ultimo/",
+    "homepage": "https://www.clarin.com",
+    "country": "AR",
+    "region": "South America",
+    "language": "es",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "El Universal (Mexico)",
+    "rss_url": "https://www.eluniversal.com.mx/rss.xml",
+    "homepage": "https://www.eluniversal.com.mx",
+    "country": "MX",
+    "region": "North America",
+    "language": "es",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "El Tiempo (Colombia)",
+    "rss_url": "https://www.eltiempo.com/rss/colombia.xml",
+    "homepage": "https://www.eltiempo.com",
+    "country": "CO",
+    "region": "South America",
+    "language": "es",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Emol (Chile)",
+    "rss_url": "https://www.emol.com/rss/rss.asp?canal=noticias",
+    "homepage": "https://www.emol.com",
+    "country": "CL",
+    "region": "South America",
+    "language": "es",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "NHK News (Japan)",
+    "rss_url": "https://www.nhk.or.jp/rss/news/cat0.xml",
+    "homepage": "https://www3.nhk.or.jp/news/",
+    "country": "JP",
+    "region": "Asia",
+    "language": "ja",
+    "scope": "national",
+    "categories": [
+      "world"
+    ],
+    "tier": 1
+  },
+  {
+    "name": "Asahi Shimbun",
+    "rss_url": "http://rss.asahi.com/rss/asahi/newsheadlines.rdf",
+    "homepage": "https://www.asahi.com",
+    "country": "JP",
+    "region": "Asia",
+    "language": "ja",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Hankyoreh English (Korea)",
+    "rss_url": "https://english.hani.co.kr/rss/",
+    "homepage": "https://english.hani.co.kr",
+    "country": "KR",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Focus Taiwan",
+    "rss_url": "https://focustaiwan.tw/rss/news",
+    "homepage": "https://focustaiwan.tw",
+    "country": "TW",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Rappler (Philippines)",
+    "rss_url": "https://www.rappler.com/feed/",
+    "homepage": "https://www.rappler.com",
+    "country": "PH",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Philippine Daily Inquirer",
+    "rss_url": "https://www.inquirer.net/fullfeed",
+    "homepage": "https://www.inquirer.net",
+    "country": "PH",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Antara (Indonesia)",
+    "rss_url": "https://www.antaranews.com/rss/terkini.xml",
+    "homepage": "https://www.antaranews.com",
+    "country": "ID",
+    "region": "Asia",
+    "language": "id",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "VnExpress (Vietnam)",
+    "rss_url": "https://vnexpress.net/rss/tin-moi-nhat.rss",
+    "homepage": "https://vnexpress.net",
+    "country": "VN",
+    "region": "Asia",
+    "language": "vi",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "The Star (Malaysia)",
+    "rss_url": "https://www.thestar.com.my/rss/News",
+    "homepage": "https://www.thestar.com.my",
+    "country": "MY",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "The Daily Star (Bangladesh)",
+    "rss_url": "https://www.thedailystar.net/rss.xml",
+    "homepage": "https://www.thedailystar.net",
+    "country": "BD",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "The Kathmandu Post (Nepal)",
+    "rss_url": "https://kathmandupost.com/rss",
+    "homepage": "https://kathmandupost.com",
+    "country": "NP",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "NDTV — Top Stories (India)",
+    "rss_url": "https://feeds.feedburner.com/ndtvnews-top-stories",
+    "homepage": "https://www.ndtv.com",
+    "country": "IN",
+    "region": "Asia",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Al Arabiya (Arabic)",
+    "rss_url": "https://www.alarabiya.net/.mrss/ar.xml",
+    "homepage": "https://www.alarabiya.net",
+    "country": "AE",
+    "region": "Middle East",
+    "language": "ar",
+    "scope": "international",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Al-Monitor",
+    "rss_url": "https://www.al-monitor.com/rss.xml",
+    "homepage": "https://www.al-monitor.com",
+    "country": "US",
+    "region": "Middle East",
+    "language": "en",
+    "scope": "international",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "The National (UAE)",
+    "rss_url": "https://www.thenationalnews.com/rss/",
+    "homepage": "https://www.thenationalnews.com",
+    "country": "AE",
+    "region": "Middle East",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "L'Orient-Le Jour (Lebanon)",
+    "rss_url": "https://www.lorientlejour.com/rss/",
+    "homepage": "https://www.lorientlejour.com",
+    "country": "LB",
+    "region": "Middle East",
+    "language": "fr",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Daily Nation (Kenya)",
+    "rss_url": "https://nation.africa/kenya/rss",
+    "homepage": "https://nation.africa",
+    "country": "KE",
+    "region": "Africa",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "The Citizen (Tanzania)",
+    "rss_url": "https://www.thecitizen.co.tz/tanzania/rss",
+    "homepage": "https://www.thecitizen.co.tz",
+    "country": "TZ",
+    "region": "Africa",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Addis Standard (Ethiopia)",
+    "rss_url": "https://addisstandard.com/feed/",
+    "homepage": "https://addisstandard.com",
+    "country": "ET",
+    "region": "Africa",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "GhanaWeb",
+    "rss_url": "https://www.ghanaweb.com/GhanaHomePage/rss/news.xml",
+    "homepage": "https://www.ghanaweb.com",
+    "country": "GH",
+    "region": "Africa",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "Le Monde Afrique",
+    "rss_url": "https://www.lemonde.fr/afrique/rss_full.xml",
+    "homepage": "https://www.lemonde.fr/afrique",
+    "country": "FR",
+    "region": "Africa",
+    "language": "fr",
+    "scope": "international",
+    "categories": [],
+    "tier": 2
+  },
+  {
+    "name": "News24 (South Africa)",
+    "rss_url": "https://feeds.24.com/articles/news24/TopStories/rss",
+    "homepage": "https://www.news24.com",
+    "country": "ZA",
+    "region": "Africa",
+    "language": "en",
+    "scope": "national",
+    "categories": [],
+    "tier": 2
+  }
 ]

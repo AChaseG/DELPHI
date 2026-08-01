@@ -81,6 +81,11 @@ class Source(Base):
     # Consecutive polls that yielded no new articles — used by the rolling
     # poller to lengthen the interval of quiet city feeds (adaptive backoff).
     idle_polls: Mapped[int] = mapped_column(Integer, default=0)
+    # What the publisher last gave us to poll conditionally with. Sent back as
+    # If-None-Match / If-Modified-Since so an unchanged feed answers 304 with no
+    # body — which is what makes polling more often reasonable rather than rude.
+    etag: Mapped[str] = mapped_column(String(200), default="")
+    last_modified: Mapped[str] = mapped_column(String(80), default="")
 
     articles = relationship("Article", back_populates="source", cascade="all, delete-orphan")
 
@@ -122,6 +127,12 @@ class Article(Base):
     title: Mapped[str] = mapped_column(Text)
     summary: Mapped[str] = mapped_column(Text, default="")
     content: Mapped[str] = mapped_column(Text, default="")  # fetched article body text
+    # When a body fetch was last attempted, whether or not it produced anything.
+    # A busy tick brings more articles than one cycle can fetch bodies for, and
+    # the rest are picked up later; without this, an article whose page is
+    # permanently unreachable would be retried on every tick forever, and the
+    # backlog would never advance past it.
+    content_tried_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     image_url: Mapped[str] = mapped_column(String(1000), default="")
     published_at: Mapped[datetime] = mapped_column(DateTime, index=True, default=utcnow)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
