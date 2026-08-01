@@ -13,6 +13,36 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-14",
+        "title": "Errors that tell you what went wrong",
+        "items": [
+            "⚠ Every failure now names the thing that failed. \"Request failed\" "
+            "has become \"Couldn't load a feed's articles\", \"Couldn't save your "
+            "settings\", \"Couldn't open the story\" — and each status the server "
+            "can return says what to do about it, so a refusal, a rate limit "
+            "and a restart no longer read identically.",
+            "🔖 When Delphi hits a bug, it writes the failure to the server log "
+            "with a short code and shows you the same code. Quote it and "
+            "whoever runs the server can find that exact failure with its full "
+            "stack trace. A message like that always means nothing was saved.",
+            "⚡ If the live connection drops, a banner now says so. While it is "
+            "down alerts cannot reach your tab and the board stops refreshing "
+            "itself — which used to look exactly like a quiet news day. Brief "
+            "drops stay silent; the banner appears only when reconnection keeps "
+            "failing, and clears itself the moment it works.",
+            "🔓 Being signed out mid-session now says why — an expired session, "
+            "a suspended account, or a deleted one are three different things "
+            "and used to look like one.",
+            "✉️ A password reset that fails to send says so, instead of "
+            "reporting that a link is on its way. Operators get a Service "
+            "health panel in the console naming which mail setting the relay "
+            "objected to, and whether address lookup is working.",
+            "📍 A failed place search explains itself in the suggestion list "
+            "rather than showing nothing, which was indistinguishable from "
+            "\"no such place\".",
+        ],
+    },
+    {
         "date": "2026-08-13",
         "title": "A tidier rail, and a Troubleshooting tab",
         "items": [

@@ -1005,6 +1005,51 @@
         </details>
 
         <details>
+          <summary>⚠ An error message with a reference code</summary>
+          <p>When Delphi hits a bug it can't handle, it writes the failure to the
+             server's log with a short code and shows you the same code — for
+             example <em>(reference 4f2a1c)</em>. Quote it when reporting the problem
+             and whoever runs this server can find the exact failure, with its full
+             stack trace, instead of guessing from a description.</p>
+          <p>A message like that always means <b>nothing was saved</b>. It is safe to
+             try the same thing again; if it fails the same way twice, the second
+             reference is worth quoting too, because it proves it is repeatable rather
+             than a one-off.</p>
+          <p>The code identifies one moment in the log and nothing else — it is not an
+             account number and reveals nothing about you.</p>
+        </details>
+
+        <details>
+          <summary>⚡ "Live updates are disconnected"</summary>
+          <p>Delphi holds an open connection to the server so alerts can arrive the
+             moment they fire. If that connection drops, this banner appears above the
+             board — and while it is showing, <b>alerts will not reach this tab</b> and
+             columns stop refreshing by themselves.</p>
+          <p>Brief drops are normal and silent: deploying an update severs the
+             connection, as does a laptop going to sleep. The banner only appears after
+             several failed reconnections, which means something is actually wrong —
+             usually the server restarting, a proxy that closes idle connections, or a
+             network that blocks streaming responses.</p>
+          <p>Reloading the page is the fix in nearly every case. News is still being
+             collected on the server throughout, so nothing is missed permanently — the
+             board catches up as soon as it reconnects.</p>
+        </details>
+
+        <details>
+          <summary>✉️ Emails aren't arriving</summary>
+          <p>Verification and password-reset messages need SMTP configured on the
+             server. If it isn't, Delphi says so where you asked rather than pretending
+             a message is on its way, and new accounts are verified automatically
+             instead.</p>
+          <p>If mail <em>is</em> configured but nothing arrives, an operator can see the
+             reason under <b>Service health</b> in the operator console — it names which
+             setting the relay objected to (credentials, the From address, the port and
+             encryption combination) rather than only recording it in the log.</p>
+          <p>Reset links are valid for one hour. Requesting a new one invalidates
+             nothing, so if you're unsure how old a link is, just ask for another.</p>
+        </details>
+
+        <details>
           <summary>↔ A column won't resize</summary>
           <p>Columns are dragged by their <b>right edge only</b>. Take hold of the right
              border of the column you want to change — the line lights up gold when you
@@ -1091,6 +1136,15 @@
   </div>
   <div class="pillar pillar-right" aria-hidden="true">
     <div class="pillar-cap"></div><div class="pillar-shaft"></div><div class="pillar-base"></div>
+  </div>
+
+  <!-- Shown only while the live connection is down. Alerts cannot arrive in
+       that state and nothing else on screen would look any different. -->
+  <div id="stream-down" class="stream-down" role="status" hidden>
+    ⚠ <b>Live updates are disconnected.</b> Alerts won't reach this tab, and the
+    board won't refresh by itself, until the connection is back. Delphi is still
+    collecting news on the server — reloading usually fixes it.
+    <button class="btn small" onclick="location.reload()">Reload</button>
   </div>
 
   <main id="board" class="board"></main>
@@ -1219,6 +1273,13 @@
       <p class="set-note">Every account on this instance. An operator is either named in the
         server's <code>NEWS_ADMIN_USERS</code> setting — those accounts can't be demoted,
         suspended, or deleted from here — or promoted by another operator below.</p>
+      <!-- Services that fail quietly. Mail goes out in a background task and
+           address lookup is a best-effort call to an outside host, so either
+           can be broken for weeks with the only evidence in a log. -->
+      <h3 class="set-h">Service health</h3>
+      <div id="admin-health" class="admin-health"></div>
+
+      <h3 class="set-h">Accounts</h3>
       <div class="source-tools">
         <input id="admin-search" type="search" placeholder="Search username or email…">
         <span id="admin-summary" class="set-note"></span>

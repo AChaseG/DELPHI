@@ -699,7 +699,7 @@ function wireSettings() {
   });
   el("btn-whats-new").onclick = async () => {
     try { showUpdates(await API.changelog(), "The full release history, newest first."); }
-    catch (e) { toast("Unavailable", e.message); }
+    catch (e) { toast("Couldn't load the release history", e.message); }
   };
   feedback(el("btn-whats-new"), "Loading…");
   el("btn-close-updates").onclick = closeUpdates;
@@ -796,6 +796,18 @@ function wireGate() {
   };
   const focus = (id) => { const n = el(id); if (n) n.focus(); };
 
+  // Why the board vanished. A session that expires, is suspended, or belongs to
+  // a deleted account all end the same way — a reload back to this card — and
+  // without the reason the reader is left to guess which, or to assume Delphi
+  // lost their work. api() records it on the way out; it is shown once.
+  try {
+    const reason = sessionStorage.getItem("gnd_signed_out_reason");
+    if (reason) {
+      sessionStorage.removeItem("gnd_signed_out_reason");
+      say(reason);
+    }
+  } catch (e) { /* private mode: no note, the gate still works */ }
+
   on("gate-to-register", (e) => { e.preventDefault(); say(""); show("gate-register"); focus("reg-username"); });
   on("gate-to-signin", (e) => { e.preventDefault(); say(""); show("gate-signin"); focus("auth-username"); });
   on("gate-to-forgot", (e) => { e.preventDefault(); say(""); show("gate-forgot"); focus("forgot-email"); });
@@ -848,11 +860,23 @@ function wireGate() {
     } catch (e) { say(e.message); }
   });
   el("btn-forgot").onclick = () => busy("btn-forgot", "Sending reset link…", async () => {
-    const r = await API.forgotPassword(el("forgot-email").value.trim()).catch(() => ({}));
+    let r;
+    try {
+      r = await API.forgotPassword(el("forgot-email").value.trim());
+    } catch (e) {
+      // Swallowing this reported "a reset link is on its way" for a request
+      // that never arrived — the one message here that must never be wrong,
+      // because the reader's next move is to go and wait for an email.
+      say(`No reset was requested. ${e.message}`);
+      return;
+    }
     show("gate-signin");
     say(r.mail_enabled === false
-      ? "Email isn't configured on this server — ask the administrator to reset your password."
-      : "If that address has an account, a reset link is on its way.", true);
+      ? "Email isn't configured on this server, so no link can be sent — ask "
+        + "the administrator to reset your password from the operator console."
+      : "If that address has an account, a reset link is on its way. It is "
+        + "valid for one hour. Nothing arrives if the address isn't registered.",
+      true);
   });
 
   // Action links from emails. Current links put the token in the path
@@ -2245,6 +2269,7 @@ function wireAdmin() {
     el("settings-panel").hidden = true;   // it opened from there; don't stack panels
     el("admin-panel").hidden = false;
     await renderAdminUsers();
+    renderServiceHealth();
   };
   feedback(el("btn-admin"));
   el("btn-close-admin").onclick = () => { el("admin-panel").hidden = true; };
@@ -2255,12 +2280,71 @@ function wireAdmin() {
   });
 }
 
+/* The state of the services that fail quietly.
+
+   Mail is sent in a background task and geocoding is a best-effort call to an
+   outside host, so both can be broken for weeks with the only evidence in a log
+   nobody reads — while readers wait for reset links that never arrive. An
+   operator opening the console sees it here instead. */
+async function renderServiceHealth() {
+  const box = el("admin-health");
+  if (!box) return;
+  box.textContent = "Checking services…";
+  let s;
+  try { s = await api("/api/ingest/status"); }
+  catch (e) { box.textContent = "Couldn't read service status: " + e.message; return; }
+
+  const lines = [];
+  const mail = s.mail || {};
+  if (!mail.configured) {
+    lines.push("✉️ Mail is not configured (NEWS_SMTP_HOST is unset). Verification "
+               + "and password-reset links can't be sent, and accounts are "
+               + "auto-verified instead.");
+  } else if (mail.last_error) {
+    lines.push(`✉️ Mail is failing via ${mail.host} — ${mail.last_error} `
+               + `(${mail.failures} failure${plural(mail.failures)}, last at `
+               + `${timeAgo(mail.last_error_at)}).`);
+  } else {
+    lines.push(`✉️ Mail via ${mail.host} — ${mail.sent} sent, no failures.`);
+  }
+
+  const geo = s.geocoder || {};
+  if (geo.provider === "off") {
+    lines.push("📍 Address lookup is off; only Delphi's own list of cities and "
+               + "countries answers place searches.");
+  } else if (geo.last_error) {
+    lines.push(`📍 Address lookup via ${geo.provider} is failing — ${geo.last_error} `
+               + `(${geo.failures} failure${plural(geo.failures)} of ${geo.lookups}).`);
+  } else {
+    lines.push(`📍 Address lookup via ${geo.provider} — ${geo.lookups} lookup`
+               + `${plural(geo.lookups)}, no failures.`);
+  }
+
+  if (s.last_error)
+    lines.push(`📡 Last ingest error: ${s.last_error}`);
+  if (s.sources_total)
+    lines.push(`📡 Last poll: ${s.sources_ok}/${s.sources_total} sources answered, `
+               + `${s.last_new_articles} new article${plural(s.last_new_articles)}.`);
+
+  box.replaceChildren(...lines.map((text) => {
+    const p = document.createElement("p");
+    p.className = "admin-health-line"
+      + (/failing|not configured|Last ingest error/.test(text) ? " warn" : "");
+    p.textContent = text;
+    return p;
+  }));
+}
+
 async function renderAdminUsers(q = "") {
   const box = el("admin-users");
   box.textContent = "Loading…";
   let data;
   try { data = await API.adminUsers(q); }
-  catch (e) { box.textContent = ""; toast("Admin", e.message); return; }
+  catch (e) {
+    box.textContent = "";
+    toast("Couldn't load the account list", e.message);
+    return;
+  }
   ADMIN_ME = data.me;
   el("admin-summary").textContent =
     `${data.users.length} account${plural(data.users.length)} · ${data.admin_count} operator${plural(data.admin_count)}`;
@@ -2312,7 +2396,7 @@ function adminUserRow(u) {
   const refresh = () => renderAdminUsers(el("admin-search").value.trim());
   const guard = async (fn, okMsg) => {
     try { await fn(); if (okMsg) toast("Done", okMsg); await refresh(); }
-    catch (e) { toast("Admin", e.message); }
+    catch (e) { toast("That operator action didn't go through", e.message); }
   };
 
   if (!u.email_verified)
@@ -2600,7 +2684,19 @@ function wirePlaceSearch() {
     try {
       payload = await API.placeSearch(q);
     } catch (e) {
-      return;                                   // keep whatever is shown
+      // Silence here meant a reader typing an address watched the list simply
+      // not appear, with nothing to distinguish "no such place" from "the
+      // lookup is broken". Say which, and leave the map as the way through.
+      if (wanted !== PLACE_SEQ) return;         // a later keystroke owns the list
+      const failed = document.createElement("div");
+      failed.className = "loc-none";
+      // e.message already opens with "Couldn't look that place up — …".
+      failed.textContent = `${e.message} You can still click the map to drop a `
+        + "pin anywhere, and Delphi's own list of cities and countries is "
+        + "unaffected by this.";
+      box.replaceChildren(failed);
+      box.hidden = false;
+      return;
     }
     if (wanted !== PLACE_SEQ) return;           // a later keystroke owns the list
     // The endpoint used to answer with a bare array; accept both shapes so a
@@ -3378,6 +3474,7 @@ function connectStream() {
   // EventSource cannot send headers; the token rides as a query parameter.
   const es = new EventSource("/api/stream?token=" + encodeURIComponent(Session.token()));
   es.onopen = () => {
+    reportStreamBack();
     // A reconnect usually means the server restarted — i.e. an update may
     // have just been deployed. (Boot-time onboarding covers the first open.)
     if (STREAM_CONNECTED_ONCE) checkForUpdates();
@@ -3415,7 +3512,41 @@ function connectStream() {
       refreshAlerts();
     }
   };
-  es.onerror = () => { es.close(); setTimeout(connectStream, 5000); };
+  es.onerror = () => {
+    es.close();
+    // A dropped stream is normal — a deploy severs it, and a phone waking from
+    // sleep severs it. What is not normal is it never coming back, because
+    // while it is down alerts do not arrive at all and nothing on screen looks
+    // any different. So: retry quietly a few times, then say so plainly, and
+    // back off rather than hammering a server that may be the problem.
+    STREAM_FAILURES += 1;
+    if (STREAM_FAILURES === STREAM_QUIET_RETRIES) reportStreamDown();
+    const wait = Math.min(60000, 5000 * Math.min(STREAM_FAILURES, 6));
+    setTimeout(connectStream, wait);
+  };
+}
+
+/* How many reconnects to make silently before telling the reader. Three at
+   five seconds apart covers a deploy, a sleeping laptop, and a flaky tunnel;
+   past that, something is actually wrong. */
+const STREAM_QUIET_RETRIES = 3;
+let STREAM_FAILURES = 0;
+
+function reportStreamDown() {
+  const banner = el("stream-down");
+  if (banner) banner.hidden = false;
+  toast("Live updates have stopped",
+        "Alerts won't reach this tab until the connection is back. Delphi is "
+        + "still collecting news — reload once the banner clears, and check "
+        + "🛠 Troubleshooting if it doesn't.", true);
+}
+
+function reportStreamBack() {
+  const banner = el("stream-down");
+  if (banner) banner.hidden = true;
+  if (STREAM_FAILURES >= STREAM_QUIET_RETRIES)
+    toast("Live updates are back", "Alerts are reaching this tab again.");
+  STREAM_FAILURES = 0;
 }
 
 /* ---------- button feedback ----------
@@ -3430,6 +3561,19 @@ function connectStream() {
 
    Without a label the button keeps its text and gets the .working class, so
    icon-only buttons (✕, 🔧, 🗑) don't lose their glyph. */
+/* What to call a button in a message about it.
+
+   Its own label if it has words, otherwise the tooltip or aria-label an
+   icon-only button carries — ✕, 🔧 and 🗑 all read the same in a toast
+   otherwise. Icons and the busy label are stripped so the name is what the
+   reader saw before they clicked. */
+function buttonName(btn, originalText = "") {
+  const words = (s) => (s || "").replace(/[\u{1F300}-\u{1FAFF}\u{2190}-\u{27BF}]/gu, "")
+    .replace(/\s+/g, " ").trim();
+  return words(originalText) || words(btn.getAttribute("aria-label"))
+    || words((btn.title || "").split(/[—·(]/)[0]) || "That action";
+}
+
 function feedback(btn, label = "") {
   const handler = btn.onclick;
   if (!handler) return btn;
@@ -3443,7 +3587,15 @@ function feedback(btn, label = "") {
       return await handler.call(btn, ev);
     } catch (e) {
       console.error("[action]", e);
-      toast("That didn't work", (e && e.message) || String(e));
+      // Name the control that failed. This wrapper is the last line of defence
+      // for every button in the app, so its message used to be the same
+      // "That didn't work" no matter which one broke — true of everything, and
+      // therefore no help in reporting anything.
+      toast(`“${buttonName(btn, text)}” didn't go through`,
+            (e && e.message)
+            || "The browser reported no reason. Reload and try again; if it "
+               + "keeps happening, note what you clicked and check ⚙ Settings "
+               + "→ 🛠 Troubleshooting.");
     } finally {
       // The handler often re-renders the list this button lives in, which
       // discards the node — only restore it if it's still on the page.

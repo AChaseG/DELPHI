@@ -205,3 +205,108 @@ def test_text_responses_are_compressed_but_live_updates_are_not(client, register
     assert 'media_type="text/event-stream"' in \
         (Path(__file__).resolve().parent.parent
          / "backend" / "app" / "main.py").read_text()
+
+
+def _client_that_returns_errors():
+    """A client that hands back the 500 instead of re-raising the exception.
+
+    The shared fixture re-raises, which is right for every other test — a crash
+    should fail the test that caused it — but here the response *is* what is
+    under test."""
+    from fastapi.testclient import TestClient
+
+    from backend.app.main import app
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _temporary_route(path, handler):
+    """Register a route ahead of the static mount at "/", which would otherwise
+    answer anything not already routed."""
+    from contextlib import contextmanager
+
+    from fastapi.routing import APIRoute
+
+    from backend.app.main import app
+
+    @contextmanager
+    def scope():
+        route = APIRoute(path, handler, methods=["GET"])
+        app.router.routes.insert(0, route)
+        try:
+            yield
+        finally:
+            app.router.routes.remove(route)
+    return scope()
+
+
+def test_a_crash_is_reported_with_a_reference(client, register):
+    """A bug nobody predicted has to leave two people something to work with:
+    the reader a code to quote, the operator that same code beside the stack
+    trace. The exception's own text must not travel — tracebacks name file
+    paths and query shapes."""
+    def boom():
+        raise ValueError("with /secret/path.py in the text")
+
+    hdr = register("crasher")
+    with _temporary_route("/api/_boom_test", boom):
+        with _client_that_returns_errors() as c:
+            r = c.get("/api/_boom_test", headers=hdr)
+
+    assert r.status_code == 500
+    body = r.json()
+    reference = body["reference"]
+    assert len(reference) == 6
+    assert reference in body["detail"]
+    assert r.headers["X-Delphi-Error"] == reference
+    assert "nothing was saved" in body["detail"].lower()
+    assert "ValueError" not in r.text and "secret" not in r.text
+
+
+def test_a_busy_database_asks_for_a_retry_rather_than_reporting_a_bug(client, register):
+    """One machine runs the poller and the web server against one SQLite file.
+    A write that outlasts the busy timeout means "try again", which is nothing
+    like the crash the generic handler describes."""
+    from sqlalchemy.exc import OperationalError
+
+    def locked():
+        raise OperationalError("UPDATE articles", {}, Exception("database is locked"))
+
+    hdr = register("waiter")
+    with _temporary_route("/api/_locked_test", locked):
+        with _client_that_returns_errors() as c:
+            r = c.get("/api/_locked_test", headers=hdr)
+
+    assert r.status_code == 503
+    assert r.headers["Retry-After"] == "2"
+    assert "busy" in r.json()["detail"].lower()
+    assert "nothing was saved" in r.json()["detail"].lower()
+
+
+def test_service_health_names_a_broken_relay(client, register):
+    """Mail is sent in a background task so a reply can't be timed to learn
+    whether an address exists. The price is that a broken relay is invisible —
+    unless it is recorded where an operator will see it."""
+    from backend.app import mailer
+
+    # Register first: with a relay configured, registration waits for a
+    # verification email instead of handing back a token.
+    hdr = register("healthwatcher")
+
+    before = dict(mailer.status)
+    host, port = mailer.HOST, mailer.PORT
+    mailer.HOST, mailer.PORT = "smtp.invalid.test", 2525
+    try:
+        assert mailer.send("someone@example.com", "subject", "body") is False
+        assert mailer.status["failures"] == before["failures"] + 1
+        why = mailer.status["last_error"]
+        # Names the setting to go and change, not just smtplib's own wording.
+        assert "smtp.invalid.test" in why and "NEWS_SMTP_HOST" in why
+        # The address of whoever asked for a reset never reaches the log.
+        assert "someone@example.com" not in why
+
+        mail = client.get("/api/ingest/status", headers=hdr).json()["mail"]
+        assert mail["configured"] is True and mail["last_error"] == why
+    finally:
+        mailer.HOST, mailer.PORT = host, port
+        mailer.status.clear()
+        mailer.status.update(before)

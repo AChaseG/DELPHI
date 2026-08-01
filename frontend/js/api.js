@@ -97,7 +97,87 @@ function errorText(detail, status = 0) {
     }).join("; ");
   }
   if (detail && typeof detail === "object" && detail.msg) return String(detail.msg);
-  return status ? `Request failed (HTTP ${status})` : "Request failed";
+  return statusText(status);
+}
+
+/* What a bare status code means here, in the terms of this application.
+
+   A status alone tells a reader nothing: "HTTP 409" is not a sentence, and
+   every one of these means a different next move — wait, sign in again, change
+   what you typed, or report it. Only reached when the server sent no message of
+   its own, which for anything but a crash or a proxy is unusual. */
+const STATUS_MEANING = {
+  400: "The server rejected the request as malformed. This is a bug — please report it.",
+  403: "You don't have permission to do that. If it's a Pantheon item, the "
+       + "owner or an admin has to make the change.",
+  404: "That no longer exists — it was probably deleted in another tab or by "
+       + "someone else on a shared board. Reload to see the current state.",
+  409: "Something else changed that first. Reload and try again.",
+  413: "That was too large for the server to accept.",
+  422: "The server couldn't make sense of one of the values.",
+  429: "You're going faster than the server allows. Wait a moment, then retry.",
+  500: "The server hit an internal error. Nothing was saved.",
+  502: "The server is unreachable behind its proxy — it may be mid-restart.",
+  503: "The server is temporarily unable to answer — usually a restart or a "
+       + "burst of load. Try again shortly.",
+  504: "The server took too long to answer.",
+};
+
+function statusText(status) {
+  if (!status) return "The request failed before it reached the server.";
+  return STATUS_MEANING[status] || `The server answered with an unexpected status (HTTP ${status}).`;
+}
+
+/* Which operation failed, in the reader's words rather than the route's.
+
+   "Request failed" names nothing, and a reader who has to report a problem
+   can only say "it broke". Paths are matched most-specific-first. */
+const OPERATION_NAMES = [
+  [/^\/api\/auth\/register/, "create your account"],
+  [/^\/api\/auth\/login/, "sign you in"],
+  [/^\/api\/auth\/forgot/, "start a password reset"],
+  [/^\/api\/auth\/reset/, "set your new password"],
+  [/^\/api\/auth\/verify|resend-verification/, "verify your email address"],
+  [/^\/api\/feeds\/\d+\/articles/, "load a feed's articles"],
+  [/^\/api\/feeds\/\d+\/events/, "load a feed's events"],
+  [/^\/api\/feeds\/reorder/, "save the column order"],
+  [/^\/api\/feeds\/\d+\/share/, "share that feed"],
+  [/^\/api\/feeds/, "load or save your feeds"],
+  [/^\/api\/alerts\/\d+\/events/, "load an alert's history"],
+  [/^\/api\/alerts\/\d+\/mark-seen/, "mark those alert hits as seen"],
+  [/^\/api\/alerts/, "load or save your alerts"],
+  [/^\/api\/articles\/search-grouped/, "group a column's articles into events"],
+  [/^\/api\/articles\/search/, "run that search"],
+  [/^\/api\/story\//, "open the story"],
+  [/^\/api\/sources\/\d+\/repair/, "repair that source"],
+  [/^\/api\/sources\/(topic|social)-tracker/, "add that tracker"],
+  [/^\/api\/sources/, "load or save sources"],
+  [/^\/api\/pantheons/, "work with your Pantheons"],
+  [/^\/api\/locations/, "work with your favourite locations"],
+  [/^\/api\/geo\/search/, "look that place up"],
+  [/^\/api\/admin\//, "run that operator action"],
+  [/^\/api\/ingest\/run/, "start a poll of every source"],
+  [/^\/api\/events\/rebuild/, "rebuild the event clusters"],
+  [/^\/api\/session\/settings/, "save your settings"],
+  [/^\/api\/meta/, "load the dashboard's headline numbers"],
+];
+
+function operationName(path) {
+  const clean = String(path).split("?")[0];
+  for (const [pattern, name] of OPERATION_NAMES)
+    if (pattern.test(clean)) return name;
+  return "";
+}
+
+/* Why a signed-in session stopped being one. The gate reads this back after the
+   reload, so "you were signed out" comes with the reason rather than leaving
+   the reader to guess between an expiry, a suspension, and a bug. */
+async function signOutReason(resp) {
+  let detail = "";
+  try { detail = (await resp.clone().json()).detail || ""; } catch (e) { /* no body */ }
+  if (detail) return detail;
+  return "Your session expired — sessions last 30 days. Sign in to carry on; "
+       + "nothing of yours was lost.";
 }
 
 async function api(path, options = {}) {
@@ -108,28 +188,55 @@ async function api(path, options = {}) {
   if (Session.token()) headers["Authorization"] = "Bearer " + Session.token();
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), options.timeout || API_TIMEOUT_MS);
+  const doing = operationName(path);
+  const trying = doing ? `Couldn't ${doing}` : "The request failed";
   let resp;
   try {
     resp = await fetch(path, { ...options, headers, signal: ctl.signal });
   } catch (e) {
     if (e.name === "AbortError") {
       throw new Error(
-        `The server didn't respond within ${Math.round((options.timeout || API_TIMEOUT_MS) / 1000)}s. `
+        `${trying}: the server didn't respond within `
+        + `${Math.round((options.timeout || API_TIMEOUT_MS) / 1000)}s. `
         + "It may be restarting or overloaded — try again in a moment.");
     }
-    throw new Error("Couldn't reach the server — check your connection.");
+    // fetch() rejects identically for "no network", "DNS failed", "server
+    // refused" and "blocked by an extension", so say which of those the
+    // browser can still rule out rather than asserting one of them.
+    throw new Error(
+      `${trying}: the browser couldn't reach the server. `
+      + (navigator.onLine
+         ? "This device is online, so the server itself may be down or blocked "
+           + "by a proxy or browser extension."
+         : "This device reports it is offline — check your connection."));
   } finally {
     clearTimeout(timer);
   }
   if (resp.status === 401 && Session.token()) {
-    Session.clear();  // expired session: return to the sign-in gate
+    // Expired or revoked mid-session. Say so before the reload, or the board
+    // simply vanishes back to the sign-in card with no explanation.
+    Session.clear();
+    try { sessionStorage.setItem("gnd_signed_out_reason", await signOutReason(resp)); }
+    catch (e) { /* private mode: the gate just won't have the note */ }
     location.reload();
     return new Promise(() => {});
   }
   if (!resp.ok) {
-    let detail = resp.statusText;
-    try { detail = (await resp.json()).detail ?? detail; } catch (e) { /* not json */ }
-    throw new Error(errorText(detail, resp.status));
+    let detail = null;
+    let reference = resp.headers.get("X-Delphi-Error") || "";
+    try {
+      const body = await resp.json();
+      detail = body.detail ?? null;
+      reference = body.reference || reference;
+    } catch (e) { /* not json — a proxy page, or an empty body */ }
+    let message = `${trying} — ${errorText(detail, resp.status)}`;
+    // The reference ties this exact failure to one line in the server log.
+    if (reference && !message.includes(reference))
+      message += ` (reference ${reference})`;
+    const err = new Error(message);
+    err.status = resp.status;
+    err.reference = reference;
+    throw err;
   }
   if (resp.status === 204) return null;
   return resp.json();

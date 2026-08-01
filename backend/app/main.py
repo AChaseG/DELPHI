@@ -7,6 +7,7 @@ import logging
 import os
 import time
 import urllib.parse
+import uuid
 
 import httpx
 from contextlib import asynccontextmanager
@@ -19,6 +20,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete as sa_delete, func, or_, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 import re as _username_re
@@ -209,6 +211,62 @@ tell an overloaded machine (everything slow) from an expensive feed (one path
 slow), which are fixed in completely different places."""
 SLOW_REQUEST_S = float(os.environ.get("NEWS_SLOW_REQUEST_S", "3"))
 _slow_log = logging.getLogger("slow")
+_fail_log = logging.getLogger("failure")
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception):
+    """Turn a crash into something two different people can act on.
+
+    An unhandled exception used to reach the browser as FastAPI's bare
+    "Internal Server Error". The reader learned nothing they could report, and
+    the operator had a traceback in the log with no way to tell which of the
+    day's errors the reader was describing. Both now share a short reference:
+    it goes in the log line beside the traceback, in the response body, and in
+    a header, so "it broke, reference 4f2a1c" is enough to find the exact
+    failure.
+
+    The reference is deliberately not an id anyone can look up — it identifies
+    one moment in the log, nothing else — and the exception's own text never
+    reaches the browser, because tracebacks name file paths and query shapes.
+    """
+    reference = uuid.uuid4().hex[:6]
+    _fail_log.exception(
+        "[%s] unhandled %s on %s %s%s (account %s)",
+        reference, type(exc).__name__, request.method, request.url.path,
+        f"?{request.url.query}" if request.url.query else "",
+        getattr(request.state, "user_id", None) or "anonymous")
+    return JSONResponse(
+        status_code=500,
+        headers={"X-Delphi-Error": reference},
+        content={"detail": f"Delphi hit an unexpected error and has logged it "
+                           f"(reference {reference}). Nothing was saved. If it "
+                           f"keeps happening, quote that reference.",
+                 "reference": reference},
+    )
+
+
+@app.exception_handler(OperationalError)
+async def database_busy(request: Request, exc: OperationalError):
+    """SQLite's "database is locked" is a wait, not a fault.
+
+    One machine runs both the poller and the web server against one file. A
+    write that outlasts the busy timeout surfaces here, and it means try again
+    in a second — which is nothing like the crash the generic handler above
+    describes, so it says so and asks for a retry instead of a bug report.
+    """
+    if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+        return await unhandled_error(request, exc)
+    reference = uuid.uuid4().hex[:6]
+    _fail_log.warning("[%s] database busy on %s %s", reference,
+                      request.method, request.url.path)
+    return JSONResponse(
+        status_code=503,
+        headers={"Retry-After": "2", "X-Delphi-Error": reference},
+        content={"detail": "The database was busy finishing another write. "
+                           "Nothing was saved — try that again in a moment.",
+                 "reference": reference},
+    )
 
 
 @app.middleware("http")
@@ -253,10 +311,19 @@ async def require_account(request: Request, call_next):
         with SessionLocal() as session:
             user = session.get(User, uid)
             if user is None:
-                return JSONResponse({"detail": "Account no longer exists"}, status_code=401)
+                return JSONResponse(
+                    {"detail": "That account no longer exists — it was deleted while "
+                               "you were signed in. Create a new one to continue."},
+                    status_code=401)
             if user.disabled:
                 return JSONResponse(
-                    {"detail": "This account has been suspended by an operator"}, status_code=403)
+                    {"detail": "This account has been suspended by an operator. "
+                               "Your feeds and alerts are intact; an operator can "
+                               "restore access from the operator console."},
+                    status_code=403)
+            # Named in the failure log, so a crash can be traced to a person
+            # who reported it rather than to an anonymous request.
+            request.state.user_id = f"acct:{uid}"
     return await call_next(request)
 
 
@@ -1545,7 +1612,13 @@ def ingest_status():
     # "nobody searched for one" without reading the log.
     return {**ingest.status, "home": home.status(),
             "geocoder": {"provider": geocode.PROVIDER if geocode.enabled() else "off",
-                         **geocode.status}}
+                         **geocode.status},
+            # Mail is sent in the background so a reader can't time the reply
+            # to learn whether an address exists; the price is that a broken
+            # relay is invisible to everyone. This is where it becomes visible.
+            "mail": {"configured": mailer.enabled(),
+                     "host": f"{mailer.HOST}:{mailer.PORT}" if mailer.enabled() else "",
+                     **mailer.status}}
 
 
 @app.post("/api/maintenance/fetch-content")

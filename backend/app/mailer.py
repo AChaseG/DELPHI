@@ -33,6 +33,47 @@ def enabled() -> bool:
     return bool(HOST)
 
 
+# What mail has been doing lately.
+#
+# Sending happens in a background task, deliberately: the reply to "reset my
+# password" must not reveal whether the address exists, and a stalled relay
+# must not hang the caller. The cost is that a failure had nowhere to go but
+# the log — a reader waits for a link that will never arrive, and the operator
+# has no reason to go looking. This record is surfaced in the operator console
+# and /api/ingest/status so a broken relay is visible without reading logs.
+status: dict = {"sent": 0, "failures": 0, "last_error": None, "last_error_at": None,
+                "last_sent_at": None}
+
+
+def _explain(exc: Exception) -> str:
+    """The SMTP failure in terms of what to go and change.
+
+    smtplib's own text names a code and a server string, which says nothing
+    about which of the six settings is wrong."""
+    name = type(exc).__name__
+    detail = str(exc).strip()[:200]
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return (f"the mail server rejected the credentials in NEWS_SMTP_USER / "
+                f"NEWS_SMTP_PASS ({detail}). Providers that require an app "
+                f"password reject an account password here.")
+    if isinstance(exc, smtplib.SMTPSenderRefused):
+        return (f"the mail server refused the From address {FROM!r} "
+                f"(NEWS_SMTP_FROM) — most relays only accept an address they "
+                f"host ({detail}).")
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return f"the mail server refused the recipient address ({detail})."
+    if isinstance(exc, smtplib.SMTPNotSupportedError):
+        return (f"the mail server does not support {TLS!r} on port {PORT} — "
+                f"try NEWS_SMTP_TLS=ssl on 465, or starttls on 587 ({detail}).")
+    if isinstance(exc, (TimeoutError, OSError)) and "timed out" in detail.lower():
+        return (f"connecting to {HOST}:{PORT} timed out — the host or port may "
+                f"be wrong, or outbound SMTP may be blocked.")
+    if isinstance(exc, OSError):
+        return (f"could not connect to {HOST}:{PORT} ({name}: {detail}) — check "
+                f"NEWS_SMTP_HOST and NEWS_SMTP_PORT.")
+    return f"{name}: {detail}"
+
+
 def send(to: str, subject: str, body: str) -> bool:
     """Send a plain-text email. Returns True on success. Never raises."""
     if not enabled():
@@ -54,10 +95,23 @@ def send(to: str, subject: str, body: str) -> bool:
             if USER:
                 server.login(USER, PASSWORD)
             server.send_message(msg)
+        status["sent"] += 1
+        status["last_sent_at"] = _now()
         return True
     except Exception as exc:
-        log.error("send to %s failed: %s", to, exc)
+        why = _explain(exc)
+        status["failures"] += 1
+        status["last_error"] = why
+        status["last_error_at"] = _now()
+        # The address is not logged: a failed reset would otherwise put the
+        # email address of whoever asked into the log in plain text.
+        log.error("mail send failed — %s", why)
         return False
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def send_verification(to: str, username: str, link: str) -> bool:
