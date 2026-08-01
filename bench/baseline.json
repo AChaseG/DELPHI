@@ -1,0 +1,57 @@
+{
+  "corpus": {
+    "articles": 120000,
+    "events": 30000,
+    "newest article, hours ago": 0.0
+  },
+  "calibration": {
+    "cpu_ms": 22.13,
+    "sqlite_ms": 5.26
+  },
+  "search": {
+    "everyday word": 8.7,
+    "everyday word by importance": 18.91,
+    "two words": 10.14,
+    "written search": 14.18,
+    "written search with NOT": 11.37,
+    "word and country": 9.24,
+    "word and importance": 12.94,
+    "word in the last 6h": 8.94,
+    "exclusion": 11.74,
+    "rare phrase": 0.79,
+    "wildcard, index cannot help": 86.13,
+    "no text at all": 12.81,
+    "categories": 6.58,
+    "grouped column": 44.13,
+    "grouped column with words": 12.41,
+    "nothing can match": 972.09
+  },
+  "ingest": {
+    "corroboration, 200 articles": 164.91,
+    "clustering, 200 articles": 12.95,
+    "alert matching, 200 articles x 30 alerts": 57.46,
+    "_context": {
+      "recent headlines": 7909,
+      "live events": 3079
+    }
+  },
+  "payload": {
+    "frontend/index.html": {
+      "raw_kb": 87.1,
+      "gzip_kb": 25.2
+    },
+    "frontend/js/app.js": {
+      "raw_kb": 145.4,
+      "gzip_kb": 45.0
+    },
+    "frontend/js/builder.js": {
+      "raw_kb": 27.6,
+      "gzip_kb": 8.9
+    },
+    "frontend/css/styles.css": {
+      "raw_kb": 46.8,
+      "gzip_kb": 12.4
+    },
+    "first load gzip_kb": 91.5
+  }
+}
