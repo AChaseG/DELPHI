@@ -13,6 +13,27 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-23",
+        "title": "Delphi now clears out old news properly, and says when it's tight",
+        "items": [
+            "🧹 Old articles were already being deleted after 30 days — but the "
+            "space never came back. A database keeps its size once it has grown, "
+            "reusing the room inside instead of returning it, so the archive "
+            "stayed as large as its busiest week forever. It now hands the space "
+            "back as it clears out.",
+            "📏 There's also a size limit, not just an age one. Thirty days of a "
+            "busy month is far more than thirty days of a quiet one, so if the "
+            "archive outgrows its disk the oldest stories are dropped to fit. "
+            "Nothing from the last couple of days is ever dropped this way.",
+            "🔖 Fixed a leak of my own making: the marks that dim stories you've "
+            "already read were kept forever, including for stories long since "
+            "deleted. They're cleared with the story now.",
+            "💾 Operators get a disk line in Service health, and if space runs "
+            "genuinely low Delphi pauses collecting rather than filling the last "
+            "of it — it keeps serving what it has while it clears room.",
+        ],
+    },
+    {
         "date": "2026-08-22",
         "title": "Delphi now turns down the passwords attackers try first",
         "items": [

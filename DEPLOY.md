@@ -72,6 +72,10 @@ Terminate TLS with the platform's built-in HTTPS, or put Caddy/nginx in front.
 | `NEWS_SMTP_HOST` / `PORT` / `USER` / `PASS` / `FROM` | Optional | Enables email verification, password reset, **and ✉️ alert delivery** (Resend, Mailgun, SES, any SMTP relay). Set `NEWS_SMTP_TLS` to `starttls`, `ssl`, or `none`. **Without SMTP, accounts auto-verify and alert emails are logged, not sent** — fine for a private instance, not ideal for a public one. (Alert 🔗 webhooks work without SMTP.) Note the half-configured case: if `NEWS_SMTP_HOST` is set but mail cannot actually be delivered, sign-up requires a verification link that never arrives. Either fix delivery, sign in as a `NEWS_ADMIN_USERS` operator (verified on sight) and force-verify accounts from the console, or unset `NEWS_SMTP_HOST` to return to auto-verify. |
 | `NEWS_TRUSTED_PROXIES` | Auto-detected | How many proxies of yours sit in front of the app — `1` on Fly (detected from `FLY_APP_NAME`), `0` elsewhere. It decides who the rate limiter thinks is calling, so it is worth getting right in both directions. Each proxy *appends* to `X-Forwarded-For`, so anything before the last N entries was written by the caller: set this **too high** (or leave it at 1 with nothing actually in front) and anyone can forge a fresh allowance per request, removing the sign-in, registration, and reset limits entirely. Set it **too low** behind a real proxy and every visitor shares one bucket, so one person mistyping a password locks out the rest. Count your own proxies and set it explicitly if you run anything unusual. |
 | `NEWS_CLIENT_IP_HEADER` | Off | A header your proxy *overwrites* with the real client address (e.g. `Fly-Client-IP`, `CF-Connecting-IP`), used instead of counting hops. Only set this if you know the proxy overwrites rather than appends — a header a caller can set and Delphi believes is the same bypass as above. |
+| `NEWS_DB_MAX_FRACTION` | `0.7` | Share of the volume the news archive may occupy before the oldest articles start being dropped to fit. A fraction rather than a fixed size so provisioning a bigger volume raises the ceiling by itself. `NEWS_DB_MAX_MB` overrides it with an absolute figure. |
+| `NEWS_LOW_SPACE_MB` | `128` | Free space below which ingestion **pauses**. Delphi keeps serving and keeps pruning, but stops adding — which leaves enough room for the database to be opened at all on the next restart. Getting this wrong in the low direction is how the app becomes unstartable. |
+| `NEWS_MIN_KEEP_DAYS` | `2` | Articles newer than this are never dropped, whatever the disk says. Without a floor, a database that cannot shrink would be pruned to nothing chasing a number it can't move. |
+| `NEWS_RETENTION_DAYS` | `30` | Ordinary age-based retention. Size-based pruning above is a backstop, not a replacement. |
 | `NEWS_HSTS_MAX_AGE` | `86400` (1 day) | How long browsers are told to reach this site over https only. Deliberately short to begin with: HSTS cannot be withdrawn faster than the max-age already handed out, so a bad certificate with a long max-age locks visitors out. Raise it (e.g. `31536000`) once the certificate is settled. `0` disables it. Add `includeSubDomains`/preload by hand only when every subdomain is ready to be https-only permanently. |
 | `NEWS_CORS_ORIGINS` | Off | Comma-separated origins allowed to call the API cross-origin. Off by default because Delphi serves its own frontend from the same origin and nothing needs it. Set it only if you're building a separate browser client. |
 | `NEWS_DB_PATH` | Preset in Docker | Database file path (`/data/news.db` in the image). |
@@ -142,6 +146,36 @@ local-news feeds) and starts polling. The "sources healthy" tile reads
 `…/N` until the first ticks complete, then climbs as the rolling poller works
 through the city feeds and auto-discovery promotes real local outlets. No
 manual step is required — create your account and it runs itself.
+
+## Disk
+
+The archive lives on the mounted volume and grows with the news. Two things are
+worth knowing, because between them they took the site down once:
+
+**Deleting rows does not shrink a SQLite database.** Freed pages are reused
+inside the file; the file keeps its high-water mark. Retention had been pruning
+correctly for weeks and the volume filled anyway. Delphi now converts the
+database to incremental auto-vacuum on its first poll and hands freed pages back
+to the filesystem as it prunes — but the conversion itself needs free space
+roughly equal to the database (it rewrites it), so it refuses on a full disk and
+says so in the log. **If the volume is already full, add space first**; the
+cleanup cannot dig you out from inside.
+
+**A full disk stops the app from starting at all**, not just from writing:
+SQLite fails on `PRAGMA journal_mode=WAL`, so the process never opens a port and
+every request becomes a 503. Ingestion now pauses at `NEWS_LOW_SPACE_MB` free
+to avoid reaching that point, disk usage shows in the operator console's Service
+health, and `/healthz` (wired to a Fly health check) fails when the database
+cannot be read — so a deploy into this state fails loudly instead of reporting
+success.
+
+To grow the volume:
+
+```bash
+fly volumes list -a <app>
+fly volumes extend <vol_id> -s 3 -a <app>   # gigabytes; volumes cannot shrink
+fly machine restart <machine_id> -a <app>
+```
 
 ## Upgrading
 

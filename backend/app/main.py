@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 import re as _username_re
 
 from . import (auth, export, geocode, home, ingest, langdetect, mailer, passwords,
-               ratelimit, repair, safefetch, translate)
+               ratelimit, repair, safefetch, storage, translate)
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -2078,6 +2078,15 @@ def ingest_status(db: Session = Depends(get_db)):
             "mail": {"configured": mailer.enabled(),
                      "host": f"{mailer.HOST}:{mailer.PORT}" if mailer.enabled() else "",
                      **mailer.status},
+            # The disk. Delphi filled its volume once and the only symptom was
+            # that the app stopped starting: SQLite could not enable WAL, so it
+            # never opened a port and there was nothing left running to report
+            # it. A number here is the difference between noticing at 70% and
+            # finding out at 100%.
+            "storage": {**storage.disk(),
+                        "ceiling_bytes": storage.db_ceiling(),
+                        "over_ceiling_bytes": storage.over_ceiling(),
+                        "reclaimable": storage.auto_vacuum_mode() == 2},
             **_reach_status(db)}
 
 
@@ -2310,6 +2319,34 @@ async def stream():
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/healthz")
+def healthz():
+    """Is this process actually able to serve? For Fly's health check.
+
+    Outside /api on purpose, so it needs no session — the checker has none.
+
+    It answers on exactly one question: can the database be read. That is what
+    was wrong when the app died, and it is the only condition where restarting
+    is the right response.
+
+    Deliberately *not* unhealthy when the disk is nearly full. The app pauses
+    ingestion and prunes its way back down in that state, which needs it to
+    stay running; failing the check would restart it into the same condition
+    repeatedly and reach the max-restart limit — turning a recoverable squeeze
+    into the outage it is meant to prevent. Storage is reported through
+    /api/ingest/status and the operator console instead, where it informs
+    somebody rather than triggering something.
+    """
+    try:
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+    except Exception as exc:
+        return JSONResponse(
+            {"ok": False, "detail": f"database unreadable: {type(exc).__name__}"},
+            status_code=503)
+    return {"ok": True}
 
 
 # ---------- helpers & static frontend ----------

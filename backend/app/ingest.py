@@ -20,14 +20,14 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, or_, select
 
-from . import discovery, home, langdetect, mailer, repair, safefetch
+from . import discovery, home, langdetect, mailer, repair, safefetch, storage
 from .clustering import assign_events
 from .content import fetch_article_text
 from .database import SessionLocal
 from .events import broadcaster
 from .matching import CriteriaMatcher, article_text
 from .models import (Alert, AlertEvent, Article, Event, Source, Translation,
-                     User, ViewedEvent, utcnow)
+                     User, ViewedArticle, ViewedEvent, utcnow)
 from .geo import extract_places
 from .scoring import classify_categories, cluster_tokens, score_importance
 
@@ -735,22 +735,30 @@ async def run_ingest_cycle() -> dict:
             db.close()
 
 
-def prune_old_articles(db) -> dict:
-    """Retention: drop articles older than RETENTION_DAYS along with their
-    translations and alert-history rows, then events that no longer have any
-    articles (and their per-user viewed markers). Keeps the working set — and
-    every board/search scan — bounded as ingestion runs forever."""
-    if RETENTION_DAYS <= 0:
-        return {"articles": 0, "events": 0}
-    cutoff = utcnow() - timedelta(days=RETENTION_DAYS)
-    old_ids = db.scalars(select(Article.id).where(Article.published_at < cutoff)).all()
-    for i in range(0, len(old_ids), 500):
-        chunk = old_ids[i:i + 500]
+def _delete_articles(db, ids: list[int]) -> None:
+    """Remove articles and everything that only exists to point at them.
+
+    Every table with an article_id belongs here. Missing one does not fail
+    loudly — it leaves rows referring to articles that no longer exist, growing
+    for as long as the system runs. ViewedArticle was exactly that: written on
+    every read and never cleaned up, so each "already seen" marker outlived its
+    article permanently.
+
+    The full-text index is not in this list because it does not need to be: it
+    is an external-content FTS5 table with AFTER DELETE triggers, so it follows
+    the articles table by itself.
+    """
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
         db.execute(sa_delete(Translation).where(Translation.article_id.in_(chunk)))
         db.execute(sa_delete(AlertEvent).where(AlertEvent.article_id.in_(chunk)))
+        db.execute(sa_delete(ViewedArticle).where(ViewedArticle.article_id.in_(chunk)))
         db.execute(sa_delete(Article).where(Article.id.in_(chunk)))
-    if old_ids:
+    if ids:
         db.commit()
+
+
+def _drop_empty_events(db, cutoff) -> int:
     orphan_ids = db.scalars(select(Event.id).where(
         Event.updated_at < cutoff,
         ~exists().where(Article.event_id == Event.id))).all()
@@ -760,7 +768,70 @@ def prune_old_articles(db) -> dict:
         db.execute(sa_delete(Event).where(Event.id.in_(chunk)))
     if orphan_ids:
         db.commit()
-    return {"articles": len(old_ids), "events": len(orphan_ids)}
+    return len(orphan_ids)
+
+
+# Whatever the disk says, articles this new are never dropped. Without a floor,
+# a database that will not shrink — one not yet converted to incremental
+# vacuum, where deleting changes the file size not at all — would be pruned
+# further and further in pursuit of a number it cannot reach, until there was
+# no news left. Age-based retention is the rule; size is the backstop.
+MIN_KEEP_DAYS = float(os.environ.get("NEWS_MIN_KEEP_DAYS", "2"))
+# Ceiling on how much one size-driven pass will remove, so it works the backlog
+# down over several passes instead of stalling a tick.
+OVERSIZE_BATCH = int(os.environ.get("NEWS_OVERSIZE_BATCH", "5000"))
+
+
+def prune_old_articles(db) -> dict:
+    """Retention: drop articles older than RETENTION_DAYS along with their
+    translations, alert history and viewed markers, then events that no longer
+    have any articles. Keeps the working set — and every board/search scan —
+    bounded as ingestion runs forever."""
+    if RETENTION_DAYS <= 0:
+        return {"articles": 0, "events": 0}
+    cutoff = utcnow() - timedelta(days=RETENTION_DAYS)
+    old_ids = db.scalars(select(Article.id).where(Article.published_at < cutoff)).all()
+    _delete_articles(db, list(old_ids))
+    return {"articles": len(old_ids), "events": _drop_empty_events(db, cutoff)}
+
+
+def prune_to_fit(db) -> dict:
+    """Drop the oldest articles until the archive is back under its ceiling.
+
+    Age-based retention cannot bound a database on its own, because how much
+    thirty days weighs depends entirely on how much news happened. A quiet
+    month and a busy one differ by more than the volume has spare. This is the
+    backstop that keeps the file inside the disk it lives on.
+
+    Deliberately oldest-first and bounded on both sides: never past
+    MIN_KEEP_DAYS, never more than OVERSIZE_BATCH in one pass.
+    """
+    excess = storage.over_ceiling()
+    if excess <= 0:
+        return {"articles": 0, "events": 0, "excess_bytes": 0}
+
+    floor = utcnow() - timedelta(days=MIN_KEEP_DAYS)
+    ids = db.scalars(
+        select(Article.id).where(Article.published_at < floor)
+        .order_by(Article.published_at.asc()).limit(OVERSIZE_BATCH)).all()
+    if not ids:
+        log.warning(
+            "archive is %.0f MB over its ceiling but nothing is older than "
+            "%.1f days — the disk is too small for this much news, or "
+            "NEWS_DB_MAX_FRACTION is set too low",
+            excess / 1e6, MIN_KEEP_DAYS)
+        return {"articles": 0, "events": 0, "excess_bytes": excess}
+
+    _delete_articles(db, list(ids))
+    events = _drop_empty_events(db, floor)
+    # Deleting alone changes nothing on disk; this is the half that does.
+    storage.checkpoint()
+    freed = storage.reclaim()
+    log.info("archive was %.0f MB over its ceiling: dropped %d of the oldest "
+             "articles, returned %.0f MB to the disk",
+             excess / 1e6, len(ids), freed / 1e6)
+    return {"articles": len(ids), "events": events, "excess_bytes": excess,
+            "freed_bytes": freed}
 
 
 _next_prune_at: float = 0.0  # monotonic deadline for the next retention pass
@@ -792,24 +863,63 @@ async def ingest_loop():
     own interval; nothing starves and no single tick runs long."""
     global _next_prune_at
     status["running"] = True
+    # One attempt, on the first tick rather than at startup: the conversion
+    # holds a write lock for as long as it takes to copy the database, and
+    # doing that before the app is serving would delay every reader and could
+    # trip a health check into a restart loop. It is a no-op after the first
+    # success, and refuses itself when the disk is too full to do it safely.
+    try:
+        converted = await asyncio.to_thread(storage.ensure_incremental_vacuum)
+        if converted["converted"]:
+            log.info("storage: %s", converted["reason"])
+        elif "not enough free space" in converted["reason"]:
+            log.error("storage: %s", converted["reason"])
+    except Exception:
+        log.exception("could not check the database's vacuum mode")
+
     while True:
         new_articles = 0
         try:
             async with cycle_lock:
                 db = SessionLocal()
                 try:
-                    enabled = db.scalars(select(Source).where(Source.enabled.is_(True))).all()
-                    due = due_sources(enabled, utcnow())
-                    batch = ([s for s in due if not _is_city(s)][:POLL_BATCH]
-                             + [s for s in due if _is_city(s)][:CITY_PER_TICK])
-                    if batch:
-                        new_articles = (await _ingest_batch(db, batch))["new_articles"]
-                    if RETENTION_DAYS > 0 and time.monotonic() >= _next_prune_at:
-                        _next_prune_at = time.monotonic() + PRUNE_EVERY_SECONDS
+                    space = storage.disk()
+                    if space["ok"] and space["low"]:
+                        # Refusing to fetch is what turns "the disk filled" into
+                        # a degraded system instead of one that will not start.
+                        # Pruning still runs below — the way out is down, not up.
+                        status["last_error"] = (
+                            f"Only {space['free_bytes'] / 1e6:.0f} MB free on the "
+                            f"data volume — ingestion is paused so the database "
+                            f"can still be opened. Old articles are being cleared; "
+                            f"if this persists the volume needs to be larger.")
+                        log.error("storage: %s", status["last_error"])
+                    else:
+                        enabled = db.scalars(
+                            select(Source).where(Source.enabled.is_(True))).all()
+                        due = due_sources(enabled, utcnow())
+                        batch = ([s for s in due if not _is_city(s)][:POLL_BATCH]
+                                 + [s for s in due if _is_city(s)][:CITY_PER_TICK])
+                        if batch:
+                            new_articles = (await _ingest_batch(db, batch))["new_articles"]
+
+                    due_to_prune = time.monotonic() >= _next_prune_at
+                    # When space is short, prune every tick rather than every
+                    # six hours: the interval is tuned for housekeeping, and
+                    # this is no longer housekeeping.
+                    if RETENTION_DAYS > 0 and (due_to_prune or (space["ok"] and space["low"])):
+                        if due_to_prune:
+                            _next_prune_at = time.monotonic() + PRUNE_EVERY_SECONDS
                         pruned = prune_old_articles(db)
                         if pruned["articles"] or pruned["events"]:
                             log.info("retention: pruned %d articles, %d empty events",
                                      pruned["articles"], pruned["events"])
+                        # Age-based pruning first, then whatever the disk still
+                        # demands beyond it.
+                        prune_to_fit(db)
+                        if pruned["articles"]:
+                            storage.checkpoint()
+                            storage.reclaim()
                 finally:
                     db.close()
         except Exception as exc:

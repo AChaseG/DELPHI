@@ -2460,6 +2460,39 @@ async function renderServiceHealth() {
     lines.push(`✉️ Mail via ${mail.host} — ${mail.sent} sent, no failures.`);
   }
 
+  // Disk first, because it is the one that stops the whole system rather than
+  // degrading part of it — and the one whose only previous symptom was the app
+  // refusing to start, with nothing left running to explain why.
+  const st = s.storage || {};
+  if (st.ok) {
+    const mb = (n) => `${(n / 1e6).toFixed(0)} MB`;
+    const head = `💾 Disk: ${mb(st.db_bytes)} of news in ${mb(st.total_bytes)} `
+      + `(${st.free_pct}% free).`;
+    if (st.low) {
+      lines.push(`${head} ⚠ Ingestion is PAUSED — too little room left to keep `
+                 + `the database openable. Old articles are being cleared; if this `
+                 + `doesn't recover, the volume needs to be bigger.`);
+    } else if (st.over_ceiling_bytes > 0) {
+      lines.push(`${head} Over its ${mb(st.ceiling_bytes)} ceiling by `
+                 + `${mb(st.over_ceiling_bytes)}, so the oldest articles are being `
+                 + `dropped to fit.`);
+    } else if (st.free_pct < 25) {
+      lines.push(`${head} Getting full — retention will start dropping the oldest `
+                 + `articles before it becomes a problem.`);
+    } else {
+      lines.push(head);
+    }
+    if (!st.reclaimable) {
+      lines.push("💾 This database hasn't been converted to incremental vacuum "
+                 + "yet, so deleting old articles frees space inside the file but "
+                 + "doesn't hand it back to the disk. Delphi converts it "
+                 + "automatically on the next poll when there's room to do so "
+                 + "safely (it needs free space roughly equal to the database).");
+    }
+  } else if (st.detail) {
+    lines.push(`💾 Disk: ${st.detail}`);
+  }
+
   const geo = s.geocoder || {};
   if (geo.provider === "off") {
     lines.push("📍 Address lookup is off; only Delphi's own list of cities and "

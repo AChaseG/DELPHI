@@ -19,6 +19,23 @@ primary_region = 'ams'
   auto_start_machines = true
   min_machines_running = 1
 
+  # Without this a deploy reports success whatever happens afterwards. That is
+  # exactly how the disk-full outage went unnoticed: the image built, the
+  # machine started, flyctl said "✔ Machine is now in a good state" — and the
+  # app had already crashed on being unable to open its database, so nothing
+  # was listening and every request got a 503.
+  #
+  # grace_period is generous on purpose. Startup seeds the source catalog and
+  # runs migrations before uvicorn binds, which on a cold volume takes tens of
+  # seconds; a short grace here would turn a slow boot into a restart loop,
+  # which is worse than the problem being solved.
+  [[http_service.checks]]
+    grace_period = '60s'
+    interval = '30s'
+    timeout = '10s'
+    method = 'GET'
+    path = '/healthz'
+
 [[vm]]
   # Delphi's poller is a *sustained* workload — it never idles — and Fly
   # throttles shared CPUs hard once the burst allowance is spent, which is what
