@@ -689,6 +689,24 @@ function wireSettings() {
   el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
   el("btn-open-faq").onclick = () => openHelp("howto");
   el("btn-open-trouble").onclick = () => openHelp("trouble");
+  el("btn-signout-all").onclick = async () => {
+    if (!confirm("Sign out of every device?\n\nEvery signed-in browser and phone, "
+                 + "including this one, will be asked to sign in again. Your feeds, "
+                 + "alerts, and settings are untouched.")) return;
+    await API.signOutEverywhere();
+    // The token this tab holds was just invalidated server-side, so clear the
+    // cached news with it: signing out everywhere is what someone does when
+    // they think this device is not solely theirs either.
+    try { await Store.clear(); } catch (e) { /* nothing to clear */ }
+    Session.clear();
+    try {
+      sessionStorage.setItem("gnd_signed_out_reason",
+        "Signed out everywhere. Every other device has been signed out too — "
+        + "sign in again to carry on.");
+    } catch (e) { /* private mode: the gate just won't have the note */ }
+    location.reload();
+  };
+  feedback(el("btn-signout-all"), "Signing out…");
   el("btn-close-faq").onclick = () => { el("faq-backdrop").hidden = true; };
   el("faq-backdrop").addEventListener("mousedown", (e) => {
     if (e.target === el("faq-backdrop")) el("faq-backdrop").hidden = true;
@@ -3655,9 +3673,24 @@ let lastStatsRefresh = 0;   // stat tiles: at most once a minute
 let lastBoardRefresh = 0;   // board columns: at most every 30s (auto-refresh)
 let STREAM_CONNECTED_ONCE = false;
 
-function connectStream() {
-  // EventSource cannot send headers; the token rides as a query parameter.
-  const es = new EventSource("/api/stream?token=" + encodeURIComponent(Session.token()));
+async function connectStream() {
+  // EventSource cannot send headers, so whatever authenticates the stream has
+  // to sit in the URL — where every proxy in between writes it to a log. So
+  // what goes there is a ticket that lasts a minute and opens only the stream,
+  // fetched with the session token over a normal (header-authenticated) call.
+  // Reconnects come back through here and ask for a new one, which is why the
+  // retry path closes the EventSource rather than letting it retry itself with
+  // a ticket that has since expired.
+  let ticket;
+  try {
+    ticket = (await API.streamTicket()).ticket;
+  } catch (e) {
+    // No ticket, no stream. Treat it exactly like a dropped connection: the
+    // most likely cause is the same one (server down, or the session ended),
+    // and the retry ladder below already says so at the right moment.
+    return retryStream();
+  }
+  const es = new EventSource("/api/stream?ticket=" + encodeURIComponent(ticket));
   es.onopen = () => {
     reportStreamBack();
     // A reconnect usually means the server restarted — i.e. an update may
@@ -3699,16 +3732,20 @@ function connectStream() {
   };
   es.onerror = () => {
     es.close();
-    // A dropped stream is normal — a deploy severs it, and a phone waking from
-    // sleep severs it. What is not normal is it never coming back, because
-    // while it is down alerts do not arrive at all and nothing on screen looks
-    // any different. So: retry quietly a few times, then say so plainly, and
-    // back off rather than hammering a server that may be the problem.
-    STREAM_FAILURES += 1;
-    if (STREAM_FAILURES === STREAM_QUIET_RETRIES) reportStreamDown();
-    const wait = Math.min(60000, 5000 * Math.min(STREAM_FAILURES, 6));
-    setTimeout(connectStream, wait);
+    retryStream();
   };
+}
+
+/* A dropped stream is normal — a deploy severs it, and a phone waking from
+   sleep severs it. What is not normal is it never coming back, because while
+   it is down alerts do not arrive at all and nothing on screen looks any
+   different. So: retry quietly a few times, then say so plainly, and back off
+   rather than hammering a server that may be the problem. */
+function retryStream() {
+  STREAM_FAILURES += 1;
+  if (STREAM_FAILURES === STREAM_QUIET_RETRIES) reportStreamDown();
+  const wait = Math.min(60000, 5000 * Math.min(STREAM_FAILURES, 6));
+  setTimeout(connectStream, wait);
 }
 
 /* How many reconnects to make silently before telling the reader. Three at

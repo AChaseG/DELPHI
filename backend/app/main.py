@@ -81,7 +81,8 @@ def _ensure_schema():
                   "changelog_seen": "TEXT",
                   "settings": "TEXT",
                   "is_admin": "BOOLEAN DEFAULT 0",
-                  "disabled": "BOOLEAN DEFAULT 0"},
+                  "disabled": "BOOLEAN DEFAULT 0",
+                  "token_version": "INTEGER DEFAULT 0"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -293,27 +294,37 @@ async def time_requests(request: Request, call_next):
 async def require_account(request: Request, call_next):
     """An account is required to use the system: every API route except
     /api/auth/* demands a valid session token. Static assets stay public so
-    the sign-in page itself can load. The SSE stream may pass the token as a
-    ?token= query parameter (EventSource cannot set headers).
+    the sign-in page itself can load.
 
-    The token's signature is not sufficient on its own: tokens live for 30 days
-    and carry no revocation, so the account behind one is re-checked here on
-    every request. Without that, an operator suspending or deleting an account
-    would only stop future sign-ins while the holder's current token kept
-    working for weeks. The check is a primary-key lookup, and it sits in the
-    middleware so it covers routes that take no user_id dependency too.
+    The session token is only ever read from the Authorization header. It used
+    to be accepted as ?token= as well, for the event stream — EventSource
+    cannot set headers — but a query parameter is written into the access log
+    of every proxy it passes, so that put a thirty-day credential into log
+    files on every page load. The stream now presents a one-minute ticket
+    instead (see /api/stream/ticket), which is the only thing this reads from
+    the URL and opens nothing else.
+
+    A signature is not sufficient on its own, so the account behind the token
+    is re-read here on every request. That catches three things a token cannot
+    know about: the account was deleted, the account was suspended, or its
+    sessions were ended (by a password reset, or by signing out everywhere) —
+    the last of which is a `token_version` the token no longer agrees with.
+    Without this a token would keep working for weeks past any of them. It is a
+    primary-key lookup, and it sits in the middleware so it covers routes that
+    take no user_id dependency too.
     """
     path = request.url.path
     if path.startswith("/api") and not path.startswith("/api/auth/"):
-        token = ""
-        authz = request.headers.get("authorization", "")
-        if authz.startswith("Bearer "):
-            token = authz[7:].strip()
-        elif "token" in request.query_params:
-            token = request.query_params["token"]
-        uid = auth.parse_token(token) if token else None
-        if uid is None:
+        if path == "/api/stream":
+            uid = auth.parse_stream_ticket(request.query_params.get("ticket", ""))
+            claim = auth.Claim(uid, -1) if uid is not None else None
+        else:
+            authz = request.headers.get("authorization", "")
+            token = authz[7:].strip() if authz.startswith("Bearer ") else ""
+            claim = auth.parse_token(token) if token else None
+        if claim is None:
             return JSONResponse({"detail": "Authentication required — sign in"}, status_code=401)
+        uid = claim.user_id
         with SessionLocal() as session:
             user = session.get(User, uid)
             if user is None:
@@ -327,22 +338,33 @@ async def require_account(request: Request, call_next):
                                "Your feeds and alerts are intact; an operator can "
                                "restore access from the operator console."},
                     status_code=403)
+            # A ticket is minted from a session that was checked moments ago and
+            # lives for a minute, so it carries no version of its own (-1).
+            if claim.token_version >= 0 and claim.token_version != user.token_version:
+                return JSONResponse(
+                    {"detail": "You were signed out of this device because the "
+                               "account's password was changed or someone signed "
+                               "it out everywhere. Sign in again to continue."},
+                    status_code=401)
             # Named in the failure log, so a crash can be traced to a person
             # who reported it rather than to an anonymous request.
             request.state.user_id = f"acct:{uid}"
     return await call_next(request)
 
 
-def user_id_header(authorization: str = Header(default=""),
-                   token: str = Query(default="")) -> str:
-    """Resolve the caller's account key ("acct:<id>") from the Bearer token
-    (or ?token= for SSE). The middleware guarantees one is present on
-    protected routes; this is defense in depth."""
-    raw = authorization[7:].strip() if authorization.startswith("Bearer ") else token
-    uid = auth.parse_token(raw) if raw else None
-    if uid is None:
+def user_id_header(authorization: str = Header(default="")) -> str:
+    """Resolve the caller's account key ("acct:<id>") from the Bearer token.
+
+    The middleware guarantees one is present on protected routes; this is
+    defense in depth. It no longer falls back to ?token=: the session token
+    does not travel in URLs at all now, and leaving the fallback in would have
+    kept every route quietly willing to accept one.
+    """
+    raw = authorization[7:].strip() if authorization.startswith("Bearer ") else ""
+    claim = auth.parse_token(raw) if raw else None
+    if claim is None:
         raise HTTPException(401, "Authentication required — sign in")
-    return f"acct:{uid}"
+    return f"acct:{claim.user_id}"
 
 
 def _events_for(db: Session, articles: list[Article]) -> dict[int, Event]:
@@ -596,7 +618,7 @@ def register(body: dict, request: Request, background: BackgroundTasks,
         # look dead. The account already exists, so delivery is independent.
         background.add_task(mailer.send_verification, email, username, link)
         return {"verification_sent": True, "username": username, "email": email}
-    return {"token": auth.make_token(user.id), "username": username,
+    return {"token": auth.make_token(user.id, user.token_version), "username": username,
             "email": email, "user_key": f"acct:{user.id}", "is_admin": _is_admin(user)}
 
 
@@ -619,7 +641,7 @@ def login(body: dict, request: Request, db: Session = Depends(get_db)):
         db.commit()
     if mailer.enabled() and not user.email_verified:
         raise HTTPException(403, "unverified: check your inbox for the verification link")
-    return {"token": auth.make_token(user.id), "username": user.username,
+    return {"token": auth.make_token(user.id, user.token_version), "username": user.username,
             "email": user.email, "user_key": f"acct:{user.id}", "is_admin": _is_admin(user)}
 
 
@@ -676,17 +698,45 @@ def reset_password(body: dict, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(422, "Password must be at least 8 characters")
     user.password_hash = auth.hash_password(password)
     user.email_verified = True  # proving inbox access verifies the email too
+    # The reason most people reset a password is that they think someone else
+    # has it. A new hash alone does nothing about the session that person is
+    # already holding — it stays valid for the rest of its thirty days. Bumping
+    # the version ends every session on the account, including the one doing
+    # the reset, which is why the response says to sign in again.
+    user.token_version += 1
     db.commit()
-    return {"ok": True, "username": user.username}
+    return {"ok": True, "username": user.username, "sessions_ended": True}
+
+
+@app.post("/api/auth/sign-out-everywhere")
+def sign_out_everywhere(user_id: str = Depends(user_id_header),
+                        db: Session = Depends(get_db)):
+    """End every session on this account, including the one asking.
+
+    Signing out normally just forgets the token in this browser — which is the
+    right thing when you are done, and no help at all when the worry is a
+    device you no longer have, or a token someone else copied. Nothing on the
+    server changed in that case; the token still works. This changes the
+    server: every token issued before now stops being accepted.
+    """
+    user = db.get(User, _acct_id(user_id))
+    if not user:
+        raise HTTPException(404, "Account not found")
+    user.token_version += 1
+    db.commit()
+    return {"ok": True, "sessions_ended": True}
 
 
 @app.get("/api/auth/me")
 def me(authorization: str = Header(default=""), db: Session = Depends(get_db)):
     raw = authorization[7:].strip() if authorization.startswith("Bearer ") else ""
-    uid = auth.parse_token(raw) if raw else None
-    if uid is None:
+    claim = auth.parse_token(raw) if raw else None
+    if claim is None:
         raise HTTPException(401, "Authentication required — sign in")
+    uid = claim.user_id
     user = db.get(User, uid)
+    if user and claim.token_version != user.token_version:
+        raise HTTPException(401, "This session was ended — sign in again")
     if not user:
         raise HTTPException(401, "Account no longer exists")
     return {"user_key": f"acct:{uid}", "username": user.username, "email": user.email,
@@ -2028,9 +2078,26 @@ async def story_by_event(event_id: int, lang: str = Query(default=""),
     return await _story(db, article, lang, user_id)
 
 
+@app.post("/api/stream/ticket")
+def stream_ticket(user_id: str = Depends(user_id_header)):
+    """A one-minute credential for opening the event stream.
+
+    Reached with the Authorization header like everything else; the ticket it
+    returns is what goes in the stream URL, because EventSource cannot set
+    headers and anything in a URL ends up in access logs. A minute is long
+    enough to open a connection on a slow phone and short enough that a logged
+    copy is worthless — and it opens the stream and nothing else.
+    """
+    return {"ticket": auth.make_stream_ticket(_acct_id(user_id)),
+            "expires_in": auth.STREAM_TICKET_TTL_SECONDS}
+
+
 @app.get("/api/stream")
 async def stream():
-    """Server-Sent Events: new-article batches and alert hits, pushed live."""
+    """Server-Sent Events: new-article batches and alert hits, pushed live.
+
+    Authenticated by the ?ticket= the middleware checks, not a session token.
+    """
     queue = broadcaster.subscribe()
 
     async def gen():
@@ -2574,8 +2641,12 @@ def admin_reset_password(uid: int, body: dict, admin: User = Depends(require_adm
         raise HTTPException(422, "Password must be at least 8 characters")
     u.password_hash = auth.hash_password(pw)
     u.email_verified = True
+    # An operator resetting somebody's password is often responding to a
+    # compromise, so it has to end that account's existing sessions too —
+    # otherwise the intruder keeps the one they already have.
+    u.token_version += 1
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "sessions_ended": True}
 
 
 @app.delete("/api/admin/users/{uid}")

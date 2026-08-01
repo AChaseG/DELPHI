@@ -13,6 +13,27 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-19",
+        "title": "You can end a session now — and one just ended",
+        "items": [
+            "🔒 Settings has a new “Sign out everywhere”. Signing out from the "
+            "rail only forgets this browser, which is no help if you have lost "
+            "a phone or think somebody else has been in your account. This one "
+            "ends every signed-in device, including this one.",
+            "🔑 Changing your password now signs out every device too. It "
+            "didn't before: a password reset left anyone already signed in as "
+            "you still signed in, for up to thirty days — which is precisely "
+            "the situation people reset a password to end.",
+            "📋 Live updates no longer carry your sign-in credential in the "
+            "web address. It used to sit in the URL of the updates connection, "
+            "where every server between you and Delphi writes it into a log; "
+            "now that address holds a one-minute pass that opens the updates "
+            "feed and nothing else.",
+            "👋 Because of those changes everyone is signed out once. Sign back "
+            "in as usual — nothing of yours is affected.",
+        ],
+    },
+    {
         "date": "2026-08-18",
         "title": "The limit on password guessing now actually holds",
         "items": [

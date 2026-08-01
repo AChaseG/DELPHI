@@ -275,7 +275,17 @@ GET  /api/stream                   SSE: live article batches + alert hits
   and tune the weights to taste.
 - Accounts are self-serve; passwords are PBKDF2-hashed with HMAC-signed
   session tokens (`NEWS_SECRET` env or an auto-generated key beside the DB).
-  Every API route except sign-in/register requires a session. **Email
+  Every API route except sign-in/register requires a session. **Sessions can be
+  ended.** Each token carries the account's `token_version`; a password reset
+  (self-service or by an operator) and Settings → *Sign out everywhere* both
+  increment it, which refuses every token issued before that moment. Without
+  it a signature and an expiry were the whole story, so resetting a password
+  left whoever already had your token signed in for the rest of its 30 days.
+  The session token is read **only** from the `Authorization` header: the live
+  event stream authenticates with a separate 60-second ticket
+  (`POST /api/stream/ticket`), because EventSource cannot set headers and
+  anything in a URL is written to every intervening proxy's access log — which
+  is where a 30-day credential used to land on every page load. **Email
   verification and password reset** activate automatically when SMTP is
   configured (`NEWS_SMTP_HOST/PORT/USER/PASS/FROM`, `NEWS_SMTP_TLS` =
   starttls|ssl|none — works with Resend, Mailgun, SES, or any SMTP relay):

@@ -139,6 +139,15 @@
         <button class="btn small" id="btn-open-trouble">🛠 Troubleshooting</button>
       </div>
 
+      <h3 class="set-h">Account security</h3>
+      <div class="set-row">
+        <span>Sign out of every device — use this if you've lost a device, or
+              think someone else has been in your account. Signing out from the
+              rail only affects this browser; this ends every session, including
+              this one.</span>
+        <button class="btn small" id="btn-signout-all">🔒 Sign out everywhere</button>
+      </div>
+
       <!-- Operator console. Lived on the action rail, where it sat among things
            every reader uses despite almost nobody being able to see it. -->
       <div id="admin-setting" hidden>
@@ -212,7 +221,9 @@
              account's email address, and open the link that arrives. It takes you
              straight to a "set a new password" card. Reset links expire, so request a
              fresh one rather than reusing an old email.</p>
-          <p><b>Sign out:</b> <b>👤</b> at the bottom of the rail.</p>
+          <p><b>Sign out:</b> <b>👤</b> at the bottom of the rail — this browser only.
+             To end every signed-in device at once (a lost phone, or someone else in
+             your account), use <b>⚙ Settings → Sign out everywhere</b>.</p>
           <p>No verification email? Check spam first. If it still hasn't arrived, the
              server may have no mail configured — see the <b>🛠 Troubleshooting</b> tab.</p>
         </details>
@@ -571,6 +582,33 @@
              you last saw stays readable even when the server is unreachable. That copy
              is bounded, belongs to your account alone, and is erased when you sign
              out.</p>
+        </details>
+
+        <details>
+          <summary>🔒 Someone else may have been in my account</summary>
+          <p>Go to <b>⚙ Settings → Account security → Sign out everywhere</b>.
+             That ends every signed-in browser and phone on your account —
+             including any you no longer have, and any that isn't yours. Signing
+             out from <b>👤</b> in the rail only forgets <em>this</em> browser,
+             which does nothing about a session somewhere else.</p>
+          <p>Then change your password using <b>Forgot password?</b> on the
+             sign-in screen. Changing it also signs out every device, so doing
+             both is belt and braces — either one on its own is enough to end
+             the other sessions.</p>
+          <p>Your feeds, alerts, Pantheons, and settings are untouched by
+             either. You'll just sign in again.</p>
+        </details>
+
+        <details>
+          <summary>👋 Why was I signed out when nothing was wrong?</summary>
+          <p>Sessions last 30 days, so one may simply have run its course. Three
+             other things end one deliberately: you used <b>Sign out
+             everywhere</b>, your password was changed (by you or an operator),
+             or an operator suspended the account. Delphi says which of those it
+             was on the sign-in screen rather than leaving you guessing.</p>
+          <p>An update that changes how sessions work will also sign everyone
+             out once. That is deliberate and safe — it's the only way to be
+             sure no older session survives the change.</p>
         </details>
 
         <details>

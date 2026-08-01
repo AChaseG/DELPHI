@@ -49,6 +49,11 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     # Suspended by an admin: kept for history but blocked from signing in.
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Which generation of sessions this account is on. Every token carries the
+    # number it was minted under; bumping this refuses all of them at once,
+    # which is the only way to end a session that has already been issued.
+    # Password reset and "sign out everywhere" bump it. See auth.py.
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Source(Base):

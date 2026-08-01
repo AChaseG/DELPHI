@@ -138,6 +138,8 @@ const OPERATION_NAMES = [
   [/^\/api\/auth\/forgot/, "start a password reset"],
   [/^\/api\/auth\/reset/, "set your new password"],
   [/^\/api\/auth\/verify|resend-verification/, "verify your email address"],
+  [/^\/api\/auth\/sign-out-everywhere/, "sign you out of every device"],
+  [/^\/api\/stream\/ticket/, "connect to live updates"],
   [/^\/api\/feeds\/\d+\/articles/, "load a feed's articles"],
   [/^\/api\/feeds\/\d+\/events/, "load a feed's events"],
   [/^\/api\/feeds\/reorder/, "save the column order"],
@@ -346,6 +348,9 @@ const API = {
     api("/api/auth/forgot", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (token, password) =>
     api("/api/auth/reset", { method: "POST", body: JSON.stringify({ token, password }) }),
+  signOutEverywhere: () => api("/api/auth/sign-out-everywhere", { method: "POST" }),
+  // Short-lived credential for the event stream; see connectStream in app.js.
+  streamTicket: () => api("/api/stream/ticket", { method: "POST" }),
 };
 
 /* ---------- map library, loaded when a map is actually opened ----------

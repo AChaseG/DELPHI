@@ -140,3 +140,14 @@ local-news feeds) and starts polling. The "sources healthy" tile reads
 `…/N` until the first ticks complete, then climbs as the rolling poller works
 through the city feeds and auto-discovery promotes real local outlets. No
 manual step is required — create your account and it runs itself.
+
+## Upgrading
+
+Deploys are ordinary: schema changes are additive and applied at boot, and
+sessions survive them because the signing key lives on the volume.
+
+One exception, once: the release that added revocable sessions signs everyone
+out on first boot. Tokens issued before it have no `token_version` to check, and
+accepting them as version 0 would have exempted exactly the tokens revocation
+exists to cancel. Users sign in again and lose nothing; if you run an instance
+for other people, it is worth saying so before you deploy it.
