@@ -3564,12 +3564,19 @@ async function renderSourcesPanel() {
         await API.patchSource(s.id, { enabled: !s.enabled });
         await reloadSources();
       }),
-      toolBtn("🗑", "Delete source", async () => {
-        if (!confirm(`Delete source “${s.name}” and its articles?`)) return;
+    );
+    // Deleting removes the outlet for everyone on this server and takes its
+    // articles with it, so it is an operator's to do. Everyone else has ⏸,
+    // which has the same effect on their own board and can be undone.
+    if (META.is_admin) {
+      row.append(toolBtn("🗑", "Delete source for everyone on this server", async () => {
+        if (!confirm(`Delete source “${s.name}” and its articles, for every `
+                     + "reader on this server? This cannot be undone — ⏸ "
+                     + "disables it instead.")) return;
         await API.deleteSource(s.id);
         await reloadSources();
-      }),
-    );
+      }));
+    }
     box.appendChild(row);
   }
 }

@@ -574,6 +574,43 @@
         </details>
 
         <details>
+          <summary>🔐 What only an operator can do</summary>
+          <p>Most of Delphi is shared on purpose: the article database and the source
+             catalog belong to everyone on this server, and any signed-in account can
+             add a source or correct one. A few things are held back to operators,
+             because they affect every reader at once and one machine serves all of
+             them.</p>
+          <ul>
+            <li><b>Deleting a source.</b> It removes the outlet for everybody and takes
+              its articles with it, with no undo. Anyone can <b>⏸ disable</b> a source
+              instead, which has the same effect on a board and can be reversed.</li>
+            <li><b>Rebuilding events</b>, <b>re-classifying</b> or <b>re-detecting
+              languages</b> across the archive, <b>backfilling article text</b>, and
+              <b>seeding the city catalog</b> — each walks or rewrites every article
+              stored, which would leave the server answering nobody while it ran.</li>
+          </ul>
+          <p><b>⟳ Refresh now</b> deliberately stays open to everyone: it is the one
+             thing you can do about a feed that looks stale, only one poll runs at a
+             time, and it is rate-limited rather than restricted.</p>
+        </details>
+
+        <details>
+          <summary>🛡 Why some addresses are refused</summary>
+          <p>Adding a source, or pointing an alert at a webhook, asks the server to
+             fetch a URL on your behalf — and a server can reach addresses your browser
+             never could, including the machine it runs on and anything else on its
+             private network. Delphi therefore only fetches from public internet
+             addresses, and says so plainly if you paste something else.</p>
+          <p>The check is repeated on <em>every redirect</em>, not just when you save,
+             because a public address can answer with "go here instead". Feeds are also
+             only fetched over the standard web ports.</p>
+          <p>If you are self-hosting and genuinely want Delphi to read a feed on your
+             own network, that is a change to the server's code rather than a setting —
+             deliberately, because the same switch would let every account on your
+             server do it too.</p>
+        </details>
+
+        <details>
           <summary>🛠 Operator console</summary>
           <p>Operators — accounts named in the server's <code>NEWS_ADMIN_USERS</code>
              setting, or promoted by another operator — get an <b>Operator</b> section at

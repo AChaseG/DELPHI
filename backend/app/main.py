@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 import re as _username_re
 
 from . import (auth, export, geocode, home, ingest, langdetect, mailer, ratelimit,
-               repair, translate)
+               repair, safefetch, translate)
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -824,8 +824,25 @@ def list_sources(slim: bool = Query(default=False), db: Session = Depends(get_db
     } for s in sources]
 
 
+def _fetchable(url: str) -> str:
+    """A URL Delphi is willing to point itself at, or a 422 explaining why not.
+
+    The same check runs again at fetch time — that one covers redirects, which
+    this cannot — but catching it here means someone who mistypes an address
+    is told immediately instead of watching a source sit there never working.
+    """
+    try:
+        # A name that will not resolve is left alone here: it may be a host
+        # being set up, and the fetch-time guard refuses it if it ever points
+        # inward. Saving rejects what is known to be bad; fetching fails closed.
+        return safefetch.check_url(url, unresolvable_ok=True)
+    except safefetch.BlockedURL as exc:
+        raise HTTPException(422, str(exc))
+
+
 @app.post("/api/sources", status_code=201)
 def create_source(body: SourceIn, db: Session = Depends(get_db)):
+    _fetchable(body.rss_url)
     if db.scalar(select(Source).where(Source.rss_url == body.rss_url)):
         raise HTTPException(409, "A source with this RSS URL already exists")
     source = Source(**body.model_dump(), added_by="user")
@@ -835,7 +852,8 @@ def create_source(body: SourceIn, db: Session = Depends(get_db)):
 
 
 @app.post("/api/sources/seed-cities")
-def seed_cities_endpoint(db: Session = Depends(get_db)):
+def seed_cities_endpoint(admin: User = Depends(require_admin),
+                         db: Session = Depends(get_db)):
     """Add local-news sources for every world city in the catalog (idempotent).
     Lets an already-running instance pick up the city catalog without a restart."""
     from . import cities
@@ -873,6 +891,7 @@ def update_source(source_id: int, body: dict, db: Session = Depends(get_db)):
         raise HTTPException(404, "Source not found")
     new_url = (body.get("rss_url") or "").strip()
     if new_url and new_url != source.rss_url:
+        _fetchable(new_url)
         if db.scalar(select(Source).where(Source.rss_url == new_url)):
             raise HTTPException(409, "Another source already uses this RSS URL")
         source.rss_url = new_url
@@ -918,7 +937,16 @@ def create_social_tracker(body: SocialTrackerIn, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/sources/{source_id}", status_code=204)
-def delete_source(source_id: int, db: Session = Depends(get_db)):
+def delete_source(source_id: int, admin: User = Depends(require_admin),
+                  db: Session = Depends(get_db)):
+    """Operators only.
+
+    The catalog is shared and collaborative on purpose — anyone may add a
+    source or correct one. Deleting is different in kind: it removes the outlet
+    for every reader on the server and takes its articles with it, and there is
+    no undo. Everyone else can switch a source off instead, which is reversible
+    and has the same effect on their board.
+    """
     source = db.get(Source, source_id)
     if not source:
         raise HTTPException(404, "Source not found")
@@ -935,7 +963,7 @@ async def repair_source(source_id: int, db: Session = Depends(get_db)):
     if not source:
         raise HTTPException(404, "Source not found")
     old_url = source.rss_url
-    async with httpx.AsyncClient(timeout=repair.REPAIR_TIMEOUT, follow_redirects=True) as client:
+    async with safefetch.client(timeout=repair.REPAIR_TIMEOUT) as client:
         fixed, entries = await repair.attempt_repair(client, db, source, verify_current=True)
     if not fixed:
         db.commit()  # persist the attempt timestamp
@@ -1254,7 +1282,10 @@ def _valid_webhook(url: str) -> str:
         return ""
     if not url.lower().startswith(("http://", "https://")):
         raise HTTPException(422, "Webhook URL must start with http:// or https://")
-    return url
+    # An alert's webhook is a URL the server posts to on the user's behalf,
+    # which makes it the same kind of thing as a feed URL: refuse anything that
+    # is not out on the public internet.
+    return _fetchable(url)
 
 
 @app.get("/api/alerts")
@@ -1712,7 +1743,15 @@ def share_alert(alert_id: int, body: dict, user_id: str = Depends(user_id_header
 # ---------- ingest control & live stream ----------
 
 @app.post("/api/ingest/run")
-async def ingest_run():
+async def ingest_run(request: Request):
+    """Poll every due source now — the ⟳ Refresh in Troubleshooting.
+
+    Deliberately not operator-only: it is the one thing a reader can do when a
+    feed looks stale, and one cycle runs at a time, so it cannot pile up. It is
+    rate-limited instead, because a caller looping on it could keep the cycle
+    permanently busy and starve the scheduled polling behind it.
+    """
+    ratelimit.check("ingest", request)
     if ingest.cycle_lock.locked():
         raise HTTPException(
             409, "A poll cycle is already running — new articles will appear when it finishes.")
@@ -1797,7 +1836,9 @@ def ingest_status(db: Session = Depends(get_db)):
 
 
 @app.post("/api/maintenance/fetch-content")
-async def fetch_content_backfill(body: dict | None = None, db: Session = Depends(get_db)):
+async def fetch_content_backfill(body: dict | None = None,
+                                 admin: User = Depends(require_admin),
+                                 db: Session = Depends(get_db)):
     """Fetch article bodies for recent stored articles that don't have one yet
     (feed criteria then match against full text). Use after upgrading, or to
     deepen coverage of a busy window."""
@@ -1816,7 +1857,8 @@ async def fetch_content_backfill(body: dict | None = None, db: Session = Depends
 
 
 @app.post("/api/maintenance/reclassify")
-def reclassify_articles(db: Session = Depends(get_db)):
+def reclassify_articles(admin: User = Depends(require_admin),
+                        db: Session = Depends(get_db)):
     """Re-run the category classifier over every stored article (use after
     classifier upgrades so old articles match category feeds too)."""
     changed = total = 0
@@ -1832,7 +1874,8 @@ def reclassify_articles(db: Session = Depends(get_db)):
 
 
 @app.post("/api/maintenance/detect-languages")
-def detect_languages(db: Session = Depends(get_db)):
+def detect_languages(admin: User = Depends(require_admin),
+                     db: Session = Depends(get_db)):
     """Re-detect the language of every stored article from its text (use after
     the detector improves, or to fix a backlog tagged with the source's
     language). Corrected articles then auto-translate for users whose reading
@@ -1850,7 +1893,8 @@ def detect_languages(db: Session = Depends(get_db)):
 
 
 @app.post("/api/events/rebuild")
-def events_rebuild(db: Session = Depends(get_db)):
+def events_rebuild(admin: User = Depends(require_admin),
+                   db: Session = Depends(get_db)):
     """Recluster every stored article from scratch."""
     return {"events": rebuild_events(db)}
 

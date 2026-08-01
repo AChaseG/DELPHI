@@ -13,6 +13,29 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-17",
+        "title": "Two ways an account could reach too far, closed",
+        "items": [
+            "🛡 Delphi now only fetches from public internet addresses. Adding "
+            "a source or an alert webhook asks the server to fetch a URL for "
+            "you, and a server can reach places your browser cannot — the "
+            "machine it runs on, and anything else on its private network. "
+            "Those are refused now, with a message saying why, and the check "
+            "is repeated on every redirect rather than only when you save.",
+            "🔐 A handful of actions are operators-only: rebuilding events, "
+            "re-classifying or re-detecting languages across the archive, "
+            "backfilling article text, seeding the city catalog, and deleting "
+            "a source. Each of those touches every article or every reader on "
+            "the server, and any signed-in account could start them.",
+            "⏸ Deleting a source is now an operator's job because it removes "
+            "the outlet for everybody and takes its articles with it. "
+            "Disabling one is still open to anyone, does the same thing to "
+            "your board, and can be undone.",
+            "⟳ Refresh stays open to everyone — it is the one thing you can do "
+            "about a feed that looks stale. It is rate-limited instead.",
+        ],
+    },
+    {
         "date": "2026-08-16",
         "title": "Delphi reads more of the world, more often",
         "items": [

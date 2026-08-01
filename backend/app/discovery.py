@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 import httpx
 from sqlalchemy import select
 
+from . import safefetch
 from .models import DiscoveredDomain, Source, utcnow
 from .repair import COMMON_PATHS, REPAIR_TIMEOUT, _FeedLinkParser, _get, _validate
 
@@ -144,7 +145,7 @@ async def discover_new_sources(db, publishers: dict[str, tuple[str, str]]
     # source is polled. The network work now overlaps; the database work stays
     # serial, because the session is not safe to share.
     sem = asyncio.Semaphore(DISCOVER_CONCURRENCY)
-    async with httpx.AsyncClient(timeout=REPAIR_TIMEOUT, follow_redirects=True) as client:
+    async with safefetch.client(timeout=REPAIR_TIMEOUT) as client:
         async def probe(entry):
             async with sem:
                 return entry, await _find_site_feed(client, entry[2])

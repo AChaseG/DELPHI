@@ -20,7 +20,7 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, or_, select
 
-from . import discovery, home, langdetect, mailer, repair
+from . import discovery, home, langdetect, mailer, repair, safefetch
 from .clustering import assign_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -337,7 +337,7 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
     for article in todo:
         article.content_tried_at = attempted
     sem = asyncio.Semaphore(CONTENT_CONCURRENCY)
-    async with httpx.AsyncClient(timeout=CONTENT_TIMEOUT, follow_redirects=True) as client:
+    async with safefetch.client(timeout=CONTENT_TIMEOUT) as client:
         async def one(article):
             async with sem:
                 return article, await fetch_article_text(client, article.url)
@@ -444,7 +444,7 @@ async def deliver_alerts(db, hits: list[dict]) -> int:
     if not by_alert:
         return 0
     delivered = 0
-    async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+    async with safefetch.client(timeout=10, follow_redirects=False) as client:
         for items in by_alert.values():
             first = items[0]
             if first.get("notify_email") and mailer.enabled():
@@ -541,7 +541,7 @@ async def _fetch_batch(sources: list[Source]) -> list[tuple]:
     pacer = HostPacer()
     counts = Counter(_host(s) for s in sources)
     sem = asyncio.Semaphore(CONCURRENCY)
-    async with httpx.AsyncClient(timeout=FETCH_TIMEOUT, follow_redirects=True) as client:
+    async with safefetch.client(timeout=FETCH_TIMEOUT) as client:
         async def one(source):
             host = _host(source)
             delay = await pacer.reserve(host, host_gap(host, counts[host]))
@@ -621,7 +621,7 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     repaired = 0
     due = [s for s in sources if repair.due_for_repair(s)][:repair.REPAIR_MAX_PER_CYCLE]
     if due:
-        async with httpx.AsyncClient(timeout=repair.REPAIR_TIMEOUT, follow_redirects=True) as client:
+        async with safefetch.client(timeout=repair.REPAIR_TIMEOUT) as client:
             for source in due:
                 try:
                     fixed, entries = await repair.attempt_repair(client, db, source)

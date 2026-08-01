@@ -287,8 +287,21 @@ GET  /api/stream                   SSE: live article batches + alert hits
   behind a proxy, set **`NEWS_PUBLIC_URL`** (e.g. `https://delphi.example.com`)
   so emailed verification/reset links use a fixed origin instead of a
   spoofable `Host` header — or `NEWS_ALLOWED_HOSTS` (comma-separated) to
-  allowlist the hosts links may use. Sources and ingestion remain shared and
-  editable by all users by design.
+  allowlist the hosts links may use. Sources stay shared and editable by every
+  signed-in user by design, but the actions that touch the whole archive are
+  not: **deleting a source and the maintenance jobs** (rebuild events,
+  reclassify, detect languages, fetch content, seed cities) require an
+  operator account, and a manual refresh is rate-limited per client the same
+  way sign-in is. Adding, editing, and polling sources stay open to everyone.
+- **Outbound fetches can only reach the public internet.** Every URL a user
+  supplies — a feed, an article page, a discovered candidate, an alert webhook
+  — is resolved and refused if it points at a private, loopback, link-local, or
+  reserved address, or at a port other than 80/443. The check lives in the HTTP
+  transport rather than at the call site, so each redirect hop is validated too
+  and a publisher answering `302 http://169.254.169.254/` gets nowhere. Saving
+  a URL that does not resolve yet is allowed (the webhook host may not exist
+  yet); fetching one is not. Without this, any signed-in account could use the
+  server as a proxy into whatever sits unauthenticated on its private network.
 - **Local coverage for ~500 major cities** (170 countries) seeds on first
   run: each city gets a Google News city-edition source in the country's
   language, and auto-discovery grows its real local outlets from there.

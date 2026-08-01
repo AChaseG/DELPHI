@@ -28,6 +28,10 @@ _LIMITS: dict[str, tuple[int, int]] = {
     # Address lookups spend somebody else's quota (OpenStreetMap's), so one
     # reader typing quickly must not be able to spend all of it.
     "geocode": (60, 60),     # 60 address lookups / min / IP
+    # A manual poll asks the server to go and talk to every due source. One
+    # cycle runs at a time, so this cannot pile up — but it can be held
+    # permanently busy, which starves the scheduled polling behind it.
+    "ingest": (6, 300),      # 6 manual polls / 5 min / IP
 }
 
 _hits: dict[tuple[str, str], deque] = defaultdict(deque)
