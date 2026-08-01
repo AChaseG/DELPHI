@@ -918,6 +918,23 @@ button.working::after {
 }
 .pop-menu button:hover { background: var(--accent-strong); color: var(--accent-ink); }
 
+/* The export menu carries a line of explanation under each format, because
+   "xlsx" and "csv" are file extensions, not reasons to pick one. */
+.pop-menu-head {
+  padding: 6px 10px 4px; font-size: 11.5px; letter-spacing: 0.4px;
+  color: var(--ink-2); text-transform: uppercase;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.export-menu { min-width: 288px; max-width: 340px; }
+.export-menu button {
+  display: flex; flex-direction: column; gap: 2px;
+  white-space: normal; line-height: 1.35;
+}
+.export-menu button em {
+  font-style: normal; font-size: 11.5px; color: var(--ink-2);
+}
+.export-menu button:hover em { color: var(--accent-ink); }
+
 /* ---------- event focus modal ---------- */
 .ev-badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .ev-summary { margin: 0; font-size: 13.5px; color: var(--ink-2); }

@@ -1022,6 +1022,10 @@ function feedColumn(feed, readonly = false) {
   tools.append(toolBtn("⟳", "Refresh this feed", async () => {
     await loadFeedArticles(feed, /*force*/ true);
   }));
+  // Every column can leave as a file — including Home's and a Pantheon's,
+  // which nobody owns and which are the ones most worth taking away.
+  tools.append(toolBtn("⤓", "Export this column — Excel, Word, CSV, Markdown or JSON",
+                       (e) => exportMenu(e.currentTarget, feed)));
   const pinBtn = () => toolBtn("📌", "Add a copy to My feeds (editable)", async () => {
     await API.createFeed({ name: feed.name.replace(/^[^\w]*\s*/, ""), criteria: feed.criteria,
                            sort: feed.sort, group_events: !!feed.group_events });
@@ -3076,6 +3080,97 @@ function wirePantheonModal() {
 }
 
 /* Small anchored chooser: pick one of my Pantheons. */
+/* ---------- exporting a column ----------
+
+   A column is research someone did; the work usually continues somewhere else —
+   a spreadsheet to sort and filter, a document to circulate, a table for a
+   script. The formats are the server's; this only asks for one and saves what
+   comes back. The download reaches much further than the forty rows on screen,
+   because a column is a view and an export is a record. */
+const EXPORT_FORMATS = [
+  ["xlsx", "📊 Excel workbook", "Sorted and filtered in Excel, LibreOffice or Google Sheets"],
+  ["docx", "📄 Word document", "A readable brief with a heading per story — for sending on"],
+  ["csv", "📋 CSV table", "Opens anywhere; the plainest thing a spreadsheet reads"],
+  ["md", "📝 Markdown", "For a wiki, a notebook, or a report you're writing"],
+  ["json", "🧾 JSON", "Every field, for a script or another program"],
+];
+
+const EXPORT_LIMIT = 500;
+
+async function exportColumn(feed, fmt) {
+  const query = `format=${fmt}&limit=${EXPORT_LIMIT}${langQS()}`;
+  const path = feed.home
+    ? `/api/articles/export?sort=${feed.sort || "newest"}&${query}`
+    : `/api/feeds/${feed.id}/export?${query}`;
+  const options = feed.home
+    ? { method: "POST", body: JSON.stringify({ criteria: feed.criteria, name: feed.name }) }
+    : {};
+  // Not api(): that parses JSON, and these are files. The error handling is the
+  // same though — a failed export must say why, like everything else.
+  const headers = { "Content-Type": "application/json" };
+  if (Session.token()) headers["Authorization"] = "Bearer " + Session.token();
+  let resp;
+  try {
+    resp = await fetch(path, { ...options, headers });
+  } catch (e) {
+    throw new Error("Couldn't reach the server to build the export.");
+  }
+  if (!resp.ok) {
+    let detail = "";
+    try { detail = (await resp.json()).detail || ""; } catch (e) { /* not json */ }
+    throw new Error(detail || `The server couldn't build that export (HTTP ${resp.status}).`);
+  }
+  const blob = await resp.blob();
+  const named = /filename="([^"]+)"/.exec(resp.headers.get("Content-Disposition") || "");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = named ? named[1] : `delphi-export.${fmt}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoking immediately can cancel the download in Safari; a tick is enough.
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  return { rows: Number(resp.headers.get("X-Export-Rows") || 0), name: a.download };
+}
+
+function exportMenu(anchor, feed) {
+  const old = document.querySelector(".pop-menu");
+  if (old) old.remove();
+  const menu = document.createElement("div");
+  menu.className = "pop-menu export-menu";
+  const head = document.createElement("div");
+  head.className = "pop-menu-head";
+  head.textContent = `Export “${feed.name}”`;
+  menu.appendChild(head);
+  for (const [fmt, label, why] of EXPORT_FORMATS) {
+    const b = document.createElement("button");
+    const name = document.createElement("span");
+    name.textContent = label;
+    const note = document.createElement("em");
+    note.textContent = why;
+    b.append(name, note);
+    b.onclick = async () => {
+      menu.remove();
+      try {
+        const done = await exportColumn(feed, fmt);
+        toast("Export ready", `${done.rows} article${plural(done.rows)} saved as `
+          + `${done.name}. Check your browser's downloads.`);
+      } catch (e) {
+        toast(`Couldn't export “${feed.name}”`, e.message);
+      }
+    };
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = (r.bottom + 4) + "px";
+  menu.style.left = Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8)) + "px";
+  setTimeout(() => document.addEventListener("mousedown", function close(e) {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("mousedown", close); }
+  }), 0);
+}
+
 function pantheonPickMenu(anchor, onPick) {
   const old = document.querySelector(".pop-menu");
   if (old) old.remove();

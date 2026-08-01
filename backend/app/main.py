@@ -17,7 +17,8 @@ from fastapi import (BackgroundTasks, Depends, FastAPI, Header, HTTPException,
                      Query, Request)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (FileResponse, JSONResponse, Response,
+                               StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.exc import OperationalError
@@ -25,7 +26,8 @@ from sqlalchemy.orm import Session
 
 import re as _username_re
 
-from . import auth, geocode, home, ingest, langdetect, mailer, ratelimit, repair, translate
+from . import (auth, export, geocode, home, ingest, langdetect, mailer, ratelimit,
+               repair, translate)
 from .boolean_query import normalize_quotes, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -1041,6 +1043,76 @@ def delete_feed(feed_id: int, user_id: str = Depends(user_id_header),
     feed = _shared_item_for_edit(db, Feed, feed_id, user_id)
     db.delete(feed)
     db.commit()
+
+
+# How many articles one export may contain. A column shows forty; an export is
+# for taking the work elsewhere, so it reaches much further back — but not so
+# far that one click builds a hundred-megabyte document on a small machine.
+EXPORT_MAX = 2000
+
+
+def _export_rows(articles: list[Article], tr: dict | None = None) -> list[dict]:
+    """The articles of an export, flattened for a spreadsheet.
+
+    Deliberately not `_article_json`: that shape serves the dashboard, and an
+    export wants the outlet's name rather than its id, plain timestamps, and
+    nothing about what the reader has already opened."""
+    return [{
+        "title": (tr or {}).get(a.id, {}).get("title") or a.title,
+        "published_at": a.published_at,
+        "source": a.source.name if a.source else "",
+        "country": a.country or "",
+        "categories": a.categories or [],
+        "importance": a.importance,
+        "scope": a.source.scope if a.source else "",
+        "language": a.language or "",
+        "event_id": a.event_id or "",
+        "summary": (tr or {}).get(a.id, {}).get("summary") or a.summary or "",
+        "url": a.url,
+    } for a in articles]
+
+
+def _export_response(fmt: str, name: str, rows: list[dict]):
+    try:
+        body, media, filename = export.build(fmt, name, rows)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return Response(
+        content=body, media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 # The browser reads this to name the toast; it is not sent
+                 # cross-origin by default, so it has to be exposed.
+                 "X-Export-Rows": str(len(rows)),
+                 "Access-Control-Expose-Headers": "Content-Disposition, X-Export-Rows"})
+
+
+@app.get("/api/feeds/{feed_id}/export")
+async def export_feed(feed_id: int, fmt: str = Query(default="csv", alias="format"),
+                      limit: int = Query(default=500, le=EXPORT_MAX),
+                      lang: str = Query(default=""),
+                      user_id: str = Depends(user_id_header),
+                      db: Session = Depends(get_db)):
+    """One saved feed's current matches, as a file."""
+    feed = _shared_item_for_read(db, Feed, feed_id, user_id)
+    articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
+    tr = await translate.translate_articles(db, articles, lang)
+    return _export_response(fmt, feed.name, _export_rows(articles, tr))
+
+
+@app.post("/api/articles/export")
+async def export_search(body: dict, fmt: str = Query(default="csv", alias="format"),
+                        sort: str = Query(default="newest"),
+                        limit: int = Query(default=500, le=EXPORT_MAX),
+                        lang: str = Query(default=""),
+                        user_id: str = Depends(user_id_header),
+                        db: Session = Depends(get_db)):
+    """The same, for a column that isn't a saved feed — Home's built-in columns
+    and the results of a search from the rail."""
+    criteria = body.get("criteria", body)
+    name = (body.get("name") or "Delphi export").strip()[:120]
+    articles = query_articles(db, criteria, sort=sort, limit=limit)
+    tr = await translate.translate_articles(db, articles, lang)
+    return _export_response(fmt, name, _export_rows(articles, tr))
 
 
 @app.get("/api/feeds/{feed_id}/articles")

@@ -375,3 +375,134 @@ def test_marking_an_article_read_remembers_its_whole_story(client, register, db)
                         json={"criteria": {"keywords": ["samestory"]}}).json()
     # Both reports of the story, including the one never opened.
     assert len(found) == 2 and all(a["viewed"] for a in found)
+
+
+def _exported(client, hdr, fmt):
+    """One column exported, as (bytes, filename)."""
+    feed = client.post("/api/feeds", headers=hdr, json={
+        "name": "Kyiv & Odesa: strikes", "criteria": {"keywords": ["strike"]},
+        "sort": "newest"}).json()
+    r = client.get(f"/api/feeds/{feed['id']}/export?format={fmt}", headers=hdr)
+    assert r.status_code == 200, r.text
+    name = r.headers["content-disposition"]
+    return r.content, name, r.headers
+
+
+def _seed_articles(db, n=3):
+    from backend.app.models import Article, Source, utcnow
+    src = Source(name="Kyiv Wire", rss_url="http://k/f", scope="international", tier=1)
+    db.add(src)
+    db.flush()
+    for i in range(n):
+        db.add(Article(source_id=src.id, url=f"http://k/{i}", guid=f"k{i}",
+                       title=f"Rail strike halts trains, day {i}",
+                       summary="Officials said the strike would continue.",
+                       content="", published_at=utcnow(), fetched_at=utcnow(),
+                       language="en", country="UA", categories=["world"],
+                       places=[], importance=60 + i))
+    db.commit()
+
+
+def test_a_column_exports_as_a_spreadsheet_word_processors_can_open(client, register, db):
+    """The .xlsx is written by hand rather than by a library, so the parts a
+    reader needs have to be checked: the workbook, the sheet, and the text."""
+    import zipfile
+    from io import BytesIO
+
+    hdr = register("exporter")
+    _seed_articles(db)
+    body, disposition, headers = _exported(client, hdr, "xlsx")
+
+    assert body[:2] == b"PK"                       # a zip, which is what xlsx is
+    with zipfile.ZipFile(BytesIO(body)) as z:
+        names = set(z.namelist())
+        assert {"[Content_Types].xml", "_rels/.rels", "xl/workbook.xml",
+                "xl/worksheets/sheet1.xml", "xl/styles.xml"} <= names
+        assert z.testzip() is None                 # every member reads back
+        sheet = z.read("xl/worksheets/sheet1.xml").decode()
+        assert "Rail strike halts trains, day 0" in sheet
+        assert "Kyiv Wire" in sheet and "Importance" in sheet
+        assert "<autoFilter" in sheet and "frozen" in sheet
+        # Without the built-in Normal style, readers warn about a missing
+        # default — checked against openpyxl, which treats it as a defect.
+        assert 'builtinId="0"' in z.read("xl/styles.xml").decode()
+        # Excel rejects a tab name containing any of []:*?/\ or over 31 chars.
+        book = z.read("xl/workbook.xml").decode()
+        tab = book.split('name="')[1].split('"')[0]
+        assert len(tab) <= 31 and not set(tab) & set("[]:*?/\\")
+
+    # The filename says what it is and when, and survives the punctuation in
+    # the feed's own name.
+    assert ".xlsx" in disposition
+    assert "&" not in disposition and ":" not in disposition.split("filename=")[1]
+    assert int(headers["X-Export-Rows"]) == 3
+
+
+def test_a_column_exports_as_a_word_document(client, register, db):
+    import zipfile
+    from io import BytesIO
+
+    hdr = register("wordy")
+    _seed_articles(db)
+    body, disposition, _ = _exported(client, hdr, "docx")
+
+    assert body[:2] == b"PK"
+    with zipfile.ZipFile(BytesIO(body)) as z:
+        assert {"[Content_Types].xml", "_rels/.rels", "word/document.xml",
+                "word/styles.xml"} <= set(z.namelist())
+        doc = z.read("word/document.xml").decode()
+        assert "Rail strike halts trains, day 0" in doc
+        assert 'w:pStyle w:val="Heading1"' in doc      # navigable in Word
+        styles = z.read("word/styles.xml").decode()
+        # A heading is only a heading if the styles part hangs off docDefaults
+        # and a default Normal style; without them Word renders flat text.
+        assert "<w:docDefaults>" in styles
+        assert 'w:default="1" w:styleId="Normal"' in styles
+        assert 'w:val="heading 1"' in styles
+        assert "Kyiv &amp; Odesa: strikes" in doc      # the title, escaped
+    assert ".docx" in disposition
+
+
+def test_the_plain_formats_carry_the_same_articles(client, register, db):
+    hdr = register("plainly")
+    _seed_articles(db)
+
+    body, disposition, _ = _exported(client, hdr, "csv")
+    text = body.decode("utf-8-sig")
+    assert body.startswith(b"\xef\xbb\xbf")          # Excel needs the BOM
+    assert "Title,Published (UTC),Outlet" in text.replace("\r\n", "\n")
+    assert "Rail strike halts trains, day 0" in text
+    assert ".csv" in disposition
+
+    body, _, _ = _exported(client, hdr, "md")
+    assert "# Kyiv & Odesa: strikes" in body.decode()
+    assert "## [Rail strike halts trains, day 0](http://k/0)" in body.decode()
+
+    body, _, _ = _exported(client, hdr, "json")
+    import json as _json
+    payload = _json.loads(body)
+    assert payload["count"] == 3
+    assert payload["articles"][0]["source"] == "Kyiv Wire"
+
+
+def test_an_unknown_export_format_says_what_is_available(client, register, db):
+    hdr = register("wrongfmt")
+    _seed_articles(db)
+    feed = client.post("/api/feeds", headers=hdr, json={
+        "name": "Strikes", "criteria": {"keywords": ["strike"]}, "sort": "newest"}).json()
+    r = client.get(f"/api/feeds/{feed['id']}/export?format=pdf", headers=hdr)
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "pdf" in detail and "xlsx" in detail and "docx" in detail
+
+
+def test_a_home_column_exports_too(client, register, db):
+    """Home's columns and search results belong to nobody, so they have no feed
+    id to export by — they carry their criteria instead."""
+    hdr = register("homeexport")
+    _seed_articles(db)
+    r = client.post("/api/articles/export?format=csv&sort=newest", headers=hdr,
+                    json={"criteria": {"keywords": ["strike"]}, "name": "Top events"})
+    assert r.status_code == 200
+    assert "Top-events" in r.headers["content-disposition"]
+    assert "Rail strike halts trains" in r.content.decode("utf-8-sig")

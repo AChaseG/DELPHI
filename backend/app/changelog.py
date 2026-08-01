@@ -13,6 +13,31 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-15",
+        "title": "Take a column with you, and read means read",
+        "items": [
+            "⤓ Every column can now leave as a file. <b>📊 Excel</b> gives a "
+            "workbook with the header frozen and filters already on; <b>📄 "
+            "Word</b> gives a readable brief with a heading per story, so "
+            "Word's navigation pane lists the headlines. There is also CSV for "
+            "anything, Markdown for a wiki or a report, and JSON for a script. "
+            "The button is ⤓ in a column's header, and it works on Home's "
+            "columns and a Pantheon's too.",
+            "An export reaches back further than the column shows — up to 500 "
+            "articles against the forty on screen — and it takes what the feed "
+            "matches now, in your reading language.",
+            "🔅 Articles that had been read were coming back bright. The "
+            "reading was recorded on the server and on the row you clicked, "
+            "but not on the same story sitting in other columns, and not in "
+            "the saved contents of any column — so a reload, or switching "
+            "between boards, undid it. One article turned out to be cached in "
+            "five columns with only one of them dimmed. Reading a story now "
+            "dims every copy of it, everywhere, and it stays that way.",
+            "An article that belongs to no story could never be marked read at "
+            "all, however many times you opened it. Now it can.",
+        ],
+    },
+    {
         "date": "2026-08-14",
         "title": "Errors that tell you what went wrong",
         "items": [
