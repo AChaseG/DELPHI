@@ -279,6 +279,8 @@ const API = {
   story: (id) => api(`/api/story/${id}?x=1${langQS()}`),
   storyByEvent: (id) => api(`/api/story/by-event/${id}?x=1${langQS()}`),
   markEventViewed: (id) => api(`/api/events/${id}/viewed`, { method: "POST" }),
+  // For an article with no event — nothing else can remember it.
+  markArticleViewed: (id) => api(`/api/articles/${id}/viewed`, { method: "POST" }),
   rebuildEvents: () => api("/api/events/rebuild", { method: "POST" }),
 
   alerts: () => api("/api/alerts"),

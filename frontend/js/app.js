@@ -1740,7 +1740,9 @@ async function openStory(article) {
 // The view opens at the latest report of it.
 async function openStoryByEvent(eventId) {
   const wanted = ++STORY_SEQ;
-  markEventRead(eventId);
+  // Only the event is known here; paintStory marks the article too once the
+  // payload names it.
+  markStoryRead({ event_id: eventId });
   let d;
   try {
     d = await API.storyByEvent(eventId);
@@ -1753,11 +1755,61 @@ async function openStoryByEvent(eventId) {
   paintStory(d);
 }
 
-function markEventRead(eventId) {
-  if (!eventId) return;
-  API.markEventViewed(eventId).catch(() => {});
-  for (const card of document.querySelectorAll(`[data-event-id="${eventId}"]`))
-    card.classList.add("event-viewed");
+/* Remember that a story has been read — on screen, in the caches, and on the
+   server.
+
+   Two things used to go wrong here. Only the node that was clicked was dimmed,
+   so the same story sitting in three other columns stayed bright; and nothing
+   told the cached copies, so any repaint that came from cache — a reload, a
+   switch between boards, the prefetch filling a column — brought the row back
+   undimmed. The dimming was real, it just kept being forgotten.
+
+   An article that belongs to no event is remembered by its own id. That is not
+   a hypothetical: a clustering pass that fails leaves a batch of articles with
+   no event, and those could never be marked read at all. */
+function markStoryRead(article) {
+  if (!article) return;
+  const eventId = article.event_id || null;
+  const articleId = article.id;
+
+  const selector = eventId
+    ? `[data-event-id="${eventId}"]`
+    : `[data-article-id="${articleId}"]`;
+  for (const node of document.querySelectorAll(selector))
+    node.classList.add("event-viewed");
+
+  rememberRead(eventId, articleId);
+
+  const request = eventId ? API.markEventViewed(eventId)
+                          : API.markArticleViewed(articleId);
+  // Losing this write costs the dimming after the next refresh, nothing more,
+  // so it stays quiet rather than interrupting the story that just opened.
+  request.catch(() => {});
+}
+
+/* Set `viewed` on every cached copy, and write the changed columns back to
+   disk so a reload agrees with what the reader just did. */
+function rememberRead(eventId, articleId) {
+  const hit = (a) => (eventId ? a.event_id === eventId : a.id === articleId);
+  for (const [key, items] of FEED_CACHE) {
+    let touched = false;
+    for (const item of items) {
+      // A column holds either articles or event groups; groups carry theirs.
+      if (item.articles) {
+        if (eventId ? item.event_id === eventId : item.articles.some(hit)) {
+          item.viewed = true;
+          touched = true;
+        }
+        for (const a of item.articles) if (hit(a) && !a.viewed) { a.viewed = true; touched = true; }
+      } else if (hit(item) && !item.viewed) {
+        item.viewed = true;
+        touched = true;
+      }
+    }
+    if (touched)
+      Store.put(Session.userKey(), key, items, FEED_CACHE_AT.get(key) || Date.now())
+        .catch(() => {});
+  }
 }
 
 /* Draw the view. `partial` means only the report is known so far: the sections
@@ -1765,7 +1817,7 @@ function markEventRead(eventId) {
 function paintStory(d, { partial = false } = {}) {
   const a = d.article;
   const ev = d.event;
-  markEventRead(a.event_id);
+  markStoryRead(a);
 
   el("st-title").textContent = a.title;
 

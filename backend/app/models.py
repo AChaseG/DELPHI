@@ -149,6 +149,23 @@ class ViewedEvent(Base):
     viewed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class ViewedArticle(Base):
+    """Per-user record that an article with no event was read.
+
+    Nearly every article belongs to an event, and reading one dims the whole
+    story wherever it appears. An article that never got an event — a
+    clustering pass that failed leaves a batch of them — had nowhere for that
+    fact to live, so it stayed bright no matter how many times it was opened.
+    """
+    __tablename__ = "viewed_articles"
+    __table_args__ = (UniqueConstraint("user_id", "article_id", name="uq_viewed_article"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id"), index=True)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Translation(Base):
     """Cached machine translation of an article into one target language."""
     __tablename__ = "translations"

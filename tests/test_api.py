@@ -310,3 +310,68 @@ def test_service_health_names_a_broken_relay(client, register):
         mailer.HOST, mailer.PORT = host, port
         mailer.status.clear()
         mailer.status.update(before)
+
+
+def test_an_article_with_no_event_can_still_be_marked_read(client, register, db):
+    """Nearly every article belongs to an event, and reading one dims the whole
+    story. An article that never got one — a clustering pass that fails leaves a
+    batch of them — had nowhere for "I have read this" to live, so it stayed
+    bright however many times it was opened."""
+    from backend.app.models import Article, Source, utcnow
+
+    hdr = register("reader")
+    src = Source(name="W", rss_url="http://w/f", scope="national", tier=2)
+    db.add(src)
+    db.flush()
+    orphan = Article(source_id=src.id, url="http://w/orphan", guid="orphan",
+                     title="A report that never got clustered", summary="", content="",
+                     published_at=utcnow(), fetched_at=utcnow(), language="en",
+                     country="US", categories=[], places=[], importance=50)
+    db.add(orphan)
+    db.commit()
+
+    def as_seen():
+        found = client.post("/api/articles/search?sort=newest&limit=50", headers=hdr,
+                            json={"criteria": {"keywords": ["clustered"]}}).json()
+        return next(a for a in found if a["id"] == orphan.id)
+
+    assert as_seen()["event_id"] is None
+    assert as_seen()["viewed"] is False
+
+    r = client.post(f"/api/articles/{orphan.id}/viewed", headers=hdr)
+    assert r.status_code == 200 and r.json()["remembered_as"] == "article"
+    assert as_seen()["viewed"] is True
+
+    # Twice is not an error, and does not duplicate the record.
+    assert client.post(f"/api/articles/{orphan.id}/viewed", headers=hdr).status_code == 200
+
+
+def test_marking_an_article_read_remembers_its_whole_story(client, register, db):
+    """When the article does have an event, reading it has to dim every report
+    of that story — so it is remembered as the event, not the one article."""
+    from backend.app.models import Article, Event, Source, utcnow
+
+    hdr = register("storyreader")
+    src = Source(name="W", rss_url="http://w/g", scope="national", tier=2)
+    db.add(src)
+    db.flush()
+    event = Event(title="One story", cluster_tokens="alpha beta", importance=50,
+                  article_count=2, countries=["US"], categories=["world"],
+                  first_seen=utcnow(), updated_at=utcnow())
+    db.add(event)
+    db.flush()
+    pair = [Article(source_id=src.id, url=f"http://w/s{i}", guid=f"s{i}",
+                    title=f"Outlet {i} on the samestory", summary="", content="",
+                    published_at=utcnow(), fetched_at=utcnow(), language="en",
+                    country="US", categories=[], places=[], importance=50,
+                    event_id=event.id) for i in range(2)]
+    db.add_all(pair)
+    db.commit()
+
+    r = client.post(f"/api/articles/{pair[0].id}/viewed", headers=hdr)
+    assert r.status_code == 200 and r.json()["remembered_as"] == "event"
+
+    found = client.post("/api/articles/search?sort=newest&limit=50", headers=hdr,
+                        json={"criteria": {"keywords": ["samestory"]}}).json()
+    # Both reports of the story, including the one never opened.
+    assert len(found) == 2 and all(a["viewed"] for a in found)

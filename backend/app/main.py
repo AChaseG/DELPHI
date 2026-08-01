@@ -36,7 +36,7 @@ from .geo import load_gazetteer, search_places
 from .matching import query_articles
 from .models import (Alert, AlertEvent, Article, Event, FavoriteLocation, Feed,
                      Pantheon, PantheonInvite, PantheonMember, Source,
-                     Translation, User, ViewedEvent, utcnow)
+                     Translation, User, ViewedArticle, ViewedEvent, utcnow)
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
 from .scoring import STANDARD_CATEGORIES, classify_categories
 
@@ -360,9 +360,23 @@ def _viewed_events(db: Session, user_id: str, articles: list[Article]) -> set[in
         ViewedEvent.user_id == user_id, ViewedEvent.event_id.in_(event_ids))))
 
 
+def _viewed_articles(db: Session, user_id: str, articles: list[Article]) -> set[int]:
+    """Ids of the event-less articles among these that the user has read.
+
+    Only asked about articles with no event: everything else is remembered by
+    its story, which is what dims a report the reader has already seen no
+    matter which column it turns up in."""
+    ids = {a.id for a in articles if a.event_id is None}
+    if not user_id or not ids:
+        return set()
+    return set(db.scalars(select(ViewedArticle.article_id).where(
+        ViewedArticle.user_id == user_id, ViewedArticle.article_id.in_(ids))))
+
+
 def _article_json(a: Article, tr: dict | None = None,
                   viewed: set[int] | None = None,
-                  event_updated: dict[int, Event] | None = None) -> dict:
+                  event_updated: dict[int, Event] | None = None,
+                  viewed_articles: set[int] | None = None) -> dict:
     """Serialize an article; `tr` is a {article_id: {title, summary}} map of
     translations into the requester's language.
 
@@ -377,7 +391,10 @@ def _article_json(a: Article, tr: dict | None = None,
     return {
         "id": a.id,
         "event_id": a.event_id,
-        "viewed": a.event_id in (viewed or set()),
+        # Read means read, whether it was remembered as a story or — for an
+        # article that never got one — on its own.
+        "viewed": (a.event_id in (viewed or set()) if a.event_id is not None
+                   else a.id in (viewed_articles or set())),
         # Only sent for feeds that hide stale events; the client applies the
         # threshold, which is a setting it owns.
         **({"event_updated_at": event.updated_at.isoformat() + "Z"} if event else {}),
@@ -948,8 +965,9 @@ async def search_articles(
         articles = query_articles(db, criteria, sort=sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
+    read_alone = _viewed_articles(db, user_id, articles)
     events = _events_for(db, articles) if (criteria or {}).get("hide_stale") else None
-    return [_article_json(a, tr, viewed, events) for a in articles]
+    return [_article_json(a, tr, viewed, events, read_alone) for a in articles]
 
 
 @app.post("/api/query/validate")
@@ -1033,8 +1051,9 @@ async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
+    read_alone = _viewed_articles(db, user_id, articles)
     events = _events_for(db, articles) if (feed.criteria or {}).get("hide_stale") else None
-    return [_article_json(a, tr, viewed, events) for a in articles]
+    return [_article_json(a, tr, viewed, events, read_alone) for a in articles]
 
 
 async def _grouped_response(db: Session, articles: list[Article], lang: str, limit: int,
@@ -1107,11 +1126,40 @@ async def search_grouped(
     return await _grouped_response(db, articles, lang, limit, user_id)
 
 
+@app.post("/api/articles/{article_id}/viewed")
+def mark_article_viewed(article_id: int, user_id: str = Depends(user_id_header),
+                        db: Session = Depends(get_db)):
+    """Mark one article read, for the ones that belong to no event.
+
+    An article with an event is remembered by the event instead — that is what
+    dims a story wherever else it appears — so this is deliberately narrow."""
+    article = db.get(Article, article_id)
+    if not article:
+        raise HTTPException(404, "That article is no longer in the archive — "
+                                 "articles are removed after 30 days")
+    if article.event_id is not None:
+        # Not an error: the caller wanted it remembered, and it is, by story.
+        exists = db.scalar(select(ViewedEvent).where(
+            ViewedEvent.user_id == user_id, ViewedEvent.event_id == article.event_id))
+        if not exists:
+            db.add(ViewedEvent(user_id=user_id, event_id=article.event_id))
+            db.commit()
+        return {"ok": True, "remembered_as": "event"}
+    exists = db.scalar(select(ViewedArticle).where(
+        ViewedArticle.user_id == user_id, ViewedArticle.article_id == article_id))
+    if not exists:
+        db.add(ViewedArticle(user_id=user_id, article_id=article_id))
+        db.commit()
+    return {"ok": True, "remembered_as": "article"}
+
+
 @app.post("/api/events/{event_id}/viewed")
 def mark_event_viewed(event_id: int, user_id: str = Depends(user_id_header),
                       db: Session = Depends(get_db)):
     if not db.get(Event, event_id):
-        raise HTTPException(404, "Event not found")
+        raise HTTPException(404, "That event is no longer in the archive — "
+                                 "events are removed with their articles after "
+                                 "30 days")
     exists = db.scalar(select(ViewedEvent).where(
         ViewedEvent.user_id == user_id, ViewedEvent.event_id == event_id))
     if not exists:
@@ -1738,6 +1786,7 @@ async def _story(db: Session, article: Article, lang: str, user_id: str) -> dict
     # headline at the top can never disagree about what it says.
     tr = await translate.translate_articles(db, articles or [article], lang)
     viewed = _viewed_events(db, user_id, [article])
+    read_alone = _viewed_articles(db, user_id, [article])
     focus = _article_json(article, tr, viewed, None)
 
     # A column truncates the summary to 400 characters because a column is
@@ -1774,7 +1823,7 @@ async def _story(db: Session, article: Article, lang: str, user_id: str) -> dict
             "first_seen": event.first_seen.isoformat() + "Z",
             "updated_at": event.updated_at.isoformat() + "Z",
         } if event else None,
-        "articles": [_article_json(a, tr, viewed, None) for a in articles],
+        "articles": [_article_json(a, tr, viewed, None, read_alone) for a in articles],
         "sources": sources,
         "related": related,
     }
