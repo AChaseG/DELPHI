@@ -245,42 +245,6 @@ def compile_query(query: str):
     return lambda text: evaluate(tree, text)
 
 
-def covering_terms(query: str) -> set[str] | None:
-    """A set of terms such that *every* text satisfying `query` contains at
-    least one of them — a safe FTS prefilter set — or None when no such finite
-    set exists (a NOT branch, or a NEAR pair whose words aren't recoverable,
-    can match with none of a given set). Used only to narrow candidates; the
-    full matcher still decides exact membership."""
-    try:
-        tokens = tokenize(query)
-        if not tokens:
-            return None
-        tree = _Parser(tokens).parse()
-    except QueryError:
-        return None
-    return _cover(tree)
-
-
-def _cover(node) -> set[str] | None:
-    kind = node[0]
-    if kind == "term":
-        # NEAR pairs are ("term", regex) with no original string → unbounded.
-        return {node[2].lower()} if len(node) > 2 else None
-    if kind == "not":
-        return None
-    if kind == "and":
-        # A match satisfies both sides, so it contains a covering term of
-        # either — take the smaller (more selective) non-None side.
-        opts = [c for c in (_cover(node[1]), _cover(node[2])) if c is not None]
-        return min(opts, key=len) if opts else None
-    if kind == "or":
-        # A match satisfies one side; the set must cover both. If either side
-        # is unbounded, the whole disjunction is.
-        ca, cb = _cover(node[1]), _cover(node[2])
-        return None if ca is None or cb is None else (ca | cb)
-    return None
-
-
 # Terms FTS5 cannot be trusted to tokenize the way the Python matcher does:
 # wildcards, and scripts SQLite's default tokenizer does not split on.
 _FTS_UNSAFE_TERM = re.compile(r"[*?]|[\u3040-\u30ff\u3400-\u9fff\u0e00-\u0e7f]")
@@ -290,11 +254,11 @@ def fts_expression(query: str) -> str | None:
     """The query as an FTS5 MATCH expression that matches a *superset* of it —
     or None when no safe superset exists.
 
-    `covering_terms` reduces a query to a flat set of words, which for
-    `(tokyo OR osaka) AND earthquake` is just {earthquake}: correct, but it
-    hands the index a third of the corpus. Keeping the structure hands it the
-    intersection instead — measured on 244,000 articles, 78,562 candidate rows
-    become 5,174, and the query 119ms becomes 15ms.
+    The query keeps its shape on the way to the index. Reducing it to a flat
+    set of words instead — which for `(tokyo OR osaka) AND earthquake` leaves
+    just {earthquake} — is correct but hands the index a third of the corpus,
+    where the intersection is a fraction of it: measured on 244,000 articles,
+    78,562 candidate rows become 5,174 and the query 119ms becomes 15ms.
 
     A NOT branch is dropped rather than translated: FTS's idea of the excluded
     text and the matcher's are not guaranteed to agree, and dropping it only

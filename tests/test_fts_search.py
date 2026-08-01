@@ -4,7 +4,7 @@ from datetime import timedelta
 import pytest
 
 from backend.app import matching
-from backend.app.matching import CriteriaMatcher, _fts_terms, query_articles
+from backend.app.matching import CriteriaMatcher, _fts_expr, query_articles
 from backend.app.models import Article, Source, utcnow
 
 
@@ -50,13 +50,23 @@ def test_fts_matches_bruteforce(seeded, crit):
 
 
 def test_routing(seeded):
+    """Which criteria the index can be asked about at all. None means "scan" —
+    for anything the index might read differently from the Python matcher, and
+    for anything with no positive requirement to hand it."""
     db, _ = seeded
-    assert _fts_terms(CriteriaMatcher({"keywords": ["earthquake"]}))          # uses FTS
-    assert _fts_terms(CriteriaMatcher({"query": "a AND b"}))                  # covering set
-    assert _fts_terms(CriteriaMatcher({"query": "NOT rumor"})) is None        # unbounded
-    assert _fts_terms(CriteriaMatcher({"query": "strik*"})) is None           # wildcard
-    assert _fts_terms(CriteriaMatcher({"keywords": ["東京"]})) is None         # CJK unsafe
-    assert _fts_terms(CriteriaMatcher({"exclude_keywords": ["x"]})) is None   # NOT-only
+    assert _fts_expr(CriteriaMatcher({"keywords": ["earthquake"]})) == '"earthquake"'
+    assert _fts_expr(CriteriaMatcher({"query": "a AND b"})) == '("a" AND "b")'
+    # Keywords are OR-required, so they cover a match on their own.
+    assert _fts_expr(CriteriaMatcher(
+        {"keywords": ["earthquake"], "query": "strik*"})) == '"earthquake"'
+    # Independent queries OR together, so one unbounded branch loses the lot.
+    assert _fts_expr(CriteriaMatcher(
+        {"queries": ["a AND b", "c"]})) == '(("a" AND "b") OR "c")'
+    assert _fts_expr(CriteriaMatcher({"queries": ["a", "NOT b"]})) is None
+    assert _fts_expr(CriteriaMatcher({"query": "NOT rumor"})) is None        # unbounded
+    assert _fts_expr(CriteriaMatcher({"query": "strik*"})) is None           # wildcard
+    assert _fts_expr(CriteriaMatcher({"keywords": ["東京"]})) is None         # CJK unsafe
+    assert _fts_expr(CriteriaMatcher({"exclude_keywords": ["x"]})) is None   # NOT-only
 
 
 def test_recall_beyond_old_scan_cap(db):

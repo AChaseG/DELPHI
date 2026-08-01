@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, defer, joinedload
 
 from sqlalchemy import text
 
-from .boolean_query import QueryError, compile_query, covering_terms, fts_expression
+from .boolean_query import QueryError, compile_query, fts_expression
 from .geo import places_match_geo
 from .models import Article, Source, utcnow
 
@@ -203,26 +203,6 @@ def _fts_expr(matcher: CriteriaMatcher) -> str | None:
     if not parts or any(p is None for p in parts):
         return None
     return parts[0] if len(parts) == 1 else "(" + " OR ".join(parts) + ")"
-
-
-def _fts_terms(matcher: CriteriaMatcher) -> set[str] | None:
-    """Terms every match must contain, for an FTS prefilter — or None to fall
-    back to a full scan. Keywords are OR-required, so they alone cover a match
-    even alongside a boolean query; otherwise derive a covering set from the
-    (OR-combined) boolean queries. Anything FTS can't tokenize reliably
-    (wildcards, CJK/Thai) forces a full scan for correctness."""
-    if matcher.keywords:
-        terms = set(matcher.keywords)
-    elif matcher.query_strings:
-        covers = [covering_terms(q) for q in matcher.query_strings]
-        if any(c is None for c in covers):
-            return None
-        terms = set().union(*covers) if covers else set()
-    else:
-        return None
-    if not terms or any(_FTS_UNSAFE.search(t) for t in terms):
-        return None
-    return terms
 
 
 def _fts_match_expr(terms: set[str]) -> str:
