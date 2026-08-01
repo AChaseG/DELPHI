@@ -825,8 +825,81 @@ def reset_password(body: dict, request: Request, db: Session = Depends(get_db)):
     return {"ok": True, "username": user.username, "sessions_ended": True}
 
 
+def current_account(authorization: str = Header(default=""),
+                    db: Session = Depends(get_db)) -> User:
+    """The signed-in account, checked against the database.
+
+    For the routes under /api/auth that need a session. The require_account
+    middleware deliberately skips that whole prefix, because sign-in and
+    registration have to be reachable without one — so anything there that
+    *does* need a session has to do the check itself rather than inherit it.
+
+    user_id_header is not enough on its own: it reads the token and stops,
+    which is fine on the routes the middleware already vetted and wrong here.
+    A token is only a claim, and three things it cannot know about are exactly
+    what these endpoints must respect — the account was deleted, it was
+    suspended, or its sessions were ended and this token predates that.
+    """
+    raw = authorization[7:].strip() if authorization.startswith("Bearer ") else ""
+    claim = auth.parse_token(raw) if raw else None
+    if claim is None:
+        raise HTTPException(401, "Authentication required — sign in")
+    user = db.get(User, claim.user_id)
+    if user is None:
+        raise HTTPException(401, "That account no longer exists")
+    if user.disabled:
+        raise HTTPException(403, "This account has been suspended by an operator")
+    if claim.token_version != user.token_version:
+        raise HTTPException(401, "This session was ended — sign in again")
+    return user
+
+
+@app.post("/api/auth/change-password")
+def change_password(body: dict, request: Request,
+                    user: User = Depends(current_account),
+                    db: Session = Depends(get_db)):
+    """Set a new password while signed in, without going through email.
+
+    Delphi could only reset a password by emailing a link, which is the flow
+    for someone locked out — a detour for someone who simply wants a different
+    password, and no help at all on an instance with no SMTP, where it meant
+    nobody could ever change one.
+
+    The current password is required even though the caller is already signed
+    in, and that is the point of the endpoint rather than an inconvenience in
+    it. Holding a session is not proof of being the owner: it can be an
+    unlocked laptop or a copied token. Without this check, brief access would
+    be enough to set a new password and lock the real owner out permanently —
+    a moment's lapse turned into a takeover. Knowing the current password is
+    what a borrowed session does not come with.
+    """
+    ratelimit.check("change_password", request)
+    if not auth.verify_password(body.get("current") or "", user.password_hash):
+        raise HTTPException(403, "That isn't your current password")
+    new = body.get("new") or ""
+    if len(new) < 8:
+        raise HTTPException(422, "Password must be at least 8 characters")
+    if auth.verify_password(new, user.password_hash):
+        # Not pedantry: going through with it would end this account's other
+        # sessions for a change that changed nothing, which is a confusing way
+        # to be signed out on your phone.
+        raise HTTPException(422, "That is already your password — pick a different one")
+
+    user.password_hash = auth.hash_password(new)
+    # Every other device is signed out, because worrying about one is the usual
+    # reason to be here. This browser is not: it just proved it knows the old
+    # password, so it gets a token at the new version instead of being thrown
+    # back to the sign-in screen for doing the right thing.
+    user.token_version += 1
+    db.commit()
+    return {"ok": True, "sessions_ended": True,
+            "token": auth.make_token(user.id, user.token_version),
+            "username": user.username, "email": user.email,
+            "user_key": f"acct:{user.id}", "is_admin": _is_admin(user)}
+
+
 @app.post("/api/auth/sign-out-everywhere")
-def sign_out_everywhere(user_id: str = Depends(user_id_header),
+def sign_out_everywhere(user: User = Depends(current_account),
                         db: Session = Depends(get_db)):
     """End every session on this account, including the one asking.
 
@@ -836,28 +909,15 @@ def sign_out_everywhere(user_id: str = Depends(user_id_header),
     server changed in that case; the token still works. This changes the
     server: every token issued before now stops being accepted.
     """
-    user = db.get(User, _acct_id(user_id))
-    if not user:
-        raise HTTPException(404, "Account not found")
     user.token_version += 1
     db.commit()
     return {"ok": True, "sessions_ended": True}
 
 
 @app.get("/api/auth/me")
-def me(authorization: str = Header(default=""), db: Session = Depends(get_db)):
-    raw = authorization[7:].strip() if authorization.startswith("Bearer ") else ""
-    claim = auth.parse_token(raw) if raw else None
-    if claim is None:
-        raise HTTPException(401, "Authentication required — sign in")
-    uid = claim.user_id
-    user = db.get(User, uid)
-    if user and claim.token_version != user.token_version:
-        raise HTTPException(401, "This session was ended — sign in again")
-    if not user:
-        raise HTTPException(401, "Account no longer exists")
-    return {"user_key": f"acct:{uid}", "username": user.username, "email": user.email,
-            "is_admin": _is_admin(user)}
+def me(user: User = Depends(current_account)):
+    return {"user_key": f"acct:{user.id}", "username": user.username,
+            "email": user.email, "is_admin": _is_admin(user)}
 
 
 # NOTE: the old /api/auth/claim endpoint was removed. It migrated feeds/alerts

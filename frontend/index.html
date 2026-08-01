@@ -140,6 +140,10 @@
 
       <h3 class="set-h">Account security</h3>
       <div class="set-row">
+        <span>Change your password without leaving the app — no email needed</span>
+        <button class="btn small" id="btn-change-password">🔑 Change password</button>
+      </div>
+      <div class="set-row">
         <span>Sign out of every device — use this if you've lost a device, or
               think someone else has been in your account. Signing out from the
               rail only affects this browser; this ends every session, including
@@ -581,6 +585,23 @@
              you last saw stays readable even when the server is unreachable. That copy
              is bounded, belongs to your account alone, and is erased when you sign
              out.</p>
+        </details>
+
+        <details>
+          <summary>🔑 How do I change my password?</summary>
+          <p><b>⚙ Settings → Account security → Change password.</b> You'll need
+             your current one, then the new one twice. No email involved, so it
+             works even on a server with no mail configured.</p>
+          <p>Delphi asks for the current password even though you're already
+             signed in, and that's the point of it rather than a nuisance: being
+             signed in isn't proof you're the owner — it could be a laptop left
+             unlocked. Without that check, a moment's access to your screen
+             would be enough for somebody to set a new password and keep you
+             out for good.</p>
+          <p>Your other devices are signed out when it succeeds. This browser
+             isn't — you just proved you know the password.</p>
+          <p>Forgotten it entirely? Sign out, then use <b>Forgot password?</b>
+             on the sign-in screen instead.</p>
         </details>
 
         <details>
@@ -1685,6 +1706,37 @@
         <span class="spacer"></span>
         <button class="btn" id="btn-pn-board" hidden>Open board</button>
         <button class="btn btn-primary" id="btn-pn-save">Create</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Change password. Asks for the current one even though the reader is
+       already signed in: holding a session is not proof of being the owner (an
+       unlocked laptop, a copied token), and without that check a moment's
+       access would be enough to set a new password and lock the owner out. -->
+  <div id="pw-backdrop" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pw-modal-title">
+      <div class="modal-head">
+        <h2 id="pw-modal-title">Change password</h2>
+        <button class="icon-btn" id="btn-close-pw" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field"><span>Current password</span>
+          <input id="pw-current" type="password" autocomplete="current-password"></label>
+        <label class="field gap-sm"><span>New password (min 8 characters)</span>
+          <input id="pw-new" type="password" autocomplete="new-password"></label>
+        <label class="field gap-sm"><span>New password again</span>
+          <input id="pw-confirm" type="password" autocomplete="new-password"></label>
+        <p class="set-note">Your other signed-in devices will be signed out —
+           that is usually the reason for changing a password. This browser
+           stays signed in, because you have just proved the current one.</p>
+      </div>
+      <div class="modal-foot">
+        <span id="pw-error" class="builder-error" role="alert" hidden></span>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-pw-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-pw-save">Change password</button>
       </div>
     </div>
   </div>

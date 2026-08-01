@@ -65,6 +65,11 @@ _LIMITS: dict[str, tuple[int, int]] = {
     "forgot": (5, 900),      # 5 reset emails / 15 min / IP
     "reset": (10, 900),      # 10 reset submissions / 15 min / IP
     "resend": (5, 900),      # 5 verification resends / 15 min / IP
+    # Changing a password asks for the current one, so this endpoint is a place
+    # to guess it. Kept off the "login" bucket deliberately: sharing one would
+    # mean a few mistyped attempts here also locked the account out of signing
+    # in, and the two are reached from different places for different reasons.
+    "change_password": (10, 300),   # 10 attempts / 5 min / IP
     # Address lookups spend somebody else's quota (OpenStreetMap's), so one
     # reader typing quickly must not be able to spend all of it.
     "geocode": (60, 60),     # 60 address lookups / min / IP

@@ -13,6 +13,23 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-21",
+        "title": "Change your password without leaving the app",
+        "items": [
+            "🔑 ⚙ Settings → Account security → Change password. Your current "
+            "password, then the new one twice. No email needed, so it works "
+            "even where the server can't send any — before this, the only "
+            "route was the “Forgot password?” link, which is really meant for "
+            "someone locked out.",
+            "🛡 It asks for your current password even though you're already "
+            "signed in. That is the point of it: being signed in isn't proof "
+            "you're the owner, and without the check, a minute at your "
+            "unlocked screen would be enough for someone to take the account.",
+            "📱 Your other devices are signed out when it works. This one "
+            "isn't — you just proved you know the password.",
+        ],
+    },
+    {
         "date": "2026-08-20",
         "title": "Sign-up stops confirming who has an account here",
         "items": [

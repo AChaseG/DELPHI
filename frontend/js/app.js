@@ -27,6 +27,54 @@ const DELPHI_FEEDS = [
   { home: "social", name: "💬 Social pulse", criteria: { platforms: ["reddit", "mastodon", "bluesky", "youtube"] }, sort: "newest" },
 ];
 
+/* ---------- change password ---------- */
+function wireChangePassword() {
+  const backdrop = el("pw-backdrop");
+  const err = el("pw-error");
+  const fields = ["pw-current", "pw-new", "pw-confirm"];
+  const close = () => {
+    backdrop.hidden = true;
+    // Never leave a password sitting in a field behind a closed dialog.
+    fields.forEach(id => { el(id).value = ""; });
+    err.hidden = true;
+  };
+  const fail = (msg) => { err.textContent = msg; err.hidden = false; };
+
+  el("btn-change-password").onclick = () => {
+    close();
+    backdrop.hidden = false;
+    el("pw-current").focus();
+  };
+  el("btn-close-pw").onclick = close;
+  el("btn-pw-cancel").onclick = close;
+  backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) close(); });
+
+  el("btn-pw-save").onclick = async () => {
+    const current = el("pw-current").value;
+    const next = el("pw-new").value;
+    // Checked here as well as on the server, because these two are the ones a
+    // person can see are wrong before a round trip.
+    if (!current) return fail("Enter your current password.");
+    if (next.length < 8) return fail("The new password must be at least 8 characters.");
+    if (next !== el("pw-confirm").value) return fail("The two new passwords don't match.");
+
+    try {
+      // API.changePassword adopts the new token itself, so nothing between the
+      // reply and the session update can fire a request with the dead one.
+      await API.changePassword(current, next);
+    } catch (e) {
+      // A wrong current password answers 403, not 401, on purpose: 401 is what
+      // the API layer treats as "this session is over" and reloads on, so
+      // mistyping it would sign the reader out instead of telling them.
+      return fail(e.message);
+    }
+    close();
+    toast("Password changed",
+          "Your other devices have been signed out. This one is still signed in.");
+  };
+  feedback(el("btn-pw-save"), "Changing…");
+}
+
 /* Handlers that used to be onerror=/onclick= attributes in the markup.
    A Content-Security-Policy of script-src 'self' refuses inline handlers,
    because the browser cannot tell one the author wrote from one injected into
@@ -718,6 +766,7 @@ function wireSettings() {
   el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
   el("btn-open-faq").onclick = () => openHelp("howto");
   el("btn-open-trouble").onclick = () => openHelp("trouble");
+  wireChangePassword();
   el("btn-signout-all").onclick = async () => {
     if (!confirm("Sign out of every device?\n\nEvery signed-in browser and phone, "
                  + "including this one, will be asked to sign in again. Your feeds, "

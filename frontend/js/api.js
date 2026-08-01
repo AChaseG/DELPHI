@@ -138,6 +138,7 @@ const OPERATION_NAMES = [
   [/^\/api\/auth\/forgot/, "start a password reset"],
   [/^\/api\/auth\/reset/, "set your new password"],
   [/^\/api\/auth\/verify|resend-verification/, "verify your email address"],
+  [/^\/api\/auth\/change-password/, "change your password"],
   [/^\/api\/auth\/sign-out-everywhere/, "sign you out of every device"],
   [/^\/api\/stream\/ticket/, "connect to live updates"],
   [/^\/api\/feeds\/\d+\/articles/, "load a feed's articles"],
@@ -182,7 +183,19 @@ async function signOutReason(resp) {
        + "nothing of yours was lost.";
 }
 
+/* Set while this browser is swapping its own token for a new one.
+
+   Changing a password mints a replacement, and the old token stops being
+   accepted the instant the server commits — which is before the reply carrying
+   the new one has arrived. Anything already in flight in that window (the
+   stream ticket, the update poll, a board refresh) comes back 401 meaning "your
+   token was rotated", not "your session ended". Treating those alike reloads
+   the page and dumps the reader at the sign-in screen for doing the right
+   thing; measured in a browser, it happened in roughly one attempt in six. */
+let rotation = null;
+
 async function api(path, options = {}) {
+  const sentWith = Session.token();
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {}),
@@ -215,6 +228,18 @@ async function api(path, options = {}) {
     clearTimeout(timer);
   }
   if (resp.status === 401 && Session.token()) {
+    // Before concluding the session is over, rule out the one case that looks
+    // identical and isn't: this browser replaced its own token while the
+    // request was in the air. Wait for any rotation to settle, and if the
+    // token really did change underneath us, the request was simply sent with
+    // the previous one — send it again with the current one. Only retried
+    // once, and only when the token demonstrably changed, so a genuinely dead
+    // session still lands on the sign-out below.
+    if (!options.afterRotation) {
+      if (rotation) await rotation.catch(() => {});
+      if (Session.token() && Session.token() !== sentWith)
+        return api(path, { ...options, afterRotation: true });
+    }
     // Expired or revoked mid-session. Say so before the reload, or the board
     // simply vanishes back to the sign-in card with no explanation.
     Session.clear();
@@ -348,6 +373,27 @@ const API = {
     api("/api/auth/forgot", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (token, password) =>
     api("/api/auth/reset", { method: "POST", body: JSON.stringify({ token, password }) }),
+  /* Adopts the new token itself rather than leaving that to the caller: the
+     old one is dead from the moment the server commits, so the gap between
+     the reply arriving and the session being updated is a window in which
+     every other request fails. Owning both here makes that gap as small as it
+     can be, and `rotation` covers what is left of it. */
+  changePassword: async (current, next) => {
+    let settle;
+    rotation = new Promise((resolve) => { settle = resolve; });
+    try {
+      const r = await api("/api/auth/change-password", {
+        method: "POST", body: JSON.stringify({ current, new: next }),
+        // This request must not wait on the rotation it is itself performing.
+        afterRotation: true,
+      });
+      Session.set(r.token, r.username, r.user_key);
+      return r;
+    } finally {
+      rotation = null;
+      settle();
+    }
+  },
   signOutEverywhere: () => api("/api/auth/sign-out-everywhere", { method: "POST" }),
   // Short-lived credential for the event stream; see connectStream in app.js.
   streamTicket: () => api("/api/stream/ticket", { method: "POST" }),

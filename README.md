@@ -275,8 +275,13 @@ GET  /api/stream                   SSE: live article batches + alert hits
   and tune the weights to taste.
 - Accounts are self-serve; passwords are PBKDF2-hashed with HMAC-signed
   session tokens (`NEWS_SECRET` env or an auto-generated key beside the DB).
-  Every API route except sign-in/register requires a session. **Sessions can be
-  ended.** Each token carries the account's `token_version`; a password reset
+  Every API route except sign-in/register requires a session. **Passwords can
+  be changed in the app** (Settings → Account security), which needs no SMTP —
+  the emailed reset flow is for someone locked out. It requires the current
+  password even though the caller is signed in: a session is not proof of
+  ownership (an unlocked laptop, a copied token), and without that check brief
+  access would be enough to set a new password and keep the owner out
+  permanently. **Sessions can be ended.** Each token carries the account's `token_version`; a password reset
   (self-service or by an operator) and Settings → *Sign out everywhere* both
   increment it, which refuses every token issued before that moment. Without
   it a signature and an expiry were the whole story, so resetting a password
