@@ -14,8 +14,7 @@
     <div class="brand" title="Digital Exploration and Layout for Publicly Harvested Intelligence">
       <!-- The logo artwork carries the name already; no separate wordmark. The
            fallback text only appears if the image fails to load. -->
-      <img src="/img/logo.png" alt="D.E.L.P.H.I." class="brand-logo"
-           onerror="this.replaceWith(Object.assign(document.createElement('span'), {textContent: 'D.E.L.P.H.I.'}))">
+      <img src="/img/logo.png" alt="D.E.L.P.H.I." class="brand-logo" id="brand-logo">
     </div>
     <div class="stat-row" id="stat-row">
       <div class="stat-tile"><div class="stat-value" id="stat-articles">–</div><div class="stat-label">articles (24h)</div></div>
@@ -1175,8 +1174,7 @@
            repeated beside it. The heading below is the accessible name and only
            becomes visible if the image fails to load. -->
       <img src="/img/logo.png" alt="D.E.L.P.H.I. — Digital Exploration and Layout for Publicly Harvested Intelligence"
-           class="gate-logo"
-           onerror="this.remove(); document.querySelector('.gate-title').hidden = false;">
+           class="gate-logo" id="gate-logo">
       <h1 class="gate-title" hidden>D.E.L.P.H.I.</h1>
 
       <div id="gate-signin">
@@ -1231,7 +1229,7 @@
     ⚠ <b>Live updates are disconnected.</b> Alerts won't reach this tab, and the
     board won't refresh by itself, until the connection is back. Delphi is still
     collecting news on the server — reloading usually fixes it.
-    <button class="btn small" onclick="location.reload()">Reload</button>
+    <button class="btn small" id="btn-stream-reload">Reload</button>
   </div>
 
   <main id="board" class="board"></main>
@@ -1421,10 +1419,10 @@
               one feed)</em></span>
             <div id="b-queries"></div>
             <div><button class="btn small" id="btn-add-query">+ Add another Boolean search</button></div>
-            <label class="check-row" style="margin-top:6px">
+            <label class="check-row gap-sm">
               <input type="checkbox" id="b-coverage" checked>
               🔍 Automatically ingest worldwide coverage of these queries/keywords
-              <em style="color:var(--ink-muted);font-style:normal">(recommended — adds a Google News source per query so matches aren't limited to the catalog)</em>
+              <em class="note-muted">(recommended — adds a Google News source per query so matches aren't limited to the catalog)</em>
             </label>
           </div>
         </section>
@@ -1462,7 +1460,7 @@
                 <label><input type="checkbox" value="national"> national</label>
                 <label><input type="checkbox" value="international"> international</label>
               </div>
-              <span style="margin-top:10px">Platforms</span>
+              <span class="gap-md">Platforms</span>
               <div class="check-row" id="b-platforms">
                 <label><input type="checkbox" value="news"> 📰 press</label>
                 <label><input type="checkbox" value="reddit"> reddit</label>
@@ -1474,7 +1472,7 @@
             <div class="field">
               <span>Languages</span>
               <select id="b-languages" multiple size="3"></select>
-              <span style="margin-top:10px">Recency window</span>
+              <span class="gap-md">Recency window</span>
               <select id="b-hours">
                 <option value="">All time</option>
                 <option value="1">Last hour</option>
@@ -1534,15 +1532,15 @@
               🧵 Group similar articles into events (clusters cross-source coverage of the same story)</label>
             <label class="check-row"><input type="checkbox" id="b-stale">
               🕰 Hide events with no recent updates
-              <em style="color:var(--ink-muted);font-style:normal">(threshold set in ⚙ Settings; a hidden
+              <em class="note-muted">(threshold set in ⚙ Settings; a hidden
               event reappears with its full timeline the moment a new report arrives)</em></label>
           </div>
           <div class="field" id="alert-only-fields" hidden>
             <label class="check-row"><input type="checkbox" id="b-active" checked> Alert active (fires live on new matching articles)</label>
             <label class="check-row"><input type="checkbox" id="b-notify-email">
               ✉️ Email me when this fires
-              <em style="color:var(--ink-muted);font-style:normal">(to your account address; one digest per matching batch — needs server SMTP)</em></label>
-            <label class="field" style="margin-top:6px">
+              <em class="note-muted">(to your account address; one digest per matching batch — needs server SMTP)</em></label>
+            <label class="field gap-sm">
               <span>🔗 Webhook URL <em>(optional — POST matching hits as JSON, for Slack/Discord/your own service)</em></span>
               <input id="b-webhook" type="url" placeholder="https://hooks.example.com/…">
             </label>

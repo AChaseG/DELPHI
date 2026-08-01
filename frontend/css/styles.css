@@ -1262,3 +1262,12 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
      scroll it rather than cut the top off and put the button out of reach. */
   .gate { align-items: flex-start; overflow-y: auto; padding: 16px 12px; }
 }
+
+/* ---------- small spacing/tone helpers ----------
+   These were inline style= attributes in the markup. A Content-Security-Policy
+   of style-src 'self' refuses those — the browser cannot tell an attribute the
+   author wrote from one injected into the page — so they live here instead.
+   (Styles set from script, element.style.x = …, are unaffected by CSP.) */
+.gap-sm { margin-top: 6px; }
+.gap-md { margin-top: 10px; }
+.note-muted { color: var(--ink-muted); font-style: normal; }

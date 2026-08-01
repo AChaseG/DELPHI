@@ -192,9 +192,30 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="D.E.L.P.H.I.", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
-)
+
+# Delphi serves its own frontend from this same origin (see the static mount at
+# the bottom of the file), so the browser needs no cross-origin permission for
+# anything the app itself does — and it was being handed a blanket one.
+#
+# It was never the hole it looks like: sessions are Bearer tokens read from
+# localStorage rather than cookies, so a hostile page could not ride one and
+# cannot read another origin's storage. What "*" did buy was letting any site
+# script sign-in and registration attempts from its visitors' browsers, which
+# spreads them over the visitors' addresses rather than the attacker's. That is
+# a rate-limit problem more than a CORS one, but there is no reason to leave
+# the door open when nothing walks through it.
+#
+# So: no cross-origin access unless someone asks for it by name. Set
+# NEWS_CORS_ORIGINS to a comma-separated list of origins if you are building a
+# browser client of your own against this API.
+CORS_ORIGINS = [o.strip().rstrip("/") for o
+                in os.environ.get("NEWS_CORS_ORIGINS", "").split(",") if o.strip()]
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware, allow_origins=CORS_ORIGINS,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 # Everything Delphi sends is text — script, stylesheets, and JSON full of
 # headlines — and none of it was compressed. Opening the dashboard moved 314 KB
 # of script and markup and another 28 KB per column of articles; gzipped that
@@ -276,6 +297,47 @@ async def database_busy(request: Request, exc: OperationalError):
     )
 
 
+# Everything the page needs comes from Delphi itself — the scripts, the
+# stylesheet, Leaflet (vendored rather than pulled from a CDN) — so the policy
+# can be the strict one rather than the usual pile of exceptions. Two sources
+# have to stay open: article thumbnails are hotlinked from whichever publisher
+# ran the story, and the map fetches its tiles from OpenStreetMap. Both are
+# images, so both live in img-src and nowhere else.
+#
+# There is no known injection hole for this to close today — every piece of
+# feed text reaches the page through the DOM, never innerHTML. That is the
+# reason to add it now rather than a reason not to: a policy is worth having
+# before the mistake, and it costs one header.
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self' data: https:",   # publisher thumbnails, map tiles
+    "connect-src 'self'",            # geocoding and translation are proxied
+    "font-src 'self'",
+    "form-action 'self'",
+    "base-uri 'none'",               # no rewriting where relative URLs resolve
+    "object-src 'none'",
+    "frame-ancestors 'none'",        # not embeddable; clickjacking has nothing to grab
+])
+
+# Fly terminates TLS and redirects http→https already; this stops the redirect
+# itself being the weak point by telling the browser never to try http again.
+# Ramped deliberately: HSTS cannot be withdrawn faster than the max-age already
+# handed out, so it starts at a day. Raise it once you are sure of the
+# certificate, and only add includeSubDomains/preload when every subdomain is
+# ready to be https-only permanently. NEWS_HSTS_MAX_AGE=0 turns it off.
+#
+# Sent on every response rather than only the ones we believe arrived over TLS.
+# We deliberately cannot tell: uvicorn runs with --no-proxy-headers so that
+# X-Forwarded-* stays untrusted (see ratelimit.client_ip), which leaves the
+# request's scheme reading "http" behind Fly's TLS termination. Conditioning on
+# it would therefore mean never sending this in production. It costs nothing to
+# send unconditionally, because the spec requires browsers to ignore HSTS
+# received over plain http — exactly the case we cannot identify.
+HSTS_MAX_AGE = int(os.environ.get("NEWS_HSTS_MAX_AGE", "86400"))
+
+
 @app.middleware("http")
 async def time_requests(request: Request, call_next):
     started = time.monotonic()
@@ -350,6 +412,33 @@ async def require_account(request: Request, call_next):
             # who reported it rather than to an anonymous request.
             request.state.user_id = f"acct:{uid}"
     return await call_next(request)
+
+
+# Defined last on purpose. Starlette wraps the most recently added middleware
+# outermost, and this has to be outside require_account: that one answers 401
+# and 403 by returning a response itself rather than calling through, so
+# anything inner never runs for those. Declared earlier, the sign-in page — the
+# one page an unauthenticated browser actually renders — was served with no
+# policy at all.
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Tell the browser what this page is allowed to do."""
+    response = await call_next(request)
+    response.headers.setdefault("Content-Security-Policy", CSP)
+    # Stop a .txt or a JSON body being re-read as script because it looks like
+    # one; the browser must believe the Content-Type we sent.
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    # A story URL can name what somebody is reading. Send the origin to other
+    # sites, never the path.
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    # Nothing here uses these, and the quietest way to keep it that way is to
+    # say so rather than to rely on nobody adding a call.
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+    if HSTS_MAX_AGE > 0:
+        response.headers.setdefault(
+            "Strict-Transport-Security", f"max-age={HSTS_MAX_AGE}")
+    return response
 
 
 def user_id_header(authorization: str = Header(default="")) -> str:
@@ -593,10 +682,38 @@ def register(body: dict, request: Request, background: BackgroundTasks,
     if len(password) < 8:
         raise HTTPException(422, "Password must be at least 8 characters")
     if db.scalar(select(User).where(User.username == username)):
+        # Usernames stay tellable. They have to be unique, so the form has to
+        # say when one is gone or nobody could complete it — and they are
+        # public anyway: a shared feed carries the username of whoever shared
+        # it. Nothing is given away that the app does not already show.
         raise HTTPException(409, "That username is taken")
-    if db.scalar(select(User).where(User.email == email)):
-        raise HTTPException(409, "An account with that email already exists")
-    user = User(username=username, email=email, password_hash=auth.hash_password(password),
+
+    # Hash before the duplicate-email check, not after, so both paths pay the
+    # same 200k PBKDF2 rounds. Skipping it on the duplicate path would answer
+    # noticeably faster and put the answer back in the response time.
+    password_hash = auth.hash_password(password)
+
+    existing = db.scalar(select(User).where(User.email == email))
+    if existing:
+        # Email addresses are different: "that address already has an account"
+        # tells whoever asked whether a given person reads news here, which is
+        # worth knowing about this tool in particular, and the asker need not
+        # own the address. So the answer is the same either way, and the fact
+        # goes to the address itself where only its owner can read it.
+        #
+        # Only possible with mail configured. Without it there is nowhere to
+        # send the notice and no verification step to hide behind, so the
+        # honest 409 stays — a self-hosted instance with no mail is a private
+        # one, where the exposure is somebody who already has an account.
+        if not mailer.enabled():
+            raise HTTPException(409, "An account with that email already exists")
+        link = _action_link(request, "reset",
+                            auth.make_scoped_token("reset", existing.id, 3600))
+        background.add_task(mailer.send_duplicate_registration,
+                            existing.email, existing.username, link)
+        return {"verification_sent": True, "username": username, "email": email}
+
+    user = User(username=username, email=email, password_hash=password_hash,
                 email_verified=not mailer.enabled())  # self-host mode: auto-verify
     user.is_admin = _is_configured_admin(user)  # NEWS_ADMIN_USERS → built-in operator
     if user.is_admin:
@@ -1034,6 +1151,7 @@ async def repair_source(source_id: int, db: Session = Depends(get_db)):
 @app.post("/api/articles/search")
 async def search_articles(
     body: dict,
+    request: Request,
     sort: str = Query(default="newest"),
     limit: int = Query(default=50, le=200),
     lang: str = Query(default=""),
@@ -1041,6 +1159,7 @@ async def search_articles(
     db: Session = Depends(get_db),
 ):
     """Ad-hoc search with a criteria object (used for feed preview and search bar)."""
+    ratelimit.check("search", request)
     criteria = body.get("criteria", body)
     # One of Home's columns is the same query for every reader, so the poller
     # has already run it; everything below this line is still per-request.
@@ -1169,12 +1288,14 @@ def _export_response(fmt: str, name: str, rows: list[dict]):
 
 
 @app.get("/api/feeds/{feed_id}/export")
-async def export_feed(feed_id: int, fmt: str = Query(default="csv", alias="format"),
+async def export_feed(feed_id: int, request: Request,
+                      fmt: str = Query(default="csv", alias="format"),
                       limit: int = Query(default=500, le=EXPORT_MAX),
                       lang: str = Query(default=""),
                       user_id: str = Depends(user_id_header),
                       db: Session = Depends(get_db)):
     """One saved feed's current matches, as a file."""
+    ratelimit.check("export", request)
     feed = _shared_item_for_read(db, Feed, feed_id, user_id)
     articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
@@ -1182,7 +1303,8 @@ async def export_feed(feed_id: int, fmt: str = Query(default="csv", alias="forma
 
 
 @app.post("/api/articles/export")
-async def export_search(body: dict, fmt: str = Query(default="csv", alias="format"),
+async def export_search(body: dict, request: Request,
+                        fmt: str = Query(default="csv", alias="format"),
                         sort: str = Query(default="newest"),
                         limit: int = Query(default=500, le=EXPORT_MAX),
                         lang: str = Query(default=""),
@@ -1190,6 +1312,7 @@ async def export_search(body: dict, fmt: str = Query(default="csv", alias="forma
                         db: Session = Depends(get_db)):
     """The same, for a column that isn't a saved feed — Home's built-in columns
     and the results of a search from the rail."""
+    ratelimit.check("export", request)
     criteria = body.get("criteria", body)
     name = (body.get("name") or "Delphi export").strip()[:120]
     articles = query_articles(db, criteria, sort=sort, limit=limit)
@@ -1266,6 +1389,7 @@ async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
 @app.post("/api/articles/search-grouped")
 async def search_grouped(
     body: dict,
+    request: Request,
     sort: str = Query(default="newest"),
     limit: int = Query(default=30, le=100),
     lang: str = Query(default=""),
@@ -1273,6 +1397,7 @@ async def search_grouped(
     db: Session = Depends(get_db),
 ):
     """Ad-hoc criteria search clustered into events (used by Home columns)."""
+    ratelimit.check("search", request)
     criteria = body.get("criteria", body)
     articles = home.take(db, criteria, sort, limit, grouped=True)
     if articles is None:

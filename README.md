@@ -292,8 +292,20 @@ GET  /api/stream                   SSE: live article batches + alert hits
   registration then emails a 48h verification link and sign-in is blocked
   until it's clicked; "Forgot password?" emails a 1h reset link. Without
   SMTP, accounts auto-verify (self-host mode) and would-be mails are logged.
-  Login, registration, and password-reset endpoints are rate-limited per
-  client IP (disable with `NEWS_RATE_LIMIT=0`). Which client that is comes
+  **Sign-up does not confirm whether an email address is registered**: an
+  address that already has an account gets the same answer as a free one, and
+  a notice goes to the address itself (naming the username and carrying a reset
+  link) where only its owner can read it. Otherwise anyone with a list of
+  addresses could learn which of them read news here. Usernames are still
+  reported as taken — they must be unique, and a shared feed shows the username
+  of whoever shared it, so nothing is revealed that the app doesn't display.
+  Without SMTP there is nowhere to send the notice, so that case still answers
+  plainly.
+  Login, registration, password-reset, search, and export endpoints are
+  rate-limited per client IP (disable with `NEWS_RATE_LIMIT=0`). Search and
+  export are deliberately far apart — a reader searches constantly, while an
+  export is up to 2,000 articles assembled into a file and, with a reading
+  language set, run through the translation service. Which client that is comes
   from the socket peer counted back through **`NEWS_TRUSTED_PROXIES`** hops of
   `X-Forwarded-For` — that header is appended to by each proxy, so its leading
   entries are written by the caller and believing them hands anyone a fresh
@@ -318,6 +330,19 @@ GET  /api/stream                   SSE: live article batches + alert hits
   a URL that does not resolve yet is allowed (the webhook host may not exist
   yet); fetching one is not. Without this, any signed-in account could use the
   server as a proxy into whatever sits unauthenticated on its private network.
+- **A strict Content-Security-Policy**, plus `nosniff`, `Referrer-Policy`,
+  `Permissions-Policy`, and HSTS (`NEWS_HSTS_MAX_AGE`, one day by default —
+  raise it once you're sure of the certificate). The policy is
+  `script-src 'self'; style-src 'self'` with no `unsafe-inline` anywhere, which
+  is affordable because there's no inline script, no `<style>` block, no inline
+  `style=` attribute, and no CDN in the page — Leaflet is vendored. It closes
+  nothing today: every piece of feed text reaches the page through the DOM,
+  never `innerHTML`. That's the reason to add it while it's cheap, not a reason
+  to skip it. `img-src` is the one loose directive, because thumbnails are
+  hotlinked from publishers and map tiles come from OpenStreetMap.
+- **No cross-origin access by default.** Delphi serves its own frontend from the
+  same origin, so nothing legitimate needs it; set `NEWS_CORS_ORIGINS`
+  (comma-separated) only if you're building a browser client of your own.
 - **Local coverage for ~500 major cities** (170 countries) seeds on first
   run: each city gets a Google News city-edition source in the country's
   language, and auto-discovery grows its real local outlets from there.

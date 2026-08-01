@@ -72,6 +72,17 @@ _LIMITS: dict[str, tuple[int, int]] = {
     # cycle runs at a time, so this cannot pile up — but it can be held
     # permanently busy, which starves the scheduled polling behind it.
     "ingest": (6, 300),      # 6 manual polls / 5 min / IP
+    # Searching is what the app is for, and a reader types quickly: a board
+    # refresh, a query in the rail, and a preview in the builder can all fire
+    # within a second of each other. This is set where a person cannot reach it
+    # and a script running flat out can — it bounds FTS work, nothing more.
+    "search": (150, 60),     # 150 searches / min / IP
+    # Export is a different animal, which is why it is not on the search
+    # bucket: up to EXPORT_MAX (2000) articles assembled into a file, and with
+    # a reading language set, every one of those is put through the translation
+    # service — somebody else's quota, and real CPU on a two-vCPU machine.
+    # Nobody exports the same column forty times a minute.
+    "export": (12, 300),     # 12 exports / 5 min / IP
 }
 
 _hits: dict[tuple[str, str], deque] = defaultdict(deque)

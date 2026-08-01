@@ -27,7 +27,36 @@ const DELPHI_FEEDS = [
   { home: "social", name: "💬 Social pulse", criteria: { platforms: ["reddit", "mastodon", "bluesky", "youtube"] }, sort: "newest" },
 ];
 
+/* Handlers that used to be onerror=/onclick= attributes in the markup.
+   A Content-Security-Policy of script-src 'self' refuses inline handlers,
+   because the browser cannot tell one the author wrote from one injected into
+   the page — that refusal is most of what a CSP is for.
+
+   Images need care in the move: they start loading before this script does, so
+   one can have failed already, and an error listener attached afterwards never
+   fires. `complete` with no `naturalWidth` is what a finished-and-failed image
+   looks like, so check for that as well as listening. */
+function wireStaticHandlers() {
+  const onBroken = (id, replace) => {
+    const img = el(id);
+    if (!img) return;
+    img.addEventListener("error", () => replace(img));
+    if (img.complete && img.naturalWidth === 0) replace(img);
+  };
+  // The logo carries the name, so its fallback is the name as text.
+  onBroken("brand-logo", (img) => img.replaceWith(Object.assign(
+    document.createElement("span"), { textContent: "D.E.L.P.H.I." })));
+  onBroken("gate-logo", (img) => {
+    img.remove();
+    const title = document.querySelector(".gate-title");
+    if (title) title.hidden = false;
+  });
+  const reload = el("btn-stream-reload");
+  if (reload) reload.onclick = () => location.reload();
+}
+
 async function boot() {
+  wireStaticHandlers();
   if (!Session.token()) {   // account required: show the sign-in gate only
     wireGate();
     el("gate").hidden = false;

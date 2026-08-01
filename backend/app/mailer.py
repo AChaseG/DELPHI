@@ -135,6 +135,29 @@ def send_alert_digest(to: str, alert_name: str, hits: list[dict]) -> bool:
     )
 
 
+def send_duplicate_registration(to: str, username: str, reset_link: str) -> bool:
+    """Someone tried to register with an address that already has an account.
+
+    Registration cannot say "that email is taken" without telling whoever asked
+    whether an address is registered here, which is worth knowing about a
+    news-monitoring tool — it says something about the person. So the sign-up
+    form answers identically either way and this goes to the address itself,
+    where only its owner can read it. It is also genuinely useful: if you had
+    forgotten you had an account, this is how you find out, and the reset link
+    is the way back in.
+    """
+    return send(
+        to, "You already have a D.E.L.P.H.I. account",
+        f"Hello {username},\n\n"
+        f"Someone just tried to create a D.E.L.P.H.I. account with this email address, "
+        f"but you already have one — the username is “{username}”.\n\n"
+        f"If that was you and you have forgotten your password, set a new one here:\n\n"
+        f"{reset_link}\n\n"
+        f"The link is valid for 1 hour. If it wasn't you, there is nothing to do: no "
+        f"second account was created and your existing one is untouched.\n",
+    )
+
+
 def send_password_reset(to: str, username: str, link: str) -> bool:
     return send(
         to, "Reset your D.E.L.P.H.I. password",

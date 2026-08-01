@@ -13,6 +13,28 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-20",
+        "title": "Sign-up stops confirming who has an account here",
+        "items": [
+            "📧 Creating an account with an email address that already has one "
+            "now gets the same answer as any other address, and a note goes to "
+            "that address instead — with the username on it and a link to set a "
+            "new password. Before, the form said “an account with that email "
+            "already exists”, which let anyone with a list of addresses find "
+            "out which of them read news here.",
+            "🙋 Usernames still say when they're taken. They have to be unique, "
+            "and a shared feed already shows who shared it, so there is nothing "
+            "there to protect.",
+            "🛡 The page now tells your browser to run only scripts and styles "
+            "that came from Delphi. Nothing on screen changes; it means a "
+            "script smuggled into a headline would have nowhere to run.",
+            "⏱ Search and export now have request limits, like signing in "
+            "already did. Ordinary reading is nowhere near them — exporting is "
+            "the one held tightly, since a single export can be two thousand "
+            "articles and translations of all of them.",
+        ],
+    },
+    {
         "date": "2026-08-19",
         "title": "You can end a session now — and one just ended",
         "items": [
