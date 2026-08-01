@@ -5,7 +5,8 @@ cd "$(dirname "$0")"
 
 if [ ! -d .venv ]; then
   python3 -m venv .venv
-  .venv/bin/pip install -q -r requirements.txt
+  # --require-hashes: requirements.txt is a lock (see README, Dependencies).
+  .venv/bin/pip install -q --require-hashes -r requirements.txt
 fi
 
 # --no-proxy-headers: the rate limiter works out who is calling from

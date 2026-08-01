@@ -133,8 +133,9 @@ cross-origin RSS fetches).
 Or manually:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn backend.app.main:app --port 8000
+python3 -m venv .venv
+.venv/bin/pip install --require-hashes -r requirements.txt
+.venv/bin/uvicorn backend.app.main:app --port 8000 --no-proxy-headers
 ```
 
 On first run the source catalog is seeded and polling starts automatically —
@@ -146,7 +147,7 @@ by an older build is removed at startup.
 ### Tests
 
 ```bash
-pip install -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.txt
 pytest
 ```
 
@@ -156,6 +157,36 @@ matching, clustering, the rolling-poll scheduler, URL safety, and the auth /
 settings / Pantheon-sharing flows. It runs against a throwaway database and
 never touches `backend/data`. GitHub Actions runs it on every push
 (`.github/workflows/ci.yml`).
+
+### Dependencies
+
+Delphi names five packages and installs twenty-six — the five, and everything
+they pull in behind them. **`requirements.in` is the intent; `requirements.txt`
+is the lock**, pinning every one of those twenty-six to an exact version and to
+the hash of the file it must be. The image, CI, and the commands above all
+install with `--require-hashes`, so a build gets precisely that set or stops.
+
+Unpinned, a build collected whatever was newest on the day it ran: two builds
+of one commit could differ, CI could pass against versions the deploy never
+saw, and a compromised release anywhere in that tree would be installed on the
+next deploy with nobody doing anything.
+
+Changing a dependency means editing the `.in` file and recompiling both locks
+together (they must agree, or CI tests versions the image does not run):
+
+```bash
+uv pip compile --generate-hashes --python-version 3.12 requirements.in -o requirements.txt
+uv pip compile --generate-hashes --python-version 3.12 requirements-dev.in -o requirements-dev.txt
+```
+
+3.12 is the image's Python; resolving for a different interpreter pins what
+*it* needs. `tests/test_dependency_lock.py` checks the locks still match the
+`.in` files, that nothing is left unpinned or unhashed, and that both install
+sites still enforce hashes.
+
+Pinning alone would be the worse half of the trade — dependencies that stop
+changing under you also stop receiving fixes — so `.github/dependabot.yml`
+opens a pull request when something moves, and CI decides whether to take it.
 
 ## Going live
 

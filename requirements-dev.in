@@ -1,0 +1,13 @@
+# Everything requirements.in has, plus what the test suite needs.
+#
+#     uv pip compile --generate-hashes --python-version 3.12 \
+#         requirements-dev.in -o requirements-dev.txt
+#
+# Compiled together with requirements.in, and always recompiled with it, so CI
+# tests the same versions the image runs. Resolving the two separately is how
+# they drift, and a suite that passes against versions production never sees is
+# worth very little.
+
+-r requirements.in
+
+pytest>=8.0,<10.0

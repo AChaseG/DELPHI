@@ -148,6 +148,18 @@ manual step is required — create your account and it runs itself.
 Deploys are ordinary: schema changes are additive and applied at boot, and
 sessions survive them because the signing key lives on the volume.
 
+Dependencies do not move on their own. `requirements.txt` is a lock — every
+package pinned to one version and to the hash of the file it must be — and the
+image installs with `--require-hashes`, so a build gets that exact set or
+fails. Two builds of the same commit are therefore the same build, which they
+previously were not.
+
+That means a build can fail on a dependency change rather than a code one. If
+it does, the message names the package and the mismatch; recompile the locks
+from `requirements.in` (see the Dependencies section of the README) rather than
+relaxing the flag. Updates arrive as Dependabot pull requests that CI tests
+first.
+
 One exception, once: the release that added revocable sessions signs everyone
 out on first boot. Tokens issued before it have no `token_version` to check, and
 accepting them as version 0 would have exempted exactly the tokens revocation

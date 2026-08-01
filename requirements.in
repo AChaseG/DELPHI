@@ -1,0 +1,26 @@
+# What Delphi actually depends on, and nothing else.
+#
+# This file is the intent; requirements.txt is the consequence. Compile it with
+#
+#     uv pip compile --generate-hashes --python-version 3.12 \
+#         requirements.in -o requirements.txt
+#
+# which resolves these into every package that really gets installed — the ones
+# named here and the two dozen they pull in behind them — each at one exact
+# version, each with the hash of the file it must be. The Dockerfile and CI
+# then install with --require-hashes, so a build either gets precisely that or
+# stops.
+#
+# 3.12 is the image's Python (see Dockerfile). Resolving for the interpreter
+# that happens to be handy would pin whatever *it* needs, and markers differ
+# between versions.
+#
+# Bounds here are the range Delphi is written against. They are not what gets
+# installed — that is the lock file — they are the range Dependabot is allowed
+# to move within when it opens an update.
+
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29,<1.0
+sqlalchemy>=2.0,<3.0
+feedparser>=6.0.11,<7.0
+httpx>=0.27,<1.0

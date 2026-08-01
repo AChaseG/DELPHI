@@ -3,7 +3,13 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# --require-hashes: requirements.txt pins every package, including the ones
+# pulled in behind the five Delphi actually names, to one exact version and the
+# hash of the file it must be. Without it the build went shopping for
+# "whatever is newest today", so two builds of the same commit could differ,
+# and a compromised release of any package in the tree would be installed
+# automatically. With it, a build gets exactly the audited set or fails.
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 
 COPY backend backend
 COPY frontend frontend

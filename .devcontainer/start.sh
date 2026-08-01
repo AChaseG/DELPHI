@@ -11,7 +11,7 @@ PY=python3
 
 # Ensure dependencies are present even if the postCreate hook was skipped.
 "$PY" -c "import uvicorn, fastapi, sqlalchemy, feedparser, httpx" 2>/dev/null \
-  || "$PY" -m pip install -r requirements.txt
+  || "$PY" -m pip install --require-hashes -r requirements.txt
 
 # Replace any previous instance, then launch detached.
 # `python -m uvicorn` (not bare `uvicorn`) avoids PATH issues in

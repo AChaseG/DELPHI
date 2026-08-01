@@ -1,0 +1,30 @@
+# Pinning without updating is the worse half of the trade: dependencies stop
+# changing underneath you, and also stop receiving fixes, so a lock left alone
+# quietly becomes a list of known-vulnerable versions. This is the other half —
+# it opens a pull request when something moves, and CI decides whether the
+# update is acceptable before it reaches a deploy.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    # The lock files are what actually gets installed, so they are what has to
+    # be rewritten. Dependabot recompiles them from the .in files it finds.
+    open-pull-requests-limit: 5
+    groups:
+      # One PR a week for routine moves rather than a dozen. Security fixes are
+      # excluded from grouping by Dependabot and still arrive on their own,
+      # which is the point — they should not wait behind a patch bump.
+      python-packages:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels: ["dependencies"]
+
+  # The workflows pin actions by tag; the same argument applies to them.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: ["dependencies"]

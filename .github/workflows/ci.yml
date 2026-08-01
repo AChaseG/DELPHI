@@ -15,6 +15,13 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        # --require-hashes, same as the image. CI used to resolve versions on
+        # whatever day it ran, so a green run said nothing about the versions
+        # the deploy would pick up; now both install the same locked set.
+        run: pip install --require-hashes -r requirements-dev.txt
+      # The lock files are checked against requirements.in by the test suite
+      # (tests/test_dependency_lock.py) rather than by recompiling here: a
+      # recompile resolves against PyPI as it is *today*, so any unrelated
+      # upstream release would fail every open pull request.
       - name: Run tests
         run: pytest
