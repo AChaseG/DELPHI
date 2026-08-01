@@ -13,6 +13,33 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-13",
+        "title": "A tidier rail, and a Troubleshooting tab",
+        "items": [
+            "🛠 Help has a third tab. <b>Troubleshooting</b> starts from the "
+            "symptom — an empty column, an alert that never fired, a source "
+            "with a red dot, a search finding less than you expected — because "
+            "when something is wrong you don't yet know whether you have a "
+            "how-to question or a what-is-it one. It opens straight from "
+            "⚙ Settings.",
+            "⟳ <b>Refresh</b> has moved off the rail and into that tab. It "
+            "polls every wire at once, which is worth doing when a story is "
+            "breaking — but sitting among the everyday buttons it read as "
+            "something you had to press for news to arrive, and you never did: "
+            "Delphi polls on its own, continuously.",
+            "🏛 The rail is in a more sensible order — Pantheons, Locations, "
+            "Alerts, then Sources — and its ‹ button now sits at the panel's "
+            "edge instead of floating in the middle of it.",
+            "🛠 The <b>Operator console</b> has moved into ⚙ Settings, under its "
+            "own heading. It was on the rail among things everyone uses, "
+            "despite almost nobody being able to see it.",
+            "↔ Columns are now resized by their <b>right edge only</b>. With a "
+            "handle on each edge, the line between two columns carried two of "
+            "them doing opposite things, and grabbing the wrong one moved the "
+            "neighbour instead.",
+        ],
+    },
+    {
         "date": "2026-08-12",
         "title": "A speed pass over the whole of Delphi",
         "items": [

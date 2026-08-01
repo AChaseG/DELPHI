@@ -43,19 +43,14 @@
     </div>
     <button id="btn-create" class="btn btn-primary rail-btn" title="Create a feed or an alert — pick which with the toggle inside">
       <span class="rail-icon">＋</span><span class="rail-label">Create</span></button>
-    <button id="btn-sources" class="btn rail-btn" title="Manage sources">
-      <span class="rail-icon">📡</span><span class="rail-label">Sources</span></button>
     <button id="btn-pantheons" class="btn rail-btn bell" title="Pantheons — organizations that share feeds and alerts">
       <span class="rail-icon">🏛</span><span class="rail-label">Pantheons</span><span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
     <button id="btn-locations" class="btn rail-btn" title="Favourite locations — flag news near places you care about">
       <span class="rail-icon">📍</span><span class="rail-label">Locations</span></button>
-    <button id="btn-refresh" class="btn rail-btn"
-            title="Poll every news wire now, plus the local city feeds that are due">
-      <span class="rail-icon">⟳</span><span class="rail-label">Refresh</span></button>
     <button id="btn-alerts-panel" class="btn rail-btn bell" title="Alerts">
       <span class="rail-icon">🔔</span><span class="rail-label">Alerts</span><span id="bell-count" class="bell-count" hidden>0</span></button>
-    <button id="btn-admin" class="btn rail-btn" title="Operator console — manage all accounts" hidden>
-      <span class="rail-icon">🛠</span><span class="rail-label">Admin</span></button>
+    <button id="btn-sources" class="btn rail-btn" title="Manage sources">
+      <span class="rail-icon">📡</span><span class="rail-label">Sources</span></button>
     <span class="rail-spacer"></span>
     <button id="btn-settings" class="btn rail-btn" title="Settings">
       <span class="rail-icon">⚙</span><span class="rail-label">Settings</span></button>
@@ -139,16 +134,33 @@
         <span>See everything that has shipped, by date</span>
         <button class="btn small" id="btn-whats-new">🆕 What's new</button>
       </div>
+      <div class="set-row">
+        <span>Something not behaving? Common problems and what to do about them</span>
+        <button class="btn small" id="btn-open-trouble">🛠 Troubleshooting</button>
+      </div>
+
+      <!-- Operator console. Lived on the action rail, where it sat among things
+           every reader uses despite almost nobody being able to see it. -->
+      <div id="admin-setting" hidden>
+        <h3 class="set-h">Operator</h3>
+        <div class="set-row">
+          <span>Manage every account on this server — roles, resets, removals</span>
+          <button class="btn small" id="btn-admin">🛠 Operator console</button>
+        </div>
+      </div>
+
       <p class="set-note">Settings are saved to your account and follow you to any browser
          or device — change the theme here and you'll find it applied after signing in
          anywhere else.</p>
     </div>
   </aside>
 
-  <!-- Help modal: two tabs. "How to" is procedure — do this, then this. "FAQ"
+  <!-- Help modal: three tabs. "How to" is procedure — do this, then this. "FAQ"
        is explanation — what a thing is and why it behaves as it does. They were
        one accordion, which meant every question dragged its instructions along
-       with it and neither read well. -->
+       with it and neither read well. "Troubleshooting" is neither: it starts
+       from a symptom, because someone whose column has gone empty does not know
+       yet whether they are looking at a how-to question or a what-is-it one. -->
   <div id="faq-backdrop" class="modal-backdrop" hidden>
     <div class="modal faq-modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
       <div class="modal-head">
@@ -156,6 +168,7 @@
         <nav class="wiz-nav" id="help-tabs" role="tablist">
           <button data-tab="howto" class="active">📖 How to</button>
           <button data-tab="faq">❓ FAQ</button>
+          <button data-tab="trouble">🛠 Troubleshooting</button>
         </nav>
         <button class="icon-btn" id="btn-close-faq" aria-label="Close help">✕</button>
       </div>
@@ -201,7 +214,7 @@
              fresh one rather than reusing an old email.</p>
           <p><b>Sign out:</b> <b>👤</b> at the bottom of the rail.</p>
           <p>No verification email? Check spam first. If it still hasn't arrived, the
-             server may have no mail configured — see <b>Troubleshooting</b> in the FAQ.</p>
+             server may have no mail configured — see the <b>🛠 Troubleshooting</b> tab.</p>
         </details>
 
         <details>
@@ -326,16 +339,17 @@
           <summary>↔ Arranging the board</summary>
           <p><b>Reorder:</b> <b>◀</b> and <b>▶</b> in a column's header move it left and
              right. The order is saved to your account.</p>
-          <p><b>Resize:</b> drag either <b>edge</b> of a column — a gold line marks the
-             edge when your pointer is on it — anywhere between 240 and 1000 pixels
-             wide. <b>Double-click</b> an edge to return that column to the default
-             width. <b>⇔</b> in the header flips between the standard and wide widths in
-             one click.</p>
-          <p><b>Resize from the keyboard:</b> Tab to a column edge and use <b>←</b> and
-             <b>→</b> (hold Shift for larger steps), or <b>Home</b> to reset it.</p>
+          <p><b>Resize:</b> drag a column's <b>right edge</b> — a gold line marks it when
+             your pointer is on it — anywhere between 240 and 1000 pixels wide.
+             <b>Double-click</b> that edge to return the column to the default width.
+             <b>⇔</b> in the header flips between the standard and wide widths in one
+             click.</p>
+          <p><b>Resize from the keyboard:</b> Tab to a column's right edge and use
+             <b>←</b> and <b>→</b> (hold Shift for larger steps), or <b>Home</b> to reset
+             it.</p>
           <p><b>Refresh one column:</b> <b>⟳</b> in its header re-runs just that feed's
-             search. <b>⟳ Refresh</b> in the rail is the heavier one — it polls every
-             source.</p>
+             search. The heavier <b>⟳ Refresh now</b> — which polls every source — is in
+             <b>⚙ Settings → 🛠 Troubleshooting</b>.</p>
           <p><b>Copy a column you don't own:</b> <b>📌</b> on a Home column or on anything
              shared with a Pantheon puts an editable copy in 📋 My feeds.</p>
         </details>
@@ -550,8 +564,9 @@
         <details>
           <summary>🛠 Operator console</summary>
           <p>Operators — accounts named in the server's <code>NEWS_ADMIN_USERS</code>
-             setting, or promoted by another operator — get a <b>🛠 Admin</b> button in
-             the rail. It lists every account on this instance.</p>
+             setting, or promoted by another operator — get an <b>Operator</b> section at
+             the foot of <b>⚙ Settings</b>, with a <b>🛠 Operator console</b> button that
+             lists every account on this instance. Nobody else sees that section.</p>
           <ul>
             <li>Search by username or email.</li>
             <li><b>Verify</b> forces an email address to verified when the mail never
@@ -888,37 +903,117 @@
           <p>Both are always available on demand in <b>⚙ Settings → Help</b>.</p>
         </details>
 
+      </div>
+
+      <!-- ================= TROUBLESHOOTING ================= -->
+      <div class="modal-body faq-body help-tab" data-tab="trouble" hidden>
+        <p class="wiz-guide">Start from the symptom. Each heading is something you might
+           be seeing; underneath is why it happens and what to do.</p>
+
+        <div class="trouble-action">
+          <div>
+            <b>Poll every news wire now</b>
+            <em>Delphi polls continuously on its own — wires about every 5 minutes, city
+               feeds every 90. This asks for all of them at once, which is worth doing
+               when a story is breaking or a feed you have just built looks empty.</em>
+          </div>
+          <button id="btn-refresh" class="btn"
+                  title="Poll every news wire now, plus the local city feeds that are due">
+            ⟳ Refresh now</button>
+        </div>
+
+        <details open>
+          <summary>📋 A feed or column is empty</summary>
+          <p>Open it (✎) and use <b>Preview matches</b> while removing one filter at a
+             time — the culprit is usually an over-tight combination rather than any one
+             criterion. For niche topics make sure the 🔍 worldwide-coverage box is
+             ticked, then press <b>⟳ Refresh now</b> above and give it a cycle or two.</p>
+          <p><b>Restricting to specific sources</b> is the commonest single cause: it
+             combines with your other filters rather than replacing them, so a feed
+             narrowed to three outlets and asking for a keyword returns only that
+             keyword <em>from those three outlets</em>.</p>
+          <p>If the column says every match has been hidden as stale, that is the 🕰
+             setting — raise or clear <b>Hide events with no updates for</b> in
+             ⚙ Settings.</p>
+        </details>
+
         <details>
-          <summary>🛠 Troubleshooting</summary>
-          <p><b>A feed is empty:</b> open it (✎) and use <b>Preview matches</b> while
-             removing one filter at a time — the culprit is usually an over-tight
-             combination. For niche topics make sure the 🔍 worldwide-coverage box is
-             ticked, then hit ⟳ and give it a cycle or two.</p>
+          <summary>🕰 Nothing new is arriving</summary>
+          <p>Check the <b>articles (24h)</b> and <b>sources healthy</b> tiles at the top
+             of the board. A tile reading <b>…/N</b> means the first poll since startup
+             has not finished yet.</p>
+          <p>Articles older than 30 days are removed to keep the archive fast, so a feed
+             about something that has gone quiet empties out over time rather than
+             keeping its old coverage.</p>
           <p><b>⟳ says a poll is already running:</b> the rolling poller is mid-cycle.
-             Only one cycle runs at a time, so results land when the one in flight
-             finishes — usually within seconds.</p>
-          <p><b>A source shows a red dot:</b> hover it in Sources for the exact error,
-             and note that Delphi tries to fix these itself. After two failed polls with
-             a permanent-looking error (403/404, "not a feed", parse errors), it hunts
-             for the outlet's real feed — homepage autodiscovery, common feed paths,
-             then a Google News feed scoped to the outlet's domain as a last resort —
-             validates the candidate, and switches over (marked "🔧 repaired"; the
-             original URL is kept in the tooltip). Press 🔧 on any failing source to
-             force an attempt right now; 429 just means rate-limited and backs off on
-             its own. If repair finds nothing, the outlet is likely gone — edit the URL
-             in place or delete the source.</p>
-          <p><b>Stat tile shows …/N:</b> the first poll since startup hasn't finished.</p>
-          <p><b>“Failed to load” on a column:</b> the server didn't answer within 30
-             seconds and that column had nothing cached to fall back on. A column that
-             has loaded before keeps its last contents and says they're stale instead,
-             so this is what a <em>first</em> load looks like when the server is
-             struggling. Every response carries a <code>Server-Timing</code> header with
-             how long the server itself took — visible in your browser's network panel —
-             and the server logs a warning for any request over 3 seconds
+             Only one runs at a time, so results land when the one in flight finishes —
+             usually within seconds.</p>
+        </details>
+
+        <details>
+          <summary>🔔 An alert never fired</summary>
+          <p><b>Alerts are tested as articles arrive, not retroactively.</b> A new alert
+             says nothing about what is already in the archive — to see whether its
+             criteria are right, open it with ✎ and use <b>Preview matches</b>, which
+             runs them against everything already ingested.</p>
+          <p>Confirm the alert is <b>active</b>, and remember that every criterion has to
+             match at once: an alert with a keyword <em>and</em> a country <em>and</em> a
+             minimum importance fires only on articles satisfying all three.</p>
+          <p><b>Emails not arriving:</b> out-of-app delivery needs SMTP configured on the
+             server. Without it, ✉️ Email me stays silent and the alert still fires
+             normally in the dashboard.</p>
+        </details>
+
+        <details>
+          <summary>📡 A source shows a red dot</summary>
+          <p>Hover it in <b>Sources</b> for the exact error, and note that Delphi tries
+             to fix these itself. After two failed polls with a permanent-looking error
+             (403/404, "not a feed", parse errors), it hunts for the outlet's real feed —
+             homepage autodiscovery, common feed paths, then a Google News feed scoped to
+             the outlet's domain as a last resort — validates the candidate, and switches
+             over (marked "🔧 repaired"; the original URL is kept in the tooltip).</p>
+          <p>Press 🔧 on any failing source to force an attempt right now. <b>429</b> just
+             means the host is rate-limiting and backs off on its own. If repair finds
+             nothing, the outlet is likely gone — edit the URL in place or delete the
+             source.</p>
+        </details>
+
+        <details>
+          <summary>🔍 A search finds less than you expected</summary>
+          <p>Quoted phrases match <em>exactly</em>, on whole words — <code>"crypto
+             mine"</code> will not match "crypto mining". Use <code>*</code> for a word
+             stem (<code>crypto*</code>) or list the variants with OR.</p>
+          <p>Delphi searches only what it has ingested from its own sources, and matches
+             the headline, the feed's summary, and the article body where it could be
+             fetched. Paywalled outlets are stored headline-only by design, so their
+             coverage matches on the headline alone.</p>
+        </details>
+
+        <details>
+          <summary>⌛ "Failed to load" on a column</summary>
+          <p>The server didn't answer within 30 seconds and that column had nothing
+             cached to fall back on. A column that has loaded before keeps its last
+             contents and says they're stale instead, so this is what a <em>first</em>
+             load looks like when the server is struggling.</p>
+          <p>Every response carries a <code>Server-Timing</code> header with how long the
+             server itself took — visible in your browser's network panel — and the
+             server logs a warning for any request over 3 seconds
              (<code>NEWS_SLOW_REQUEST_S</code>), naming the path. If every path is slow,
              the machine is short of CPU; if one is, that feed's criteria are expensive.
              Self-hosting on a shared vCPU is the usual answer: continuous ingestion
              spends the burst allowance and everything is throttled after that.</p>
+        </details>
+
+        <details>
+          <summary>↔ A column won't resize</summary>
+          <p>Columns are dragged by their <b>right edge only</b>. Take hold of the right
+             border of the column you want to change — the line lights up gold when you
+             are on it — and drag. Double-click that edge to reset the column to the
+             default width, or focus it and use the arrow keys (hold Shift for bigger
+             steps).</p>
+          <p>Widths run from 240 to 1000 pixels, and are saved to your account rather
+             than to the feed, so they follow you between devices and never move anyone
+             else's layout on a shared Pantheon board.</p>
         </details>
 
       </div>

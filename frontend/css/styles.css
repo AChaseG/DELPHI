@@ -233,7 +233,10 @@ button { font: inherit; }
 .rail-spacer { flex: 1 1 auto; }
 
 .rail-toggle {
-  align-self: center;
+  /* Hard against the rail's own edge. Centred, it read as a control belonging
+     to the list of actions below it rather than as the thing that closes the
+     panel — and left a ragged gap on both sides once the rail was open. */
+  align-self: flex-end;
   background: none; border: 1px solid var(--border); color: var(--ink-2);
   border-radius: 6px; cursor: pointer;
   width: 26px; height: 26px; line-height: 1;
@@ -331,17 +334,18 @@ button { font: inherit; }
    one are already off-screen, so the row rule above has taken the work
    regardless, and containing the column made the worst repaint worse. */
 
-/* Drag handles on a column's edges. They sit inside the column rather than
-   between columns so the target is the edge you can actually see. */
+/* The drag handle on a column's right edge. It sits inside the column rather
+   than between columns so the target is the edge you can actually see. Right
+   edge only: with a handle on each edge, the line between two columns carried
+   two of them doing opposite things, and grabbing the wrong one moved the
+   neighbour. */
 .col-grip {
-  position: absolute; top: 0; bottom: 0; width: 8px;
+  position: absolute; top: 0; bottom: 0; right: 0; width: 8px;
   cursor: col-resize;
   background: transparent;
   /* Above the article list, below anything the column pops out. */
   z-index: 2;
 }
-.col-grip-left { left: 0; }
-.col-grip-right { right: 0; }
 .col-grip::after {          /* the visible line, only once you're on the edge */
   content: ""; position: absolute; top: 8px; bottom: 8px; left: 3px;
   width: 2px; border-radius: 2px;
@@ -1053,7 +1057,29 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
    own position instead of inheriting the other one's scroll. */
 .faq-modal .modal-body { max-height: 76vh; overflow-y: auto; }
 .help-tab[hidden] { display: none; }
-/* The two tab buttons sit in the head beside the title; on a narrow screen the
+/* An action inside the help, rather than an explanation of one: Refresh lives
+   in Troubleshooting because "nothing new is arriving" is the only reason to
+   press it, and on the action rail it invited a click from readers who thought
+   news would not arrive without it. */
+.trouble-action {
+  display: flex; align-items: center; gap: 14px;
+  border: 1px solid var(--gold-soft);
+  border-radius: 6px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+}
+.trouble-action > div { flex: 1 1 auto; font-size: 13px; }
+.trouble-action b { display: block; color: var(--ink); font-size: 13.5px; }
+.trouble-action em {
+  display: block; margin-top: 3px;
+  color: var(--ink-2); font-style: normal; line-height: 1.5;
+}
+.trouble-action .btn { flex: 0 0 auto; }
+@media (max-width: 560px) {
+  .trouble-action { flex-direction: column; align-items: stretch; }
+}
+
+/* The tab buttons sit in the head beside the title; on a narrow screen the
    head wraps and they take their own row rather than squeezing the title out. */
 .faq-modal .modal-head { flex-wrap: wrap; }
 .faq-modal .modal-head .wiz-nav { flex: none; }

@@ -637,10 +637,10 @@ function closeUpdates() {
 }
 
 /* ---------- help ----------
-   Two tabs: How to (procedure) and FAQ (explanation). Anyone who opens help
-   without asking for a particular tab wants the instructions, so that's what
-   they get; the tab is not remembered, because the next visit is a new
-   question and rarely the same kind. */
+   Three tabs: How to (procedure), FAQ (explanation), Troubleshooting (symptoms).
+   Anyone who opens help without asking for a particular tab wants the
+   instructions, so that's what they get; the tab is not remembered, because the
+   next visit is a new question and rarely the same kind. */
 function showHelpTab(tab) {
   for (const s of document.querySelectorAll(".help-tab")) s.hidden = s.dataset.tab !== tab;
   for (const b of el("help-tabs").querySelectorAll("button"))
@@ -688,6 +688,7 @@ function wireSettings() {
   el("btn-settings").onclick = () => { el("settings-panel").hidden = false; };
   el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
   el("btn-open-faq").onclick = () => openHelp("howto");
+  el("btn-open-trouble").onclick = () => openHelp("trouble");
   el("btn-close-faq").onclick = () => { el("faq-backdrop").hidden = true; };
   el("faq-backdrop").addEventListener("mousedown", (e) => {
     if (e.target === el("faq-backdrop")) el("faq-backdrop").hidden = true;
@@ -944,7 +945,7 @@ const PLATFORM_ICONS = { news: "📰", reddit: "👽", mastodon: "🐘", bluesky
 /* ---------- stats ---------- */
 function renderStats(meta) {
   if (meta) META = meta;
-  el("btn-admin").hidden = !META.is_admin;  // operator-only console
+  el("admin-setting").hidden = !META.is_admin;  // operator-only console, in Settings
   const s = META.stats;
   el("stat-articles").textContent = s.articles_24h.toLocaleString();
   el("stat-countries").textContent = s.countries_24h;
@@ -1068,7 +1069,7 @@ function feedColumn(feed, readonly = false) {
   const cached = FEED_CACHE.get(feedCacheKey(feed));
   if (cached) renderFeedItems(body, feed, cached);
   else body.innerHTML = '<div class="feed-empty">Loading…</div>';
-  col.append(head, body, resizeGrip(col, feed, "left"), resizeGrip(col, feed, "right"));
+  col.append(head, body, resizeGrip(col, feed));
   return col;
 }
 
@@ -1342,12 +1343,14 @@ function applyColWidth(col, feed) {
   col.style.flexBasis = px ? px + "px" : "";
 }
 
-/* Draggable edges. Both edges resize this column — the left one grows it as you
-   drag left, which is what the edge under the cursor appears to do. Nothing is
-   saved until the drag ends, so a resize is one settings write, not sixty. */
-function resizeGrip(col, feed, side) {
+/* The draggable right edge. Both edges used to resize the column, which meant
+   the boundary between two columns carried two handles doing opposite things —
+   grab the wrong one and the neighbour moved instead. A column is now dragged
+   by its own right edge only, the way a table column is. Nothing is saved until
+   the drag ends, so a resize is one settings write, not sixty. */
+function resizeGrip(col, feed) {
   const grip = document.createElement("div");
-  grip.className = "col-grip col-grip-" + side;
+  grip.className = "col-grip";
   grip.tabIndex = 0;
   grip.setAttribute("role", "separator");
   grip.setAttribute("aria-orientation", "vertical");
@@ -1372,7 +1375,7 @@ function resizeGrip(col, feed, side) {
   grip.addEventListener("pointermove", (e) => {
     if (!dragging) return;
     const dx = e.clientX - startX;
-    preview(startW + (side === "right" ? dx : -dx));
+    preview(startW + dx);
   });
   const end = () => {
     if (!dragging) return;
@@ -1392,7 +1395,7 @@ function resizeGrip(col, feed, side) {
     const step = e.shiftKey ? 60 : 12;
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
       const dir = e.key === "ArrowRight" ? 1 : -1;
-      const px = width() + dir * step * (side === "right" ? 1 : -1);
+      const px = width() + dir * step;
       preview(px);
       setColWidth(feed, col.offsetWidth);
       e.preventDefault();
@@ -2239,6 +2242,7 @@ let ADMIN_ME = null;   // caller's own account id, so the UI never offers self-l
 
 function wireAdmin() {
   el("btn-admin").onclick = async () => {
+    el("settings-panel").hidden = true;   // it opened from there; don't stack panels
     el("admin-panel").hidden = false;
     await renderAdminUsers();
   };
