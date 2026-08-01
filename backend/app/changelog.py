@@ -13,6 +13,24 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-18",
+        "title": "The limit on password guessing now actually holds",
+        "items": [
+            "🔑 Delphi caps how many sign-in attempts one caller can make, to "
+            "stop somebody working through passwords against your account. The "
+            "cap was being read off a piece of the request the caller writes "
+            "themselves, so anyone could change it each time and get an "
+            "unlimited number of tries. It now identifies callers by something "
+            "they cannot forge, and the cap holds.",
+            "🧮 The same flaw undid every other limit — new accounts, password "
+            "reset emails, address lookups, and manual refreshes. Those all "
+            "hold again too.",
+            "🙂 If you share an office or a VPN, you still get your own "
+            "allowance: the fix distinguishes people behind a proxy rather "
+            "than lumping them together.",
+        ],
+    },
+    {
         "date": "2026-08-17",
         "title": "Two ways an account could reach too far, closed",
         "items": [

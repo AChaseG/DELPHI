@@ -283,7 +283,13 @@ GET  /api/stream                   SSE: live article batches + alert hits
   until it's clicked; "Forgot password?" emails a 1h reset link. Without
   SMTP, accounts auto-verify (self-host mode) and would-be mails are logged.
   Login, registration, and password-reset endpoints are rate-limited per
-  client IP (disable with `NEWS_RATE_LIMIT=0`). When you expose the app
+  client IP (disable with `NEWS_RATE_LIMIT=0`). Which client that is comes
+  from the socket peer counted back through **`NEWS_TRUSTED_PROXIES`** hops of
+  `X-Forwarded-For` — that header is appended to by each proxy, so its leading
+  entries are written by the caller and believing them hands anyone a fresh
+  allowance per request. The default is `1` on Fly (detected via `FLY_APP_NAME`)
+  and `0` elsewhere; set it to however many proxies you actually run, and set
+  it to `0` if the app is reachable directly. When you expose the app
   behind a proxy, set **`NEWS_PUBLIC_URL`** (e.g. `https://delphi.example.com`)
   so emailed verification/reset links use a fixed origin instead of a
   spoofable `Host` header — or `NEWS_ALLOWED_HOSTS` (comma-separated) to
