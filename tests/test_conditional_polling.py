@@ -238,3 +238,70 @@ def test_every_catalog_source_is_complete_and_unique():
     # And most of the catalog should be outlets rather than one aggregator.
     google = sum(1 for c in catalog if "news.google.com" in c["rss_url"])
     assert google / len(catalog) < 0.1
+
+
+def test_the_console_reports_what_would_justify_a_new_way_in(client, register, db):
+    """Two numbers decide whether Delphi needs an intake path beyond RSS, and
+    both were otherwise a matter of opinion: how many publishers it has met that
+    publish no feed at all, and how many articles are queued for their text."""
+    from datetime import timedelta
+
+    from backend.app.models import Article, DiscoveredDomain, Source
+
+    hdr = register("operator")
+    src = Source(name="Wire", rss_url="http://w/feed", scope="national", tier=2)
+    found = Source(name="Found", rss_url="http://f/feed", scope="national",
+                   tier=3, added_by="auto-discovered")
+    db.add_all([src, found])
+    db.flush()
+    db.add_all([DiscoveredDomain(domain="nofeed-a.example", status="no-feed"),
+                DiscoveredDomain(domain="nofeed-b.example", status="no-feed"),
+                DiscoveredDomain(domain="hasfeed.example", status="added")])
+    now = utcnow()
+    for i in range(5):
+        db.add(Article(source_id=src.id, url=f"http://w/{i}", guid=str(i),
+                       title=f"Report {i}", summary="", content="",
+                       published_at=now - timedelta(hours=1), fetched_at=now,
+                       language="en", country="US", categories=[], places=[],
+                       importance=50,
+                       content_tried_at=now if i < 2 else None))
+    # One that already has its text is not waiting for anything.
+    db.add(Article(source_id=src.id, url="http://w/done", guid="done",
+                   title="Complete", summary="", content="the body",
+                   published_at=now, fetched_at=now, language="en", country="US",
+                   categories=[], places=[], importance=50))
+    db.commit()
+
+    s = client.get("/api/ingest/status", headers=hdr).json()
+
+    d = s["discovery"]
+    assert d["without_a_feed"] == 2
+    assert d["with_a_feed"] == 1
+    assert d["domains_probed"] == 3
+    assert d["sources_found"] == 1
+    assert set(d["feedless_examples"]) == {"nofeed-a.example", "nofeed-b.example"}
+
+    c = s["content"]
+    assert c["waiting_for_a_body"] == 5
+    assert c["never_tried"] == 3
+    assert c["tried_and_failed"] == 2
+
+
+def test_a_paywalled_outlet_is_not_counted_as_waiting(client, register, db):
+    """Its body is never fetched by design, so counting it as a backlog would
+    make the number that decides this permanently and wrongly large."""
+    from backend.app.models import Article, Source
+
+    hdr = register("paywatcher")
+    src = Source(name="Paid", rss_url="http://p/feed", scope="national",
+                 tier=1, paywall=True)
+    db.add(src)
+    db.flush()
+    db.add(Article(source_id=src.id, url="http://p/1", guid="1",
+                   title="Subscribers only", summary="", content="",
+                   published_at=utcnow(), fetched_at=utcnow(), language="en",
+                   country="US", categories=[], places=[], importance=50))
+    db.commit()
+
+    assert client.get("/api/ingest/status",
+                      headers=hdr).json()["content"]["waiting_for_a_body"] == 0

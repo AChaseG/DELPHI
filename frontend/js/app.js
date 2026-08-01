@@ -2378,14 +2378,45 @@ async function renderServiceHealth() {
 
   if (s.last_error)
     lines.push(`📡 Last ingest error: ${s.last_error}`);
-  if (s.sources_total)
-    lines.push(`📡 Last poll: ${s.sources_ok}/${s.sources_total} sources answered, `
-               + `${s.last_new_articles} new article${plural(s.last_new_articles)}.`);
+  if (s.sources_total) {
+    const unchanged = s.last_unchanged
+      ? `, ${s.last_unchanged} unchanged since last time` : "";
+    lines.push(`📡 Last poll: ${s.sources_ok}/${s.sources_total} sources answered`
+               + `${unchanged}, ${s.last_new_articles} new `
+               + `article${plural(s.last_new_articles)}.`);
+  }
 
+  // How far Delphi's reach falls short, in the two ways it can.
+  const d = s.discovery || {};
+  if (d.domains_probed) {
+    let line = `🔎 Reach: ${d.sources_found} outlet${plural(d.sources_found)} found `
+      + `their own feed. Of ${d.domains_probed} publisher`
+      + `${plural(d.domains_probed)} met, ${d.without_a_feed} publish no feed at `
+      + `all — Delphi only ever sees those second-hand.`;
+    if (d.feedless_examples && d.feedless_examples.length)
+      line += ` Most recent: ${d.feedless_examples.slice(0, 6).join(", ")}.`;
+    lines.push(line);
+  }
+
+  const c = s.content || {};
+  if (c.waiting_for_a_body !== undefined) {
+    const rounds = c.per_cycle ? Math.ceil(c.waiting_for_a_body / c.per_cycle) : 0;
+    lines.push(`📄 Article text: ${c.waiting_for_a_body} article`
+      + `${plural(c.waiting_for_a_body)} from the last ${c.window_hours}h are `
+      + `waiting for their full text (${c.never_tried} never tried, `
+      + `${c.tried_and_failed} tried and failed). At ${c.per_cycle} a cycle that `
+      + `is ${rounds} quiet cycle${plural(rounds)} to clear. Until then those `
+      + `match on their headline alone.`);
+  }
+
+  // A backlog worth more than a few cycles is the signal that fetching article
+  // text, not finding articles, is what is holding coverage back.
+  const backlogged = (c.per_cycle && c.waiting_for_a_body > c.per_cycle * 3);
   box.replaceChildren(...lines.map((text) => {
     const p = document.createElement("p");
-    p.className = "admin-health-line"
-      + (/failing|not configured|Last ingest error/.test(text) ? " warn" : "");
+    const bad = /failing|not configured|Last ingest error/.test(text)
+      || (backlogged && text.startsWith("📄"));
+    p.className = "admin-health-line" + (bad ? " warn" : "");
     p.textContent = text;
     return p;
   }));

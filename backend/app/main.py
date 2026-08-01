@@ -36,7 +36,8 @@ from .database import Base, SessionLocal, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer, search_places
 from .matching import query_articles
-from .models import (Alert, AlertEvent, Article, Event, FavoriteLocation, Feed,
+from .models import (Alert, AlertEvent, Article, DiscoveredDomain, Event,
+                     FavoriteLocation, Feed,
                      Pantheon, PantheonInvite, PantheonMember, Source,
                      Translation, User, ViewedArticle, ViewedEvent, utcnow)
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
@@ -1727,8 +1728,58 @@ async def ingest_run():
         raise HTTPException(500, f"Ingest cycle failed: {type(exc).__name__}: {exc}")
 
 
+def _reach_status(db: Session) -> dict:
+    """The two numbers that decide whether Delphi needs a new way in.
+
+    Both answer questions that were otherwise a matter of opinion. How many
+    publishers Delphi has met that have no feed at all is the exact size of what
+    another intake path — sitemaps, an API — would be for; if it is small, there
+    is nothing to build. And how many articles are queued for a body says
+    whether fetching them is the binding constraint, because an article without
+    one matches on its headline alone.
+    """
+    from datetime import timedelta
+
+    by_status = dict(db.execute(
+        select(DiscoveredDomain.status, func.count(DiscoveredDomain.id))
+        .group_by(DiscoveredDomain.status)).all())
+    # The domains themselves, newest first: a list of outlets nobody is reading
+    # in full is worth looking at, not just counting.
+    feedless = list(db.scalars(
+        select(DiscoveredDomain.domain)
+        .where(DiscoveredDomain.status == "no-feed")
+        .order_by(DiscoveredDomain.checked_at.desc()).limit(12)))
+
+    window = utcnow() - timedelta(hours=ingest.BACKFILL_HOURS)
+    waiting = db.scalar(
+        select(func.count(Article.id)).join(Source, Source.id == Article.source_id)
+        .where(Article.content == "", Article.published_at >= window,
+               Source.paywall.is_(False))) or 0
+    untried = db.scalar(
+        select(func.count(Article.id)).join(Source, Source.id == Article.source_id)
+        .where(Article.content == "", Article.published_at >= window,
+               Source.paywall.is_(False), Article.content_tried_at.is_(None))) or 0
+    return {
+        "discovery": {
+            "sources_found": db.scalar(select(func.count(Source.id)).where(
+                Source.added_by == "auto-discovered")) or 0,
+            "domains_probed": sum(by_status.values()),
+            "with_a_feed": by_status.get("added", 0),
+            "without_a_feed": by_status.get("no-feed", 0),
+            "feedless_examples": feedless,
+        },
+        "content": {
+            "waiting_for_a_body": waiting,
+            "never_tried": untried,
+            "tried_and_failed": waiting - untried,
+            "per_cycle": ingest.CONTENT_MAX_PER_CYCLE,
+            "window_hours": ingest.BACKFILL_HOURS,
+        },
+    }
+
+
 @app.get("/api/ingest/status")
-def ingest_status():
+def ingest_status(db: Session = Depends(get_db)):
     # The warm Home board goes with it: both are the poller's work, and an
     # operator looking at one wants to know the state of the other. The address
     # lookup is here too, so "no address suggestions" can be told apart from
@@ -1741,7 +1792,8 @@ def ingest_status():
             # relay is invisible to everyone. This is where it becomes visible.
             "mail": {"configured": mailer.enabled(),
                      "host": f"{mailer.HOST}:{mailer.PORT}" if mailer.enabled() else "",
-                     **mailer.status}}
+                     **mailer.status},
+            **_reach_status(db)}
 
 
 @app.post("/api/maintenance/fetch-content")
