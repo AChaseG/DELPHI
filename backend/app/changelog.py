@@ -13,6 +13,32 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-28",
+        "title": "Why a feed carried a story with none of its words in it",
+        "items": [
+            "🧹 A page carries more than its story: a section menu, a “More "
+            "from” rail, a newsletter promo. Those were being stored as part "
+            "of the article, and searches read the whole article — so a report "
+            "about the WNBA, carried on a site with a “Data Center” section "
+            "link and a “data center boom” promo beside it, genuinely "
+            "contained the words “data center” and turned up in a data-centre "
+            "feed. Those parts of a page are no longer taken for article text. "
+            "Real bulleted lists inside a story are kept.",
+            "⚠️ The builder now warns when an exclusion covers less than you "
+            "probably meant. AND binds tighter than OR, so “a OR b NOT c” "
+            "means “a OR (b AND NOT c)” — c is only excluded from the second "
+            "alternative. Bracket the alternatives, “(a OR b) NOT c”, to "
+            "exclude from all of them. It is a note in amber, not an error; "
+            "the search still saves.",
+            "✅ The Boolean engine itself was checked against ordinary logic on "
+            "48,000 cases and agrees on every one, so a query does mean what "
+            "it says. That check now runs with the tests.",
+            "🕓 The clean-up applies to articles collected from now on. "
+            "Anything already stored keeps the text it was stored with until "
+            "it ages out.",
+        ],
+    },
+    {
         "date": "2026-08-27",
         "title": "The side panels open again",
         "items": [

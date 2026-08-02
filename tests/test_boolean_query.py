@@ -86,3 +86,54 @@ def test_invalid_queries_reported():
     for bad in ["n* here", "(a b) NEAR/3 c", "NEAR/3 b", "a NEAR/x b", "a NEAR/500 b"]:
         assert validate_query(bad) is not None, bad
     assert validate_query('("supply chain" OR semiconductor) AND (china | taiwan) -rumor') is None
+
+
+def test_the_engine_agrees_with_ordinary_boolean_logic():
+    """The report that prompted this was "an article matched none of my terms",
+    which would be a bug in here. It is not — but reading the grammar is not
+    evidence, so: random expressions, rendered the way a user types them,
+    evaluated against every combination of terms present, and compared with a
+    direct evaluation of the same tree.
+    """
+    import itertools
+    import random
+
+    terms = ["alpha", "bravo", "charlie", "delta"]
+    rng = random.Random(20260802)
+
+    def build(depth):
+        if depth == 0 or rng.random() < 0.35:
+            return ("term", rng.choice(terms))
+        op = rng.choice(["and", "or", "not"])
+        if op == "not":
+            return ("not", build(depth - 1))
+        return (op, build(depth - 1), build(depth - 1))
+
+    def render(node, top=False):
+        if node[0] == "term":
+            return node[1]
+        if node[0] == "not":
+            inner = f"NOT {render(node[1])}"
+            return inner if top else f"({inner})"
+        body = f"{render(node[1])} {node[0].upper()} {render(node[2])}"
+        return body if top else f"({body})"
+
+    def truth(node, present):
+        if node[0] == "term":
+            return node[1] in present
+        if node[0] == "not":
+            return not truth(node[1], present)
+        if node[0] == "and":
+            return truth(node[1], present) and truth(node[2], present)
+        return truth(node[1], present) or truth(node[2], present)
+
+    checked = 0
+    for _ in range(400):
+        tree = build(3)
+        pred = compile_query(render(tree, top=True))
+        for r in range(len(terms) + 1):
+            for present in itertools.combinations(terms, r):
+                text = "story mentioning " + " and ".join(present) + " today"
+                assert pred(text) == truth(tree, set(present)), render(tree, top=True)
+                checked += 1
+    assert checked > 5000, "the sweep stopped covering the cases it claims to"

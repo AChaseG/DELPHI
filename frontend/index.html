@@ -901,6 +901,17 @@
              terms sit at most 5 words apart in either order (<code>NEAR</code> alone
              means NEAR/10; chains like <code>a NEAR/3 b NEAR/3 c</code> check each
              adjacent pair).</p>
+          <p><b>AND binds tighter than OR</b>, as it does everywhere else. So
+             <code>"data center" OR datacenter NOT sports</code> reads as
+             <code>"data center" OR (datacenter AND NOT sports)</code> — the exclusion
+             covers the second alternative and nothing else, and sports coverage
+             matching the first one still arrives. Write
+             <code>("data center" OR datacenter) NOT sports</code> to exclude from all
+             of it. The builder marks this one in amber as you type; it is a note, not
+             an error, because sometimes it is exactly what you meant.</p>
+          <p><b>Searches read the whole article</b>, not just what you can see on the
+             card — a term buried in the body counts. If a result looks inexplicable,
+             open it and read past the summary before assuming the search is wrong.</p>
           <p>A feed can hold <b>several searches</b> — each runs separately, all fill the
              same feed. Each row validates as you type, so a stray bracket is caught
              before you save rather than after.</p>

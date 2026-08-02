@@ -29,7 +29,7 @@ import re as _username_re
 
 from . import (auth, export, geocode, home, ingest, langdetect, mailer, passwords,
                ratelimit, repair, safefetch, storage, translate)
-from .boolean_query import normalize_quotes, validate_query
+from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
 from .clustering import assign_events, rebuild_events
@@ -1359,7 +1359,11 @@ async def search_articles(
 @app.post("/api/query/validate")
 def query_validate(body: QueryValidateIn):
     err = validate_query(body.query) if body.query.strip() else None
-    return {"valid": err is None, "error": err}
+    # A query can parse and still not mean what it looks like it means; see
+    # query_advisories. Reported separately from `error` so the builder can say
+    # so without refusing to save.
+    notes = query_advisories(body.query) if err is None and body.query.strip() else []
+    return {"valid": err is None, "error": err, "advisories": notes}
 
 
 # ---------- feeds ----------

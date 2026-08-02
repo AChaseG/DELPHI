@@ -304,3 +304,44 @@ def validate_query(query: str) -> str | None:
         return None
     except QueryError as exc:
         return str(exc)
+
+
+def query_advisories(query: str) -> list[str]:
+    """Things a valid query probably does not mean. Never an error.
+
+    AND binds tighter than OR, as everywhere else, so
+
+        "data center" OR datacenter NOT sports
+
+    is `"data center" OR (datacenter AND NOT sports)` — the exclusion applies
+    to the second alternative and nothing else, and sports coverage matching
+    the first one comes through untouched. That is the standard reading and
+    the engine is right to use it, but almost nobody writing that line means
+    it: they mean "either of these, and never sports". The precedence is not
+    something to change, because it would silently alter every query already
+    saved. Saying so is.
+    """
+    try:
+        tokens = tokenize(query)
+        _Parser(tokens).parse()          # advice on a broken query is noise
+    except QueryError:
+        return []
+
+    notes: list[str] = []
+    depth = 0
+    or_at_depth: set[int] = set()
+    for tok in tokens:
+        if tok.kind == "LPAREN":
+            depth += 1
+        elif tok.kind == "RPAREN":
+            or_at_depth.discard(depth)
+            depth = max(0, depth - 1)
+        elif tok.kind == "OR":
+            or_at_depth.add(depth)
+        elif tok.kind == "NOT" and depth in or_at_depth:
+            notes.append(
+                "NOT applies only to the alternative just before it, because "
+                "AND binds tighter than OR. Put the OR list in brackets — "
+                "(a OR b) NOT c — to exclude from all of it.")
+            break
+    return notes

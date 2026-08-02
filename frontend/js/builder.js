@@ -235,8 +235,21 @@ const Builder = {
         if (!q) { st.textContent = ""; st.className = "query-status"; return; }
         try {
           const r = await API.validateQuery(q);
-          st.textContent = r.valid ? "✓ valid query" : "✗ " + r.error;
-          st.className = "query-status " + (r.valid ? "ok" : "err");
+          // A query can be valid and still not mean what it looks like it
+          // means — NOT after an OR list binds to the last alternative only,
+          // which is how sports coverage ends up in a data-centre feed. That
+          // is a note, not a refusal: the query saves either way.
+          const note = (r.advisories || [])[0];
+          if (!r.valid) {
+            st.textContent = "✗ " + r.error;
+            st.className = "query-status err";
+          } else if (note) {
+            st.textContent = "⚠ " + note;
+            st.className = "query-status warn";
+          } else {
+            st.textContent = "✓ valid query";
+            st.className = "query-status ok";
+          }
         } catch (e) { /* offline */ }
       }, 350);
     });

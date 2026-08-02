@@ -23,13 +23,39 @@ BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 _SKIP_TAGS = {"script", "style", "noscript", "svg", "nav", "form", "iframe",
               "head", "footer", "aside", "figure", "button"}
 _BODY_TAGS = {"p", "h1", "h2", "h3", "li", "blockquote"}
+# Where a bare link is another page rather than this one: menus, "More from"
+# rails, "Most read" lists, section indexes, newsletter promos. All of them are
+# list items and headings whose whole text is the link.
+_LINKISH_TAGS = {"li", "h1", "h2", "h3"}
 
 
 class _Extractor(HTMLParser):
+    """Readable text, minus the parts of the page that advertise other pages.
+
+    `<li>` has to be a body tag — articles have real bullet lists — but it is
+    also what every navigation menu and related-articles rail is built from,
+    and those are only skipped by the tag list above when a site wraps them in
+    <nav>/<aside>. Most do not: `<div class="more-from"><ul><li><a>` is the
+    common shape, and it lands in the middle of the stored body.
+
+    That is not cosmetic. Criteria are matched against title + summary + body,
+    so a story about the WNBA carried on a site with a "Data Center" section
+    link and an "Inside the new AI data center boom" promo *contains* the words
+    "data center" as far as matching is concerned — and turns up in a data
+    centre feed whose terms appear nowhere a reader can see them. Measured on a
+    page of exactly that shape, three unrelated terms — data center,
+    hyperscale, colocation — were stored as the body of a WNBA report.
+
+    So link text is dropped inside list items and headings, and kept inside
+    paragraphs and quotes, where a link is an ordinary citation in prose.
+    """
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self._skip = 0
         self._body = 0
+        self._linkish = 0
+        self._link = 0
         self.body_chunks: list[str] = []
         self.all_chunks: list[str] = []
 
@@ -38,15 +64,26 @@ class _Extractor(HTMLParser):
             self._skip += 1
         elif tag in _BODY_TAGS:
             self._body += 1
+        if tag in _LINKISH_TAGS:
+            self._linkish += 1
+        elif tag == "a":
+            self._link += 1
 
     def handle_endtag(self, tag):
         if tag in _SKIP_TAGS and self._skip:
             self._skip -= 1
         elif tag in _BODY_TAGS and self._body:
             self._body -= 1
+        if tag in _LINKISH_TAGS and self._linkish:
+            self._linkish -= 1
+        elif tag == "a" and self._link:
+            self._link -= 1
+
+    def _navigation(self) -> bool:
+        return bool(self._link and self._linkish)
 
     def handle_data(self, data):
-        if self._skip:
+        if self._skip or self._navigation():
             return
         text = data.strip()
         if not text:

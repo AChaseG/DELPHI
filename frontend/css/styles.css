@@ -698,6 +698,9 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .query-status { font-size: 12px; min-height: 16px; }
 .query-status.ok { color: var(--good); }
 .query-status.err { color: var(--critical); }
+/* Valid, and probably not what was meant — see query_advisories. Neither
+   green nor red: nothing is wrong, and nothing is stopping you saving it. */
+.query-status.warn { color: var(--warning); }
 
 .geo-tools { display: flex; align-items: center; gap: 10px; }
 .geo-summary { font-size: 12.5px; color: var(--ink-muted); }

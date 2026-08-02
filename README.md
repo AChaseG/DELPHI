@@ -61,7 +61,12 @@ feeds**.
   - **user-written boolean queries** — `("supply chain" OR semiconductor) AND
     (china OR taiwan) NOT rumor` — with live validation; a feed can hold
     **several queries**, each running separately, all populating the same feed,
-    each validated as you type
+    each validated as you type. AND binds tighter than OR, so `a OR b NOT c`
+    excludes `c` from the second alternative only; the builder flags that in
+    amber as an advisory (`/api/query/validate` returns it), because it is
+    usually not what was meant and occasionally exactly what was. The engine is
+    checked against ordinary boolean logic over randomly generated expressions
+    in `tests/test_boolean_query.py`.
   - **story focus** — clicking a headline never navigates away: it opens the
     story in the dashboard. One view whether one outlet has it or forty: the
     report you picked (summary in full, an extract of the body, outlet,
@@ -324,6 +329,14 @@ GET  /api/stream                   SSE: live article batches + alert hits
   extracts its text — like a feed reader's readability view — capped per cycle
   (`NEWS_CONTENT_MAX_PER_CYCLE`, default 150) and disable-able with
   `NEWS_CONTENT_FETCH=0`. Review publishers' terms before heavy use.
+  **What counts as the article matters for matching**, because criteria are
+  applied to title + summary + body: a page's section menu, "More from" rail
+  and newsletter promos are all built from list items and headings wrapped
+  around links, and once stored as body text they make a story match terms that
+  appear nowhere in it — a WNBA report satisfying a data-centre query, in the
+  case that prompted this. `content.py` drops link text inside list items and
+  headings and keeps it inside paragraphs and quotes, where a link is an
+  ordinary citation. Bodies already stored keep the text they were stored with.
 - The catalog is a *seed*, not a census — some third-party feed URLs go stale;
   the Sources panel shows per-source health (`ok` / error) so dead ones are
   easy to spot, fix, or disable. Add more by editing
