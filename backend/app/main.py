@@ -2522,8 +2522,24 @@ async def stream():
                              headers={"Cache-Control": "no-cache"})
 
 
+def _db_readable() -> tuple[bool, str]:
+    try:
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+        return True, ""
+    except Exception as exc:
+        return False, f"database unreadable: {type(exc).__name__}"
+
+
+# The last answer the database gave, and when. Health checks arrive every 30s
+# and the answer changes rarely, so it is remembered between them.
+_DB_STATE: tuple[float, bool, str] = (0.0, True, "")
+HEALTH_RECHECK_S = 5.0
+HEALTH_PROBE_TIMEOUT_S = 3.0
+
+
 @app.get("/healthz")
-def healthz():
+async def healthz():
     """Is this process actually able to serve? For Fly's health check.
 
     Outside /api on purpose, so it needs no session — the checker has none.
@@ -2531,6 +2547,21 @@ def healthz():
     It answers on exactly one question: can the database be read. That is what
     was wrong when the app died, and it is the only condition where restarting
     is the right response.
+
+    *Busy is not broken.* This used to be a plain sync endpoint, so it ran in
+    the same worker pool as everything else and queued behind whatever was in
+    it. Right after a deploy every source is overdue at once, and catching up —
+    a thousand new articles scored, indexed and clustered — saturates two
+    shared vCPUs for minutes. The check then failed to answer inside its 10s
+    timeout, Fly stopped routing to the only machine, and the site was
+    unreachable with nothing actually wrong with it. That is the outage this
+    was written to prevent, caused by the check itself.
+
+    So the probe is bounded, and a probe that runs out of time leaves the
+    previous answer standing. An unreadable database raises immediately —
+    SQLite does not sit there thinking about it — so a *timeout* means the
+    machine is busy and a restart would only mean another cold start into the
+    same catch-up. An *error* still fails the check, at once.
 
     Deliberately *not* unhealthy when the disk is nearly full. The app pauses
     ingestion and prunes its way back down in that state, which needs it to
@@ -2540,13 +2571,17 @@ def healthz():
     /api/ingest/status and the operator console instead, where it informs
     somebody rather than triggering something.
     """
-    try:
-        with engine.connect() as conn:
-            conn.exec_driver_sql("SELECT 1")
-    except Exception as exc:
-        return JSONResponse(
-            {"ok": False, "detail": f"database unreadable: {type(exc).__name__}"},
-            status_code=503)
+    global _DB_STATE
+    checked_at, ok, detail = _DB_STATE
+    if time.monotonic() - checked_at >= HEALTH_RECHECK_S:
+        try:
+            ok, detail = await asyncio.wait_for(
+                run_in_threadpool(_db_readable), HEALTH_PROBE_TIMEOUT_S)
+            _DB_STATE = (time.monotonic(), ok, detail)
+        except asyncio.TimeoutError:
+            pass          # too busy to ask; the last answer still stands
+    if not ok:
+        return JSONResponse({"ok": False, "detail": detail}, status_code=503)
     return {"ok": True}
 
 

@@ -82,14 +82,26 @@ def test_reclaim_shrinks_the_file_on_disk(bulky):
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM articles WHERE id % 10 != 0"))
     storage.checkpoint()
-    assert storage.db_bytes() > full * 0.7, (
+    before = storage.db_bytes()
+    assert before > full * 0.7, (
         "deleting alone appears to have shrunk the file — if SQLite ever starts "
         "doing that, this whole module is unnecessary")
 
-    freed = storage.reclaim(pages=10_000_000)
+    # What is actually recoverable, in bytes, rather than a guess at a fraction
+    # of the file. This asserted `< full * 0.5` and passed here while failing on
+    # CI at 58% — how much of a file is free pages depends on the page size and
+    # on what else (the FTS index, the freelist itself) is in it, none of which
+    # this is trying to test. Tie it to the mechanism instead.
+    recoverable = _pages() * _pages("page_size")
 
-    assert storage.db_bytes() < full * 0.5
+    freed = storage.reclaim(pages=10_000_000)
+    shrunk = before - storage.db_bytes()
+
     assert freed > 0
+    assert shrunk >= recoverable * 0.9, (
+        f"{shrunk} bytes came back from {recoverable} of free pages")
+    assert abs(shrunk - freed) <= 64 * 1024, (
+        f"reported {freed} freed but the file shrank by {shrunk}")
 
 
 def test_the_freed_figure_is_not_understated(bulky):

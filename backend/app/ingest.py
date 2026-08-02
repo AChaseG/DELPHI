@@ -62,6 +62,33 @@ SHARED_HOST_GAP = float(os.environ.get("NEWS_SHARED_HOST_GAP", "1.0"))  # other 
 # a row is roughly twenty-five minutes of a source not answering.
 REMOVE_AFTER = int(os.environ.get("NEWS_REMOVE_AFTER", "5"))
 
+# How gently to start. Every source is overdue the moment the process starts,
+# so the first ticks after a deploy poll a full batch, and each one lands
+# hundreds of articles to score, index and cluster plus as many article bodies
+# to fetch. On two shared vCPUs that saturates the machine: measured on the
+# live deployment, the health check could not be answered inside its 10s
+# timeout, Fly stopped routing to the only machine, and the site was
+# unreachable for about two minutes with nothing wrong with it.
+#
+# Catching up is not urgent — the news is already there and a few minutes
+# either way changes nothing — but being reachable is. So the first few
+# minutes poll a fraction of a batch and the size ramps back to normal.
+WARMUP_SECONDS = float(os.environ.get("NEWS_WARMUP_SECONDS", "300"))
+WARMUP_FIRST_BATCH = int(os.environ.get("NEWS_WARMUP_FIRST_BATCH", "10"))
+
+
+def warmup_batch(full: int, since_start: float) -> int:
+    """How many sources this tick may poll, `since_start` seconds after boot.
+
+    Ramps linearly from WARMUP_FIRST_BATCH to the full batch across the warmup
+    window, so the catch-up gets steadily faster as the machine proves it can
+    keep up rather than arriving all at once.
+    """
+    if since_start >= WARMUP_SECONDS or full <= WARMUP_FIRST_BATCH:
+        return full
+    share = max(0.0, since_start) / WARMUP_SECONDS
+    return max(1, min(full, round(WARMUP_FIRST_BATCH + (full - WARMUP_FIRST_BATCH) * share)))
+
 # Article retention: with ~500+ sources the table grows without bound and
 # every board query slows over time. Articles older than this are pruned
 # (with their translations and alert-history rows); 0 disables pruning.
@@ -965,6 +992,7 @@ async def ingest_loop():
     own interval; nothing starves and no single tick runs long."""
     global _next_prune_at
     status["running"] = True
+    started_at = time.monotonic()      # the warmup ramp measures from here
     # The one-off conversion to incremental auto-vacuum is NOT done here, and
     # that is a correction to how this shipped. It VACUUMs — rewriting the
     # whole database while holding a lock that blocks readers, not just
@@ -996,8 +1024,12 @@ async def ingest_loop():
                         enabled = db.scalars(
                             select(Source).where(Source.enabled.is_(True))).all()
                         due = due_sources(enabled, utcnow())
-                        batch = ([s for s in due if not _is_city(s)][:POLL_BATCH]
-                                 + [s for s in due if _is_city(s)][:CITY_PER_TICK])
+                        since_start = time.monotonic() - started_at
+                        batch = (
+                            [s for s in due if not _is_city(s)]
+                            [:warmup_batch(POLL_BATCH, since_start)]
+                            + [s for s in due if _is_city(s)]
+                            [:warmup_batch(CITY_PER_TICK, since_start)])
                         if batch:
                             new_articles = (await _ingest_batch(db, batch))["new_articles"]
 
