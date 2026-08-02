@@ -350,11 +350,32 @@ document.addEventListener("visibilitychange", () => {
 /* Swap the board's contents in one operation. Nothing is removed until the
    replacement exists, so there is never a frame with an empty board. The
    search column is not part of a view and survives the swap. */
+/* Columns a repaint wanted to put up while a column was being dragged. */
+let BOARD_PAINT_HELD = null;
+
 function paintBoard(columns) {
+  // A background refresh lands every few seconds, and repainting replaces
+  // every column. Do that mid-drag and the column under the pointer is torn
+  // out of the board it belongs to; the drag then re-inserts a node the board
+  // has already replaced, and the reader is left looking at the same column
+  // twice. Hold the paint until the pointer comes up — the drag ends with a
+  // render of its own, so nothing is lost by waiting.
+  if (document.body.classList.contains("board-reordering")) {
+    BOARD_PAINT_HELD = columns;
+    return;
+  }
   const board = el("board");
   const searchCol = el("search-col");
   board.replaceChildren(...(searchCol ? [searchCol, ...columns] : columns));
   syncBoardScrollbar();
+}
+
+/* Put up a paint that was held during a drag. Only needed where the drag ends
+   without rendering for itself. */
+function releaseBoardPaint() {
+  const held = BOARD_PAINT_HELD;
+  BOARD_PAINT_HELD = null;
+  if (held) paintBoard(held);
 }
 
 /* The placeholder column for a Pantheon nobody has shared anything with yet.
@@ -513,6 +534,7 @@ function wireTopbar() {
     el("btn-refresh").disabled = false;
   };
   el("btn-close-story").onclick = closeStory;
+  el("btn-story-export").onclick = () => storyExportMenu(el("btn-story-export"));
   el("story-backdrop").addEventListener("mousedown", (e) => {
     if (e.target === el("story-backdrop")) closeStory();
   });
@@ -1146,9 +1168,12 @@ function feedColumn(feed, readonly = false) {
   } else if (readonly) {
     tools.append(pinBtn());
   } else {
+    // Moving a column is dragging it now, not stepping it one place at a time
+    // with ◀ ▶. Six columns and a move of four places was four clicks and four
+    // round trips; the arrows also said nothing about where the column would
+    // land. The header is the handle — see dragToReorder.
+    dragToReorder(head, col, feed);
     tools.append(
-      toolBtn("◀", "Move left", () => moveFeed(feed.id, -1)),
-      toolBtn("▶", "Move right", () => moveFeed(feed.id, +1)),
       toolBtn("⇔", "Switch between the standard and wide width — or drag either edge",
               () => toggleWidth(feed, col)),
       toolBtn("✎", "Edit feed", () => openBuilder("feed", feed)),
@@ -1472,6 +1497,173 @@ function applyColWidth(col, feed) {
    grab the wrong one and the neighbour moved instead. A column is now dragged
    by its own right edge only, the way a table column is. Nothing is saved until
    the drag ends, so a resize is one settings write, not sixty. */
+/* Drag a column by its header to move it along the board.
+
+   This replaced ◀ ▶, which stepped one place per click: moving a column four
+   places was four clicks and four saved orders, and neither arrow told you
+   where the column would end up. Dragging shows it.
+
+   Pointer events rather than HTML5 drag-and-drop, for two reasons that matter
+   here: HTML5 drag has no useful touch story, and it insists on its own drag
+   image, which for a column the height of the viewport is a full-size ghost
+   that hides the board you are aiming at.
+
+   Deliberate details:
+
+   *A threshold before it counts as a drag.* The header holds buttons and the
+   title; a click that wanders two pixels must stay a click. Nothing moves
+   until the pointer has travelled far enough to have meant it.
+
+   *Buttons are excluded.* Starting a drag on ⟳ or ✎ would make those controls
+   feel unreliable, so a press that lands on one is left alone.
+
+   *The order is saved once, at the end.* Reordering while dragging would send
+   a request per column crossed and fight the render.
+
+   *Position is committed to the DOM as you go*, so the gap sits where the
+   column will land — the answer to what the arrows could never show.
+
+   *Holding at either edge scrolls the board.* Past four or five columns the
+   board is wider than the window, and without this the only reachable drop
+   targets are the ones that happen to be on screen.
+
+   *← and → still move a column one place.* The arrows were operable from the
+   keyboard and a drag is not, so replacing them with a gesture alone would
+   have taken the board away from anyone who does not use a pointer. The
+   header is focusable and answers the arrow keys, which is what the buttons
+   did — the drag is the addition, not the replacement. */
+function dragToReorder(head, col, feed) {
+  head.classList.add("feed-head-draggable");
+  head.title = "Drag to move this column — or focus it and press ← or →";
+  head.tabIndex = 0;
+  head.setAttribute("role", "group");
+  head.setAttribute("aria-label",
+                    `“${feed.name}” column — drag to move it, or press ← and →`);
+
+  // The board holds Home's columns and Pantheon boards too; only the reader's
+  // own feeds have an order to save, so the ids are read back off the DOM and
+  // filtered to those.
+  const saveOrder = async (board) => {
+    const order = [...board.children]
+      .map((c) => Number(String(c.id).replace("feed-", "")))
+      .filter((id) => Number.isFinite(id) && FEEDS.some((f) => f.id === id));
+    if (!order.length) return false;
+    try {
+      await API.reorderFeeds(order);
+      return true;
+    } catch (e) {
+      toast("Couldn't save the new order", e.message);
+      BOARD_PAINT_HELD = null;        // the render below supersedes it
+      await renderBoard();            // put it back where the server has it
+      return false;
+    }
+  };
+
+  head.addEventListener("keydown", async (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    if (e.target !== head) return;    // a control inside the header has focus
+    const board = col.parentElement;
+    if (!board || board.children.length < 2) return;
+    const sibling = e.key === "ArrowLeft"
+      ? col.previousElementSibling
+      : col.nextElementSibling && col.nextElementSibling.nextElementSibling;
+    if (e.key === "ArrowLeft" ? !sibling : !col.nextElementSibling) return;
+    e.preventDefault();
+    board.insertBefore(col, sibling);
+    // No re-render afterwards: the board already shows the new order, and
+    // rebuilding it would throw away the focus that is driving this.
+    head.focus();
+    await saveOrder(board);
+  });
+
+  head.addEventListener("pointerdown", (down) => {
+    if (down.button !== 0) return;
+    // Leave the controls and the resize grip alone.
+    if (down.target.closest("button, a, input, select, .col-grip")) return;
+    const board = col.parentElement;
+    if (!board || board.children.length < 2) return;
+
+    const startX = down.clientX;
+    let dragging = false;
+    let pointerX = down.clientX;
+    const started = () => {
+      dragging = true;
+      col.classList.add("col-dragging");
+      document.body.classList.add("board-reordering");
+    };
+
+    // The board scrolls sideways once the columns outrun the window, so the
+    // place you want to drop a column is often not on screen when you pick it
+    // up. Holding near either edge scrolls the board under the pointer, which
+    // is the only way to reach it without putting the column down first.
+    let scrolling = 0;
+    const edgeScroll = () => {
+      scrolling = 0;
+      if (!dragging) return;
+      const r = board.getBoundingClientRect();
+      const EDGE = 60, SPEED = 18;
+      let dx = 0;
+      if (pointerX < r.left + EDGE) dx = -SPEED;
+      else if (pointerX > r.right - EDGE) dx = SPEED;
+      if (dx) {
+        const was = board.scrollLeft;
+        board.scrollLeft += dx;
+        // Re-place the column for the columns that just slid past, or it stays
+        // put while the board moves and lands nowhere near the pointer.
+        if (board.scrollLeft !== was) place();
+        scrolling = requestAnimationFrame(edgeScroll);
+      }
+    };
+
+    // Which column is under the pointer, and which side of it.
+    const place = () => {
+      if (col.parentElement !== board) return;   // repainted out from under us
+      for (const other of board.children) {
+        if (other === col) continue;
+        const r = other.getBoundingClientRect();
+        if (pointerX < r.left || pointerX > r.right) continue;
+        const before = pointerX < r.left + r.width / 2;
+        board.insertBefore(col, before ? other : other.nextSibling);
+        break;
+      }
+    };
+
+    const move = (e) => {
+      pointerX = e.clientX;
+      if (!dragging) {
+        if (Math.abs(e.clientX - startX) < 6) return;   // still a click
+        started();
+      }
+      place();
+      if (!scrolling) edgeScroll();
+    };
+
+    const up = async () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      document.removeEventListener("pointercancel", up);
+      if (scrolling) cancelAnimationFrame(scrolling);
+      scrolling = 0;
+      if (!dragging) return;
+      col.classList.remove("col-dragging");
+      document.body.classList.remove("board-reordering");
+      if (await saveOrder(board)) {
+        BOARD_PAINT_HELD = null;    // refreshFeeds renders in its place
+        await refreshFeeds();
+      } else {
+        releaseBoardPaint();        // nothing saved: put up the paint we held
+      }
+    };
+
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+    // Without this a cancelled gesture would leave the board held: paints are
+    // suppressed while a drag is in flight, and the drag would never end.
+    document.addEventListener("pointercancel", up);
+  });
+}
+
+
 function resizeGrip(col, feed) {
   const grip = document.createElement("div");
   grip.className = "col-grip";
@@ -1764,7 +1956,9 @@ function wireRowPressRecovery() {
    A column card is a teaser: a truncated summary, a few tags. Here the
    publisher's summary is whole, the body has an extract, and the outlet's own
    page is a marked button, never an accident. */
-let STORY_SEQ = 0;    // which story the view is being drawn for
+let STORY_SEQ = 0;
+// What the Focus view is currently showing, so Export knows its subject.
+let STORY_ON_SCREEN = null;    // which story the view is being drawn for
 
 /* A story already fetched, kept briefly so reopening one costs nothing. The
    server answers in about 18ms on a large database, but the round trip does
@@ -1918,6 +2112,11 @@ function paintStory(d, { partial = false } = {}) {
   const a = d.article;
   const ev = d.event;
   markStoryRead(a);
+  // Remembered so the Export button knows what is on screen. It stays usable
+  // while the story is still filling in: an unclustered report exports as
+  // itself, so there is nothing to wait for.
+  STORY_ON_SCREEN = { id: a.id, title: a.title,
+                      reports: (d.articles || []).length || 1 };
 
   el("st-title").textContent = a.title;
 
@@ -2097,6 +2296,7 @@ let STORY_PAINTED = null;   // which report the view currently shows
 function closeStory() {
   STORY_SEQ++;                      // an answer still in flight is now stale
   STORY_PAINTED = null;
+  STORY_ON_SCREEN = null;           // nothing to export once it is closed
   el("story-backdrop").hidden = true;
 }
 
@@ -3291,8 +3491,14 @@ async function exportColumn(feed, fmt) {
   const options = feed.home
     ? { method: "POST", body: JSON.stringify({ criteria: feed.criteria, name: feed.name }) }
     : {};
-  // Not api(): that parses JSON, and these are files. The error handling is the
-  // same though — a failed export must say why, like everything else.
+  return downloadExport(path, options, fmt);
+}
+
+/* Fetch a file the server built and hand it to the browser.
+
+   Not api(): that parses JSON, and these are files. The error handling is the
+   same though — a failed export must say why, like everything else. */
+async function downloadExport(path, options, fmt) {
   const headers = { "Content-Type": "application/json" };
   if (Session.token()) headers["Authorization"] = "Bearer " + Session.token();
   let resp;
@@ -3320,14 +3526,60 @@ async function exportColumn(feed, fmt) {
   return { rows: Number(resp.headers.get("X-Export-Rows") || 0), name: a.download };
 }
 
-function exportMenu(anchor, feed) {
+/* Save a Focus: the report on screen and every outlet carrying it.
+
+   Shares download(), and therefore its error handling, with the column export
+   — a failed export has to say why here for the same reason it does there. */
+async function exportStory(fmt) {
+  if (!STORY_ON_SCREEN) return;
+  return downloadExport(
+    `/api/story/${STORY_ON_SCREEN.id}/export?format=${fmt}${langQS()}`, {}, fmt);
+}
+
+function storyExportMenu(anchor) {
+  if (!STORY_ON_SCREEN) return;
+  popMenu(anchor, `Export “${STORY_ON_SCREEN.title.slice(0, 60)}”`,
+    async (fmt) => {
+      const done = await exportStory(fmt);
+      toast("Export ready",
+            `${done.rows} report${plural(done.rows)} saved as ${done.name}. `
+            + "Check your browser's downloads.");
+    },
+    (e) => toast("Couldn't export this story", e.message));
+}
+
+/* Put a pop-up menu against the control that opened it, and close it on the
+   next press elsewhere.
+
+   Below the control when there is room, above it when there is not. The column
+   exports hang off a button at the top of the board, so dropping downwards
+   always worked; the Focus export hangs off the foot of a modal, where a
+   five-row menu ran off the bottom of the window and could not be clicked at
+   all. */
+function placeMenu(menu, anchor) {
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  const below = r.bottom + 4;
+  menu.style.top = (below + menu.offsetHeight <= innerHeight - 8
+                    ? below
+                    : Math.max(8, r.top - menu.offsetHeight - 4)) + "px";
+  menu.style.left = Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8)) + "px";
+  setTimeout(() => document.addEventListener("mousedown", function close(e) {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("mousedown", close); }
+  }), 0);
+}
+
+/* The format picker, shared by every export. Each row says what the format is
+   good for, because "xlsx / docx / csv / md / json" is a list of file
+   extensions rather than a choice anyone can make. */
+function popMenu(anchor, headText, onPick, onError) {
   const old = document.querySelector(".pop-menu");
   if (old) old.remove();
   const menu = document.createElement("div");
   menu.className = "pop-menu export-menu";
   const head = document.createElement("div");
   head.className = "pop-menu-head";
-  head.textContent = `Export “${feed.name}”`;
+  head.textContent = headText;
   menu.appendChild(head);
   for (const [fmt, label, why] of EXPORT_FORMATS) {
     const b = document.createElement("button");
@@ -3338,23 +3590,21 @@ function exportMenu(anchor, feed) {
     b.append(name, note);
     b.onclick = async () => {
       menu.remove();
-      try {
-        const done = await exportColumn(feed, fmt);
-        toast("Export ready", `${done.rows} article${plural(done.rows)} saved as `
-          + `${done.name}. Check your browser's downloads.`);
-      } catch (e) {
-        toast(`Couldn't export “${feed.name}”`, e.message);
-      }
+      try { await onPick(fmt); } catch (e) { onError(e); }
     };
     menu.appendChild(b);
   }
-  document.body.appendChild(menu);
-  const r = anchor.getBoundingClientRect();
-  menu.style.top = (r.bottom + 4) + "px";
-  menu.style.left = Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8)) + "px";
-  setTimeout(() => document.addEventListener("mousedown", function close(e) {
-    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("mousedown", close); }
-  }), 0);
+  placeMenu(menu, anchor);
+}
+
+function exportMenu(anchor, feed) {
+  popMenu(anchor, `Export “${feed.name}”`,
+    async (fmt) => {
+      const done = await exportColumn(feed, fmt);
+      toast("Export ready", `${done.rows} article${plural(done.rows)} saved as `
+        + `${done.name}. Check your browser's downloads.`);
+    },
+    (e) => toast(`Couldn't export “${feed.name}”`, e.message));
 }
 
 function pantheonPickMenu(anchor, onPick) {
@@ -3368,13 +3618,7 @@ function pantheonPickMenu(anchor, onPick) {
     b.onclick = () => { menu.remove(); onPick(p); };
     menu.appendChild(b);
   }
-  document.body.appendChild(menu);
-  const r = anchor.getBoundingClientRect();
-  menu.style.top = (r.bottom + 4) + "px";
-  menu.style.left = Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8)) + "px";
-  setTimeout(() => document.addEventListener("mousedown", function close(e) {
-    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("mousedown", close); }
-  }), 0);
+  placeMenu(menu, anchor);
 }
 
 async function renderPantheonsPanel() {

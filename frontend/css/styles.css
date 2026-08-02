@@ -1271,3 +1271,24 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
 .gap-sm { margin-top: 6px; }
 .gap-md { margin-top: 10px; }
 .note-muted { color: var(--ink-muted); font-style: normal; }
+
+/* ---------- dragging a column to move it ----------
+   The header is the handle. Replaced ◀ ▶ buttons, which stepped one place per
+   click and never showed where the column would land. */
+.feed-head-draggable { cursor: grab; }
+.feed-head-draggable:active { cursor: grabbing; }
+/* Buttons inside the header keep their own cursor — they are not handles. */
+.feed-head-draggable button,
+.feed-head-draggable a { cursor: pointer; }
+
+.col-dragging {
+  opacity: 0.65;
+  /* Lifted, so it reads as being carried over the board rather than part of it. */
+  transform: scale(0.99);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 5;
+}
+/* While a column is in the air, stop the pointer selecting headlines behind it
+   and stop other columns claiming the cursor. */
+body.board-reordering { user-select: none; cursor: grabbing; }
+body.board-reordering .feed-col:not(.col-dragging) { transition: transform 120ms ease; }

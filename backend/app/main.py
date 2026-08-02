@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 import re as _username_re
 
@@ -1222,6 +1223,55 @@ async def repair_source(source_id: int, db: Session = Depends(get_db)):
 
 # ---------- articles / search ----------
 
+# How many column scans may be in flight at once. The matching is Python, so
+# the threads take turns at the interpreter anyway, and letting a whole board
+# loose only adds contention: six columns measured 2.69s unbounded against
+# 0.94s two at a time, on the same data. Two keeps a thread working while
+# another waits on SQLite, and is few enough that the queue stays short.
+SCAN_CONCURRENCY = 2
+
+# A semaphore belongs to the loop that first waits on it, and raises if it is
+# used from another. The server has one loop for its whole life, so this could
+# have been a module-level constant — but each test runs its own loop, and a
+# limiter that only works under the first of them is a limiter nobody can
+# check. Built on demand, discarded when the loop changes.
+_SCAN_SLOTS: asyncio.Semaphore | None = None
+_SCAN_SLOTS_LOOP: asyncio.AbstractEventLoop | None = None
+
+
+def _scan_slots() -> asyncio.Semaphore:
+    global _SCAN_SLOTS, _SCAN_SLOTS_LOOP
+    loop = asyncio.get_running_loop()
+    if _SCAN_SLOTS is None or _SCAN_SLOTS_LOOP is not loop:
+        _SCAN_SLOTS, _SCAN_SLOTS_LOOP = asyncio.Semaphore(SCAN_CONCURRENCY), loop
+    return _SCAN_SLOTS
+
+
+async def scan_articles(db: Session, criteria: dict, *, sort: str, limit: int):
+    """`query_articles` on a worker thread instead of the event loop.
+
+    Every column on the board is one of these, and each is a SQL read followed
+    by the matcher sifting the rows in Python — hundreds of milliseconds on a
+    full database, and none of it releases the loop. Called directly from an
+    `async def` handler it stops the whole process: while one column is being
+    matched, nothing else is served, not the other columns and not the cheap
+    reads behind the panels.
+
+    That is what a reader sees as the favourite-locations panel timing out.
+    Locations are among the smallest queries in the app, so when one takes
+    thirty seconds it is because it spent that time waiting for a turn. On a
+    120,000-article copy, a board of six watched-place columns held an
+    unrelated `GET /api/locations` for 719 ms; with the scan on a thread the
+    same request comes back in 36 ms while the board loads around it.
+
+    The session is safe here: the engine is opened with `check_same_thread`
+    off, and each request has its own session used by one thread at a time.
+    """
+    async with _scan_slots():
+        return await run_in_threadpool(query_articles, db, criteria,
+                                       sort=sort, limit=limit)
+
+
 @app.post("/api/articles/search")
 async def search_articles(
     body: dict,
@@ -1239,7 +1289,7 @@ async def search_articles(
     # has already run it; everything below this line is still per-request.
     articles = home.take(db, criteria, sort, limit, grouped=False)
     if articles is None:
-        articles = query_articles(db, criteria, sort=sort, limit=limit)
+        articles = await scan_articles(db, criteria, sort=sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
     read_alone = _viewed_articles(db, user_id, articles)
@@ -1371,7 +1421,7 @@ async def export_feed(feed_id: int, request: Request,
     """One saved feed's current matches, as a file."""
     ratelimit.check("export", request)
     feed = _shared_item_for_read(db, Feed, feed_id, user_id)
-    articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
+    articles = await scan_articles(db, feed.criteria, sort=feed.sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
     return _export_response(fmt, feed.name, _export_rows(articles, tr))
 
@@ -1389,7 +1439,7 @@ async def export_search(body: dict, request: Request,
     ratelimit.check("export", request)
     criteria = body.get("criteria", body)
     name = (body.get("name") or "Delphi export").strip()[:120]
-    articles = query_articles(db, criteria, sort=sort, limit=limit)
+    articles = await scan_articles(db, criteria, sort=sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
     return _export_response(fmt, name, _export_rows(articles, tr))
 
@@ -1397,9 +1447,10 @@ async def export_search(body: dict, request: Request,
 @app.get("/api/feeds/{feed_id}/articles")
 async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
                         lang: str = Query(default=""),
-                                            user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
+                        user_id: str = Depends(user_id_header),
+                        db: Session = Depends(get_db)):
     feed = _shared_item_for_read(db, Feed, feed_id, user_id)
-    articles = query_articles(db, feed.criteria, sort=feed.sort, limit=limit)
+    articles = await scan_articles(db, feed.criteria, sort=feed.sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
     viewed = _viewed_events(db, user_id, articles)
     read_alone = _viewed_articles(db, user_id, articles)
@@ -1456,7 +1507,7 @@ async def feed_events(feed_id: int, limit: int = Query(default=30, le=100),
                       lang: str = Query(default=""),
                                         user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     feed = _shared_item_for_read(db, Feed, feed_id, user_id)
-    articles = query_articles(db, feed.criteria, sort=feed.sort, limit=200)
+    articles = await scan_articles(db, feed.criteria, sort=feed.sort, limit=200)
     return await _grouped_response(db, articles, lang, limit, user_id)
 
 
@@ -1475,7 +1526,8 @@ async def search_grouped(
     criteria = body.get("criteria", body)
     articles = home.take(db, criteria, sort, limit, grouped=True)
     if articles is None:
-        articles = query_articles(db, criteria, sort=sort, limit=home.GROUPED_QUERY_LIMIT)
+        articles = await scan_articles(db, criteria, sort=sort,
+                                       limit=home.GROUPED_QUERY_LIMIT)
     return await _grouped_response(db, articles, lang, limit, user_id)
 
 
@@ -2287,6 +2339,42 @@ async def story(article_id: int, lang: str = Query(default=""),
     if not article:
         raise HTTPException(404, "Article not found")
     return await _story(db, article, lang, user_id)
+
+
+@app.get("/api/story/{article_id}/export")
+async def export_story(article_id: int, request: Request,
+                       fmt: str = Query(default="docx", alias="format"),
+                       lang: str = Query(default=""),
+                       user_id: str = Depends(user_id_header),
+                       db: Session = Depends(get_db)):
+    """A focused story as a file: the report, and every outlet carrying it.
+
+    The reason to export a Focus rather than a column is that it is already the
+    unit somebody wants to hand on — one thing that happened, with the coverage
+    of it gathered. A column is a standing interest; a Focus is a finding.
+
+    The picked report leads, whatever its timestamp, because it is the one the
+    reader chose; the rest of the event follows newest-first. An unclustered
+    report exports as itself, which is simply a story nobody else has yet.
+
+    Defaults to docx rather than csv — the other exports feed a spreadsheet,
+    this one gets read.
+    """
+    ratelimit.check("export", request)
+    article = db.get(Article, article_id)
+    if not article:
+        raise HTTPException(404, "Article not found")
+
+    reports = [article]
+    if article.event_id:
+        rest = db.scalars(
+            select(Article).where(Article.event_id == article.event_id)
+            .order_by(Article.published_at.desc()).limit(STORY_TIMELINE_MAX)).all()
+        reports += [a for a in rest if a.id != article.id]
+
+    tr = await translate.translate_articles(db, reports, lang)
+    name = ((tr.get(article.id, {}).get("title") or article.title) or "Story")[:120]
+    return _export_response(fmt, name, _export_rows(reports, tr))
 
 
 @app.get("/api/story/by-event/{event_id}")

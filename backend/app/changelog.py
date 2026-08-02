@@ -14,8 +14,26 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-08-25",
-        "title": "Reclaiming disk space is now the operator's call",
+        "title": "Take a Focus away, and drag your columns where you want them",
         "items": [
+            "📤 A Focus can now be exported. Open any story and press ⭳ Export "
+            "for the whole of it — the report you opened first, then every "
+            "other outlet carrying the same story — as a Word brief, a "
+            "spreadsheet, CSV, Markdown or JSON.",
+            "↔️ Columns are moved by dragging them. Grab a column anywhere on "
+            "its header and slide it; the board opens a gap where it will "
+            "land, so you can see where you are putting it before you let go. "
+            "This replaces the ◀ ▶ buttons, which moved a column one place per "
+            "press and never showed you where it was going. ← and → still move "
+            "the focused column one place, for anyone not using a pointer.",
+            "🖐 Holding a dragged column against either edge of the board "
+            "scrolls it, so you can move a column to the far end even when the "
+            "far end is off screen.",
+            "⏱ Panels no longer wait behind the board. Loading a column used "
+            "to hold the whole server while it worked, which is why 📍 "
+            "Favourite Locations could sit there and then give up with “the "
+            "server didn't respond”. Columns are now worked on beside "
+            "everything else rather than in front of it.",
             "💾 Correcting how the last release shipped: on a database made "
             "before Delphi set this up at creation, handing deleted news back "
             "to the disk needs a one-off rewrite of the whole file — and that "

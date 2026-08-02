@@ -351,8 +351,12 @@
 
         <details>
           <summary>↔ Arranging the board</summary>
-          <p><b>Reorder:</b> <b>◀</b> and <b>▶</b> in a column's header move it left and
-             right. The order is saved to your account.</p>
+          <p><b>Reorder:</b> grab a column by its <b>header</b> — anywhere that isn't a
+             button — and drag it left or right. The board opens a gap where the column
+             will land, so you can see the new arrangement before you let go. Holding
+             the column against either edge of the board scrolls it, so you can reach a
+             position that is off screen. The order is saved to your account when you
+             let go.</p>
           <p><b>Resize:</b> drag a column's <b>right edge</b> — a gold line marks it when
              your pointer is on it — anywhere between 240 and 1000 pixels wide.
              <b>Double-click</b> that edge to return the column to the default width.
@@ -407,6 +411,10 @@
             <li><b>Details</b> gives the publication time in UTC, when D.E.L.P.H.I.
               collected it, the outlet's reach and platform, the places named, and the
               importance out of 100.</li>
+            <li><b>⭳ Export</b> at the bottom takes the whole story away as a file —
+              the report you opened first, then every other outlet carrying it, in the
+              same five formats a column offers. A story nobody else has picked up
+              exports as itself.</li>
             <li><b>Open original ↗</b> at the bottom goes to the outlet — the only
               thing here that leaves D.E.L.P.H.I. On a paywalled outlet,
               <b>🔓 archive.ph</b> sits beside it.</li>
@@ -1822,6 +1830,9 @@
         </div>
       </div>
       <div class="modal-foot">
+        <!-- A Focus is already the unit somebody wants to pass on: one thing
+             that happened, with the coverage of it gathered. -->
+        <button class="btn" id="btn-story-export" title="Save this story and every outlet carrying it">⭳ Export</button>
         <span class="spacer"></span>
         <a class="btn" id="st-archive" target="_blank" rel="noopener" hidden>🔓 archive.ph</a>
         <a class="btn btn-primary" id="st-open" target="_blank" rel="noopener">Open original ↗</a>

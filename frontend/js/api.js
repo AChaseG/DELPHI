@@ -151,6 +151,7 @@ const OPERATION_NAMES = [
   [/^\/api\/alerts/, "load or save your alerts"],
   [/^\/api\/articles\/search-grouped/, "group a column's articles into events"],
   [/^\/api\/articles\/search/, "run that search"],
+  [/^\/api\/story\/\d+\/export/, "export this story"],
   [/^\/api\/story\//, "open the story"],
   [/^\/api\/sources\/\d+\/repair/, "repair that source"],
   [/^\/api\/sources\/(topic|social)-tracker/, "add that tracker"],

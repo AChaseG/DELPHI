@@ -41,7 +41,7 @@ feeds**.
   access anything. Sign in with username or email from any browser or device.
   Feeds and alerts are private per account; articles and sources are shared
   infrastructure — one ingestion pipeline feeds every user. Feeds are arranged
-  in columns you can reorder, widen, edit, and delete.
+  in columns you can drag to reorder, widen, edit, and delete.
 - **Home & My feeds.** The dashboard opens on **🏠 Home** — Delphi-curated
   columns generated live from everything ingested (top events, breaking now,
   conflict & disasters, politics, business, sci-tech, social pulse). Those
@@ -280,6 +280,19 @@ frontend/             no build step — plain HTML/CSS/JS; Leaflet vendored in f
                       (loaded on demand by ensureLeaflet(), not at startup)
 ```
 
+### One process, one loop
+
+D.E.L.P.H.I. runs as a single machine on purpose — the poller's scheduler, the
+rate limiter and the SQLite file all assume there is exactly one of it, so it
+scales up rather than out. That makes anything slow on the event loop a
+whole-site outage rather than a slow page: a column is a SQL read plus the
+matcher sifting rows in Python, and while one runs inline nothing else is
+served. Column scans therefore go through `scan_articles`, which hands the work
+to a worker thread and admits `SCAN_CONCURRENCY` of them at a time — enough to
+keep a thread busy while another waits on SQLite, few enough that a board does
+not flood the pool. Measured on a 120,000-article copy: a six-column board held
+an unrelated `GET /api/locations` for 719 ms before, and 36 ms after.
+
 ### API sketch
 
 ```
@@ -293,6 +306,7 @@ POST /api/feeds/reorder            dashboard layout
 GET  /api/feeds/{id}/articles      feed contents (?lang=xx translates)
 GET  /api/feeds/{id}/events        feed contents clustered into events
 GET  /api/events/{id}              one event + full article timeline
+GET  /api/story/{id}/export        one story + every outlet carrying it, as a file
 POST /api/events/rebuild           recluster all stored articles
 GET|POST|PUT|DELETE /api/alerts    per-user alerts
 GET  /api/alerts/{id}/events       alert hit history
