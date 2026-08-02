@@ -1040,6 +1040,30 @@ def save_user_settings(body: dict, user_id: str = Depends(user_id_header),
 
 # ---------- sources ----------
 
+# The rendered source catalog, and when it was built.
+#
+# This is half a megabyte across more than a thousand outlets, and it was built
+# from scratch for every caller: the ORM rows, a dict each, FastAPI's encoder
+# walking all twenty-odd thousand values again, then JSON. About 80ms of pure
+# Python — which is fine once and ruinous concurrently, because none of it
+# releases the interpreter. Ten callers at once measured 2.9s each and forty
+# never finished at all, and since a browser asks for this whenever the Sources
+# panel or the feed editor opens, one reader with a few tabs is enough. While
+# it ran, every other request queued behind it — which is why panels that touch
+# none of this were slow to open too.
+#
+# So it is built once and handed out. The TTL is what bounds staleness of the
+# poll status shown in the panel; sources are polled minutes apart, so seconds
+# of lag there costs nothing, and anything that edits the catalog clears it
+# outright so a change is never waited for.
+_SOURCES_CACHE: dict[bool, tuple[float, bytes]] = {}
+SOURCES_CACHE_TTL = 15.0
+
+
+def _invalidate_sources_cache() -> None:
+    _SOURCES_CACHE.clear()
+
+
 @app.get("/api/sources")
 def list_sources(slim: bool = Query(default=False), db: Session = Depends(get_db)):
     """Every source, or — with slim=1 — just enough to name one.
@@ -1047,28 +1071,51 @@ def list_sources(slim: bool = Query(default=False), db: Session = Depends(get_db
     The full catalog runs past a thousand outlets and half a megabyte, and the
     dashboard needs it only when the Sources panel or the wizard's picker is
     open. At startup all it has to do is put a name against the outlets a feed
-    is restricted to, which is two fields."""
+    is restricted to, which is two fields.
+
+    Served from a rendered cache — see the note above it."""
+    fresh = _SOURCES_CACHE.get(slim)
+    if fresh and time.monotonic() - fresh[0] < SOURCES_CACHE_TTL:
+        return Response(fresh[1], media_type="application/json")
+
     if slim:
         rows = db.execute(select(Source.id, Source.name).order_by(Source.name)).all()
-        return [{"id": i, "name": n} for i, n in rows]
-    sources = db.scalars(select(Source).order_by(Source.name)).all()
-    # Which of them have ever produced anything, in one pass over the index
-    # rather than a query per source. A green health dot only says the feed
-    # answered; this says whether answering ever amounted to news.
-    producing = set(db.scalars(select(Article.source_id).distinct()))
-    return [{
-        "id": s.id, "name": s.name, "rss_url": s.rss_url, "homepage": s.homepage,
-        "country": s.country, "region": s.region, "language": s.language,
-        "scope": s.scope, "categories": s.categories or [], "tier": s.tier,
-        "platform": s.platform or "news",
-        "paywall": bool(s.paywall),
-        "enabled": s.enabled, "added_by": s.added_by,
-        "last_fetched_at": s.last_fetched_at.isoformat() + "Z" if s.last_fetched_at else None,
-        "last_status": s.last_status, "last_article_count": s.last_article_count,
-        "consecutive_failures": s.consecutive_failures or 0,
-        "repaired_from": s.repaired_from or "",
-        "has_produced": s.id in producing,
-    } for s in sources]
+        payload = [{"id": i, "name": n} for i, n in rows]
+    else:
+        # Columns rather than whole ORM objects: nothing here needs a mapped
+        # instance, and building 1,200 of them to read 19 attributes off each
+        # is most of the query's cost.
+        cols = (Source.id, Source.name, Source.rss_url, Source.homepage,
+                Source.country, Source.region, Source.language, Source.scope,
+                Source.categories, Source.tier, Source.platform, Source.paywall,
+                Source.enabled, Source.added_by, Source.last_fetched_at,
+                Source.last_status, Source.last_article_count,
+                Source.consecutive_failures, Source.repaired_from)
+        rows = db.execute(select(*cols).order_by(Source.name)).all()
+        # Which of them have ever produced anything, in one pass over the index
+        # rather than a query per source. A green health dot only says the feed
+        # answered; this says whether answering ever amounted to news.
+        producing = set(db.scalars(select(Article.source_id).distinct()))
+        payload = [{
+            "id": s.id, "name": s.name, "rss_url": s.rss_url, "homepage": s.homepage,
+            "country": s.country, "region": s.region, "language": s.language,
+            "scope": s.scope, "categories": s.categories or [], "tier": s.tier,
+            "platform": s.platform or "news",
+            "paywall": bool(s.paywall),
+            "enabled": s.enabled, "added_by": s.added_by,
+            "last_fetched_at": s.last_fetched_at.isoformat() + "Z" if s.last_fetched_at else None,
+            "last_status": s.last_status, "last_article_count": s.last_article_count,
+            "consecutive_failures": s.consecutive_failures or 0,
+            "repaired_from": s.repaired_from or "",
+            "has_produced": s.id in producing,
+        } for s in rows]
+
+    # Rendered here rather than returned as a list, so FastAPI's encoder does
+    # not walk every value in it a second time on the way out. Everything in
+    # the payload is already a JSON type.
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    _SOURCES_CACHE[slim] = (time.monotonic(), body)
+    return Response(body, media_type="application/json")
 
 
 def _fetchable(url: str) -> str:
@@ -1095,6 +1142,7 @@ def create_source(body: SourceIn, db: Session = Depends(get_db)):
     source = Source(**body.model_dump(), added_by="user")
     db.add(source)
     db.commit()
+    _invalidate_sources_cache()
     return {"id": source.id}
 
 
@@ -1105,6 +1153,7 @@ def seed_cities_endpoint(admin: User = Depends(require_admin),
     Lets an already-running instance pick up the city catalog without a restart."""
     from . import cities
     added = seed_city_sources(db)
+    _invalidate_sources_cache()
     return {"added": added, "cities_in_catalog": cities.city_count()}
 
 
@@ -1128,6 +1177,7 @@ def create_topic_tracker(body: TopicTrackerIn, db: Session = Depends(get_db)):
     )
     db.add(source)
     db.commit()
+    _invalidate_sources_cache()
     return {"id": source.id, "rss_url": rss}
 
 
@@ -1148,6 +1198,7 @@ def update_source(source_id: int, body: dict, db: Session = Depends(get_db)):
         if key in body:
             setattr(source, key, body[key])
     db.commit()
+    _invalidate_sources_cache()
     return {"ok": True}
 
 
@@ -1180,6 +1231,7 @@ def create_social_tracker(body: SocialTrackerIn, db: Session = Depends(get_db)):
     db.commit()
     if not created:
         raise HTTPException(409, "This topic is already tracked on social platforms")
+    _invalidate_sources_cache()
     return {"created": created}
 
 
@@ -1199,6 +1251,7 @@ def delete_source(source_id: int, admin: User = Depends(require_admin),
         raise HTTPException(404, "Source not found")
     db.delete(source)
     db.commit()
+    _invalidate_sources_cache()
 
 
 @app.post("/api/sources/{source_id}/repair")
@@ -1221,6 +1274,7 @@ async def repair_source(source_id: int, db: Session = Depends(get_db)):
     db.commit()
     assign_events(db, new)
     db.commit()
+    _invalidate_sources_cache()
     return {"repaired": True, "changed": source.rss_url != old_url,
             "rss_url": source.rss_url, "repaired_from": source.repaired_from,
             "status": source.last_status, "new_articles": len(new)}

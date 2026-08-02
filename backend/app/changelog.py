@@ -13,6 +13,27 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-27",
+        "title": "The side panels open again",
+        "items": [
+            "⚡ Pantheons, Locations, Alerts, Sources and the feed editor were "
+            "taking a very long time to open, or never opening at all. The "
+            "cause was the source catalog: it is half a megabyte now that the "
+            "catalog has passed a thousand outlets, and it was rebuilt from "
+            "scratch for every request. Building it holds the server "
+            "completely, so while one request was doing it, every other one "
+            "waited — including panels that have nothing to do with sources. "
+            "It is now built once and handed out. Measured on a "
+            "1,200-source catalog: ten requests at once went from 2.9 seconds "
+            "each to 58 milliseconds, and forty at once from never finishing "
+            "to 173 milliseconds.",
+            "🕓 The Sources panel can now show a source's poll status up to "
+            "fifteen seconds late as a result. Sources are polled minutes "
+            "apart so there is nothing to see in that window — and anything "
+            "you change yourself still appears immediately.",
+        ],
+    },
+    {
         "date": "2026-08-26",
         "title": "A thousand sources should not read like thirty",
         "items": [
