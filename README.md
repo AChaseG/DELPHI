@@ -41,7 +41,13 @@ feeds**.
   access anything. Sign in with username or email from any browser or device.
   Feeds and alerts are private per account; articles and sources are shared
   infrastructure — one ingestion pipeline feeds every user. Feeds are arranged
-  in columns you can drag to reorder, widen, edit, and delete.
+  in columns you can drag to reorder, widen, edit, and delete. Columns share
+  out whatever width a monitor leaves over — from a 360px base up to 560px,
+  with anything beyond that split evenly on both sides — so a wide or ultrawide
+  screen carries more news rather than more background. A column sized by hand
+  opts out and keeps the width it was given. The numbers live in
+  `--col-base` / `--col-grow-max` in `frontend/css/styles.css`, and the
+  arithmetic behind them is checked in `tests/test_wide_screen_layout.py`.
 - **Home & My feeds.** The dashboard opens on **🏠 Home** — Delphi-curated
   columns generated live from everything ingested (top events, breaking now,
   conflict & disasters, politics, business, sci-tech, social pulse). Those

@@ -10,6 +10,11 @@
   /* Width of the collapsed action rail; the board reserves this much on the
      right so the last feed column is never hidden underneath it. */
   --rail-w: 52px;
+  /* A feed column's natural width, and how wide it may grow to use up a wide
+     monitor. 360 is the width the board was built around; 560 is where a
+     headline stops scanning like a column and starts scanning like a page. */
+  --col-base: 360px;
+  --col-grow-max: 560px;
   /* Width of a decorative Greek column. The right-hand one sits inboard of the
      rail, so the board has to clear both — see the board's padding. */
   --pillar-w: 58px;
@@ -289,6 +294,11 @@ button { font: inherit; }
      bar stays pinned to the bottom of the visible area. */
   overflow-y: hidden;
   overscroll-behavior-x: contain;
+  /* When the columns cannot fill the board even at full width, split what is
+     left between both sides instead of leaving it all on the right. `safe`
+     matters: plain `center` makes the first column unreachable once the board
+     overflows, because the overflow goes off the start edge. */
+  justify-content: safe center;
   /* Fill the space the header leaves, whatever that turns out to be. min-height
      0 is required or flex refuses to shrink this below its content. */
   flex: 1 1 auto;
@@ -329,7 +339,25 @@ button { font: inherit; }
 /* Default width. A column carrying its own width overrides both of these
    inline (app.js sets width and flex-basis together — flex-basis here would
    otherwise win over a bare inline width). */
-.board > .feed-col { flex: 0 0 360px; width: 360px; }
+/* A column starts at 360px and takes a share of whatever is left over, up to
+   a width that is still a news column rather than a page.
+
+   Fixed at 360px, a wider monitor bought only more empty background: measured
+   with seven columns, a 3440px window left 1,140px of it and a 5120px 32:9
+   left 2,820px — over half the screen. Growing has a limit, though, because a
+   headline set 900px wide is worse to scan than two columns of 450px, so the
+   cap is where a column stops reading as one. Past that the leftover is split
+   evenly on both sides (see justify-content on .board) rather than piled up on
+   the right.
+
+   Columns the reader has sized by dragging opt out of this — applyColWidth
+   sets flex-grow to 0 — because a width somebody chose is not leftover space
+   to redistribute. */
+.board > .feed-col {
+  flex: 1 0 var(--col-base);
+  width: var(--col-base);
+  max-width: var(--col-grow-max);
+}
 /* Skipping whole off-screen columns was measured and rejected: the rows inside
    one are already off-screen, so the row rule above has taken the work
    regardless, and containing the column made the worst repaint worse. */

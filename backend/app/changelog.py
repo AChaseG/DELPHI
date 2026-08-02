@@ -13,6 +13,28 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-29",
+        "title": "The board uses your whole monitor now",
+        "items": [
+            "🖥 Columns were a fixed width, so a wider screen bought you more "
+            "empty background rather than more news. On a 3440-pixel monitor "
+            "seven columns left 1,140 pixels of it, and on a 32:9 ultrawide "
+            "2,820 — over half the screen. Columns now widen to share out "
+            "whatever is left, up to a point where a headline still reads like "
+            "a column rather than a page.",
+            "↔️ Past that point the space that cannot be used is split evenly "
+            "on both sides, so a board with only a few columns sits in the "
+            "middle instead of huddling against the left edge.",
+            "📐 A column you have sized yourself is left exactly as you set it "
+            "— it takes no part in the sharing out, so a board you have "
+            "arranged stays arranged.",
+            "🔍 Everything else was checked at 1920, 3440 and 5120 pixels wide "
+            "— the sign-in page, the feed editor, help, settings, sources, "
+            "alerts, locations and Pantheons — and nothing overflows, is cut "
+            "off, or stretches a line of text across the whole screen.",
+        ],
+    },
+    {
         "date": "2026-08-28",
         "title": "Why a feed carried a story with none of its words in it",
         "items": [

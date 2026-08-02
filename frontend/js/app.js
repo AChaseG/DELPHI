@@ -1490,6 +1490,12 @@ function applyColWidth(col, feed) {
   // inline width would lose to it.
   col.style.width = px ? px + "px" : "";
   col.style.flexBasis = px ? px + "px" : "";
+  // A column with no width of its own takes a share of whatever a wide monitor
+  // leaves over; one the reader dragged to a width keeps exactly that width.
+  // Without this, sizing a column would last until the next wide-screen
+  // reflow stretched it back.
+  col.style.flexGrow = px ? "0" : "";
+  col.style.maxWidth = px ? "none" : "";
 }
 
 /* The draggable right edge. Both edges used to resize the column, which meant
@@ -1678,6 +1684,11 @@ function resizeGrip(col, feed) {
   const preview = (px) => {
     col.style.width = col.style.flexBasis =
       Math.round(Math.min(COL_MAX, Math.max(COL_MIN, px))) + "px";
+    // The moment a width is being chosen by hand, the column stops sharing in
+    // the board's leftover space — otherwise the grip would appear stuck as
+    // soon as the drag passed the grow cap, and let go somewhere else entirely.
+    col.style.flexGrow = "0";
+    col.style.maxWidth = "none";
     syncBoardScrollbar();
   };
 
