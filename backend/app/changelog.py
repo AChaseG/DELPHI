@@ -13,6 +13,31 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-26",
+        "title": "A thousand sources should not read like thirty",
+        "items": [
+            "🏛 Which stories reach 🏠 Home no longer depends so much on who "
+            "reported them. A story's importance started from its outlet's "
+            "reach — and started so far apart that a wire's most routine item "
+            "outscored a local paper's report of people killed. Top stories "
+            "and Breaking now were reserved for about thirty international "
+            "wires no matter how many outlets were added underneath them, "
+            "which is why the board looked the same as the catalog grew past a "
+            "thousand. Reach still counts; it is no longer worth more than "
+            "what happened.",
+            "🚫 A source that fails five polls in a row is taken out of the "
+            "rotation. Nothing used to remove one, so a feed that went dead "
+            "was re-requested every few minutes forever. If it never carried a "
+            "single story it is deleted; if it published, it is retired "
+            "instead — no longer polled, but everything it gathered is kept "
+            "and you can put it back if the feed returns.",
+            "🕸 The Sources panel now says which feeds answer but never carry "
+            "anything. Search it for “silent” to list them, or “retired” for "
+            "the ones that have stopped. ⚙ Settings → Service health counts "
+            "both, so you can see how much of the catalog is really working.",
+        ],
+    },
+    {
         "date": "2026-08-25",
         "title": "Take a Focus away, and drag your columns where you want them",
         "items": [

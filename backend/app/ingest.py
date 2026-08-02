@@ -26,8 +26,8 @@ from .content import fetch_article_text
 from .database import SessionLocal
 from .events import broadcaster
 from .matching import CriteriaMatcher, article_text
-from .models import (Alert, AlertEvent, Article, Event, Source, Translation,
-                     User, ViewedArticle, ViewedEvent, utcnow)
+from .models import (Alert, AlertEvent, Article, Event, FavoriteLocation, Source,
+                     Translation, User, ViewedArticle, ViewedEvent, utcnow)
 from .geo import extract_places
 from .scoring import classify_categories, cluster_tokens, score_importance
 
@@ -54,6 +54,13 @@ CITY_INTERVAL = int(os.environ.get("NEWS_CITY_INTERVAL", "3600"))   # city local
 CITY_IDLE_BACKOFF_MAX = int(os.environ.get("NEWS_CITY_IDLE_BACKOFF_MAX", "4"))  # ×2^n cap
 GOOGLE_GAP = float(os.environ.get("NEWS_GOOGLE_GAP", "2.0"))       # min gap between google hits
 SHARED_HOST_GAP = float(os.environ.get("NEWS_SHARED_HOST_GAP", "1.0"))  # other multi-feed hosts
+
+# Consecutive failed polls before a source stops being one. A catalog grows on
+# its own — auto-discovery adds outlets, watched places add searches — and
+# nothing used to take one away, so a feed that went permanently dead was
+# re-requested every three minutes for as long as the deployment lived. Five in
+# a row is roughly twenty-five minutes of a source not answering.
+REMOVE_AFTER = int(os.environ.get("NEWS_REMOVE_AFTER", "5"))
 
 # Article retention: with ~500+ sources the table grows without bound and
 # every board query slows over time. Articles older than this are pruned
@@ -552,6 +559,73 @@ async def _fetch_batch(sources: list[Source]) -> list[tuple]:
         return await asyncio.gather(*(one(s) for s in sources))
 
 
+def _has_ever_produced(db, source: Source) -> bool:
+    """Has this source ever put an article in the database?
+
+    One indexed lookup that stops at the first row — the question is whether
+    there is any, not how many, and some sources have tens of thousands.
+    """
+    return db.scalar(select(Article.id).where(
+        Article.source_id == source.id).limit(1)) is not None
+
+
+def retire_or_remove(db, source: Source) -> str | None:
+    """Deal with a source that has stopped answering. Returns what was done.
+
+    Deleting a source takes its articles with it — the relationship cascades —
+    and five failures in a row is only about twenty-five minutes of downtime.
+    A publisher having a bad morning must not cost Delphi everything it has
+    ever carried from them, so what happens depends on whether there is
+    anything to lose:
+
+    *Nothing ever came from it* — deleted outright. This is the case that
+    prompted the rule: a catalog that grows by itself accumulates feeds that
+    404, feeds behind a login, and search URLs for places nobody watches any
+    more, and none of them have contributed a line. Removing them costs
+    nothing and stops the polling.
+
+    *It has published* — retired instead: disabled, so it is never polled
+    again, and left in the Sources panel saying why. The reporting it already
+    gathered stays readable, and an operator who knows the feed has really gone
+    can delete it by hand.
+
+    A source somebody added by hand is retired rather than deleted whatever its
+    record. Deleting the operator's own entry without asking is a worse failure
+    than keeping a dead row they can see and remove.
+
+    Automatic repair gets its turn first. It rediscovers the feed URL of a
+    source stuck on a permanent-looking error, and only five sources are tried
+    per cycle — so a source can reach the failure limit without ever having
+    been offered the fix. One that is still waiting for its first attempt is
+    left alone.
+    """
+    if (source.consecutive_failures or 0) < REMOVE_AFTER:
+        return None
+    if (repair.AUTO_REPAIR and repair.needs_repair(source.last_status)
+            and source.last_repair_at is None):
+        return None
+
+    was = (source.last_status or "no answer")[:120]
+    if source.added_by == "user" or _has_ever_produced(db, source):
+        source.enabled = False
+        source.last_status = (
+            f"retired: no answer in {REMOVE_AFTER} tries ({was}). "
+            "Its stories are kept; re-enable it if the feed comes back.")[:200]
+        log.info("retired source %s (%s)", source.name, source.rss_url)
+        return "retired"
+
+    # A watched place points at its search feed by id; leave it pointing at
+    # nothing rather than at a row that has gone, and the next save re-creates
+    # it. (SQLite does not enforce the foreign key for us here.)
+    for loc in db.scalars(select(FavoriteLocation).where(
+            FavoriteLocation.source_id == source.id)):
+        loc.source_id = None
+    log.info("removed source %s (%s) — never produced an article: %s",
+             source.name, source.rss_url, was)
+    db.delete(source)
+    return "removed"
+
+
 async def _ingest_batch(db, sources: list[Source]) -> dict:
     """Poll `sources`, insert new articles, then run repair, discovery,
     content enrichment, clustering, and alert evaluation over the result.
@@ -559,6 +633,7 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     if not sources:
         return {"new_articles": 0, "new_events": 0, "alert_hits": 0,
                 "content_fetched": 0, "repaired": 0, "discovered": 0,
+                "retired": 0, "removed": 0,
                 "sources_ok": 0, "sources_total": 0}
     recent = _recent_clusters(db)
     results = await _fetch_batch(sources)
@@ -568,6 +643,7 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     seen_urls: set[str] = set()
     publishers: dict[str, tuple[str, str]] = {}  # outlets named by entries' <source> tags
     unchanged = 0
+    failed: list[Source] = []      # dealt with after the loop, not during it
     for source, entries, fetch_status in results:
         source.last_fetched_at = utcnow()
         source.last_status = fetch_status
@@ -584,6 +660,7 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
             continue
         if fetch_status != "ok":
             source.consecutive_failures = (source.consecutive_failures or 0) + 1
+            failed.append(source)
             continue
         source.consecutive_failures = 0
         for dom, pub in discovery.collect_publishers(entries).items():
@@ -637,6 +714,24 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
                     db.rollback()
                     log.exception("repair failed for source %s", source.name)
 
+    # Sources that have run out of chances. After the repair pass, not before:
+    # a successful repair clears the failure count, and a source that can be
+    # fixed should be fixed rather than removed.
+    retired = removed = 0
+    for source in failed:
+        try:
+            what = retire_or_remove(db, source)
+        except Exception:
+            db.rollback()
+            log.exception("could not retire source %s", source.name)
+            continue
+        if what == "removed":
+            removed += 1
+        elif what == "retired":
+            retired += 1
+    if retired or removed:
+        db.commit()
+
     # Source discovery: outlets named by Google News coverage but missing from
     # the catalog get their own feed found, added, and ingested now.
     discovered = 0
@@ -687,6 +782,12 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
         "last_new_articles": len(all_new),
         "last_repaired": repaired,
         "last_discovered": discovered,
+        # Sources the catalog lost this batch. The catalog grows by itself, so
+        # an operator needs to see it shrink by itself too.
+        "last_retired": retired,
+        "last_removed": removed,
+        "retired_total": status.get("retired_total", 0) + retired,
+        "removed_total": status.get("removed_total", 0) + removed,
         "sources_ok": ok_sources,
         "sources_total": len(sources),
         # How many polls the publisher answered with "nothing changed". The
@@ -703,13 +804,14 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     for hit in hits:
         broadcaster.publish({"type": "alert", **hit})
     log.info("ingest batch: %d/%d sources ok (%d unchanged), %d new articles, "
-             "%d alert hits, %d repaired, %d discovered",
+             "%d alert hits, %d repaired, %d discovered, %d retired, %d removed",
              ok_sources, len(sources), unchanged, len(all_new), len(hits),
-             repaired, discovered)
+             repaired, discovered, retired, removed)
     return {"new_articles": len(all_new), "new_events": new_events, "unchanged": unchanged,
             "alert_hits": len(hits), "content_fetched": content_fetched,
             "backfilled": backfilled,
             "repaired": repaired, "discovered": discovered,
+            "retired": retired, "removed": removed,
             "sources_ok": ok_sources, "sources_total": len(sources)}
 
 

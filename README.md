@@ -250,6 +250,7 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_CONTENT_MAX_PER_CYCLE` | `150` | article pages fetched per ingest cycle |
 | `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
 | `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
+| `NEWS_REMOVE_AFTER` | `5` | consecutive failed polls before a source is retired or removed |
 | `NEWS_GEOCODER` | `nominatim` | address lookup for places the gazetteer lacks; `off` keeps every lookup local |
 | `NEWS_NOMINATIM_URL` | `https://nominatim.openstreetmap.org` | point at your own Nominatim instead |
 | `NEWS_GEOCODER_CONTACT` | repo URL | contact put in the User-Agent, as Nominatim's policy asks |
@@ -331,7 +332,27 @@ GET  /api/stream                   SSE: live article batches + alert hits
   (UK, UAE, Kiev/Kyiv…), and major cities, but has the usual ambiguities
   (e.g. Georgia country vs. US state). Swappable for a proper NER geocoder later.
 - Importance is a transparent heuristic, not a black box — see `scoring.py`
-  and tune the weights to taste.
+  and tune the weights to taste. The source's reach deliberately contributes
+  less than the story does: it starts an article between 31 and 46 depending on
+  scope and tier, against up to 60 from breaking signals, geographic breadth
+  and cross-source corroboration. It was 21–53, which is a spread wide enough
+  to settle the ranking on its own — Home's "Top stories" asks for 55, and an
+  international tier-1 wire's most routine item already scored 53 while a city
+  outlet's report of a fatal explosion scored 40. That made the two headline
+  columns a view of the ~30 catalog wires whatever else was in the catalog.
+- **Sources that stop answering leave.** Five consecutive failed polls
+  (`NEWS_REMOVE_AFTER`) ends a source: deleted outright if it never produced a
+  single article, retired — disabled, kept, re-enablable — if it published, and
+  always retired rather than deleted if a human added it. Automatic repair gets
+  its attempt first, so a feed that merely moved is rewired rather than
+  dropped. Without this a catalog that grows by itself only ever grows: nothing
+  removed the dead ones, and they were re-requested every few minutes for the
+  life of the deployment.
+- **A source that answers is not the same as a source that carries news.**
+  `/api/sources` reports `has_produced` per source and `/api/ingest/status`
+  counts the catalog: producing, silent (polled, never carried anything),
+  never polled, and retired. The Sources panel marks them and its filter box
+  understands `silent` and `retired`.
 - Accounts are self-serve; passwords are PBKDF2-hashed with HMAC-signed
   session tokens (`NEWS_SECRET` env or an auto-generated key beside the DB).
   Every API route except sign-in/register requires a session. **Common

@@ -14,7 +14,25 @@ import re
 
 from .intl_terms import BREAKING_INTL, CATEGORY_INTL, TAG_SYNONYMS
 
-_SCOPE_BASE = {"international": 45, "national": 35, "local": 25}
+# Where an article starts before anything is known about the story itself.
+#
+# This used to run 45/35/25, with tier adding +8 or −4 on top: 32 points of
+# spread decided by the source alone, against 30 for the entire breaking-signal
+# range. The arithmetic then settled Home's board on its own. "Top stories"
+# asks for 55, and a wire's most routine item — a scope of "international" and
+# tier 1, nothing else — already scored 53, while a city outlet's report of two
+# people dead in an explosion scored 40. So the two headline columns were
+# reserved for the thirty-odd catalog wires no matter how many outlets were
+# added underneath them, which is why a catalog past a thousand sources looked
+# exactly like a catalog of thirty.
+#
+# Reach still counts, because who is carrying something is real evidence about
+# how much it matters. It is just no longer worth more than what happened: the
+# source's share of the score is now 15 points across the whole catalog, so
+# corroboration and breaking signals — which are evidence about the story
+# rather than a standing guess about the outlet — decide the order.
+_SCOPE_BASE = {"international": 42, "national": 38, "local": 34}
+_TIER_ADJUST = {1: 4, 3: -3}
 
 # CJK/Thai have no ASCII word boundaries, so \b matching fails on them —
 # those terms are matched as substrings instead.
@@ -222,11 +240,7 @@ def score_importance(
     places: list[dict],
     corroborating_sources: int = 0,
 ) -> int:
-    score = _SCOPE_BASE.get(scope, 30)
-    if tier == 1:
-        score += 8
-    elif tier == 3:
-        score -= 4
+    score = _SCOPE_BASE.get(scope, 36) + _TIER_ADJUST.get(tier, 0)
     score += breaking_signal(text)
     countries = {p.get("country") for p in places if p.get("country")}
     if len(countries) >= 2:

@@ -1052,6 +1052,10 @@ def list_sources(slim: bool = Query(default=False), db: Session = Depends(get_db
         rows = db.execute(select(Source.id, Source.name).order_by(Source.name)).all()
         return [{"id": i, "name": n} for i, n in rows]
     sources = db.scalars(select(Source).order_by(Source.name)).all()
+    # Which of them have ever produced anything, in one pass over the index
+    # rather than a query per source. A green health dot only says the feed
+    # answered; this says whether answering ever amounted to news.
+    producing = set(db.scalars(select(Article.source_id).distinct()))
     return [{
         "id": s.id, "name": s.name, "rss_url": s.rss_url, "homepage": s.homepage,
         "country": s.country, "region": s.region, "language": s.language,
@@ -1063,6 +1067,7 @@ def list_sources(slim: bool = Query(default=False), db: Session = Depends(get_db
         "last_status": s.last_status, "last_article_count": s.last_article_count,
         "consecutive_failures": s.consecutive_failures or 0,
         "repaired_from": s.repaired_from or "",
+        "has_produced": s.id in producing,
     } for s in sources]
 
 
@@ -2099,7 +2104,37 @@ def _reach_status(db: Session) -> dict:
         select(func.count(Article.id)).join(Source, Source.id == Article.source_id)
         .where(Article.content == "", Article.published_at >= window,
                Source.paywall.is_(False), Article.content_tried_at.is_(None))) or 0
+    # Which sources are actually carrying their weight. A catalog that grows by
+    # itself is easy to mistake for a catalog that works: a thousand outlets
+    # reads like breadth, but a source that has been polled and has never once
+    # produced an article is a row in a table, not a source of news. "Silent"
+    # counts exactly those — polled at least once, nothing to show for it.
+    total_sources = db.scalar(select(func.count(Source.id))) or 0
+    with_articles = db.scalar(
+        select(func.count(func.distinct(Article.source_id)))) or 0
+    polled = db.scalar(select(func.count(Source.id)).where(
+        Source.last_fetched_at.is_not(None))) or 0
+    # Only the ones still in the rotation. A retired source has also produced
+    # nothing, but it is already reported as retired and nothing more needs
+    # doing about it; "silent" is meant to be the list worth acting on.
+    silent = db.scalar(select(func.count(Source.id)).where(
+        Source.enabled.is_(True),
+        Source.last_fetched_at.is_not(None),
+        ~select(Article.id).where(Article.source_id == Source.id).exists())) or 0
     return {
+        "sources": {
+            "total": total_sources,
+            "enabled": db.scalar(select(func.count(Source.id)).where(
+                Source.enabled.is_(True))) or 0,
+            "never_polled": total_sources - polled,
+            "producing": with_articles,
+            "silent": silent,
+            "retired": db.scalar(select(func.count(Source.id)).where(
+                Source.enabled.is_(False),
+                Source.last_status.like("retired:%"))) or 0,
+            "removed_since_start": ingest.status.get("removed_total", 0),
+            "remove_after": ingest.REMOVE_AFTER,
+        },
         "discovery": {
             "sources_found": db.scalar(select(func.count(Source.id)).where(
                 Source.added_by == "auto-discovered")) or 0,

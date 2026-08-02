@@ -2730,6 +2730,25 @@ async function renderServiceHealth() {
                + `article${plural(s.last_new_articles)}.`);
   }
 
+  // What the catalog is actually made of. A thousand outlets reads like
+  // breadth until you ask how many of them have ever carried anything.
+  const src = s.sources || {};
+  if (src.total) {
+    let line = `📚 Catalog: ${src.total} source${plural(src.total)}, `
+      + `${src.enabled} enabled. ${src.producing} have carried at least one `
+      + `story; ${src.silent} have been polled and never carried anything.`;
+    if (src.never_polled)
+      line += ` ${src.never_polled} are new and haven't been asked yet.`;
+    if (src.retired)
+      line += ` ${src.retired} retired after ${src.remove_after} failed polls in `
+        + `a row — disabled, but their stories are kept.`;
+    if (src.removed_since_start)
+      line += ` ${src.removed_since_start} that had never carried anything were `
+        + `removed outright since this server started.`;
+    line += " Search the Sources panel for “silent” to see the quiet ones.";
+    lines.push(line);
+  }
+
   // How far Delphi's reach falls short, in the two ways it can.
   const d = s.discovery || {};
   if (d.domains_probed) {
@@ -3901,6 +3920,13 @@ function sourceMatches(s, needle) {
     s.paywall ? "paywall paywalled" : "",
     s.repaired_from ? "repaired" : "",
     (s.last_status || "").startsWith("ok") ? "ok healthy" : (s.last_status ? "error broken" : ""),
+    (s.last_status || "").startsWith("retired:") ? "retired dead" : "",
+    // "silent" finds the feeds still being polled that have never carried
+    // anything — the ones worth pruning by hand, and impossible to pick out of
+    // a thousand rows without a word for them. A retired feed is not one of
+    // them: it has already stopped, and answers to "retired".
+    s.last_fetched_at && !s.has_produced && s.enabled
+      && !(s.last_status || "").startsWith("retired:") ? "silent nothing empty" : "",
   ].join(" ").toLowerCase();
   // Every word must appear somewhere, so terms narrow rather than widen.
   return needle.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
@@ -3936,10 +3962,20 @@ async function renderSourcesPanel() {
     name.textContent = `${s.paywall ? "🔒 " : ""}${PLATFORM_ICONS[s.platform] || "📰"} ${flagEmoji(s.country)} ${s.name}`;
     name.title = s.rss_url + (s.repaired_from ? `\nAuto-repaired — original URL: ${s.repaired_from}` : "")
       + (s.paywall ? "\nPaywalled — headlines only; readers get an archive.ph link" : "");
+    // A source that answers is not the same as a source that carries news, and
+    // only the first had a marker. On a catalog that grows by itself, the ones
+    // worth finding are the ones that have been asked and never had anything.
+    const retired = (s.last_status || "").startsWith("retired:");
+    const silent = s.last_fetched_at && !s.has_produced && s.enabled && !retired;
     const meta = document.createElement("span");
     meta.className = "s-meta";
     meta.textContent = `${s.scope} · ${s.language}${s.added_by !== "catalog" ? " · " + s.added_by : ""}`
-      + (s.repaired_from ? " · 🔧 repaired" : "") + (s.paywall ? " · 🔒 paywalled" : "");
+      + (s.repaired_from ? " · 🔧 repaired" : "") + (s.paywall ? " · 🔒 paywalled" : "")
+      + (retired ? " · 🚫 retired" : silent ? " · 🕸 nothing yet" : "");
+    if (silent && !retired) {
+      meta.title = "Delphi has polled this feed and never got an article from "
+        + "it. That can be a quiet outlet, or a feed that answers with nothing.";
+    }
     const tools = [];
     if (!ok && s.last_status) {
       tools.push(toolBtn("🔧", "Attempt automatic repair (re-check the URL, rediscover the feed)", async (e) => {
