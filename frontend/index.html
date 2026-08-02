@@ -910,8 +910,12 @@
              of it. The builder marks this one in amber as you type; it is a note, not
              an error, because sometimes it is exactly what you meant.</p>
           <p><b>Searches read the whole article</b>, not just what you can see on the
-             card — a term buried in the body counts. If a result looks inexplicable,
-             open it and read past the summary before assuming the search is wrong.</p>
+             card — a term buried in the body counts. So a story opened from one of
+             your own feeds says <b>why it is there</b>: which of that feed's words
+             are in it and where, with the surrounding sentence on hover. When
+             nothing in the headline or summary put it there the line turns amber,
+             which usually means the words are in the page's own furniture rather
+             than the reporting.</p>
           <p>A feed can hold <b>several searches</b> — each runs separately, all fill the
              same feed. Each row validates as you type, so a stray bracket is caught
              before you save rather than after.</p>
@@ -1836,6 +1840,10 @@
         <p class="ar-byline" id="st-byline"></p>
         <img id="st-image" class="ar-image" alt="" referrerpolicy="no-referrer" hidden>
         <p class="ar-summary" id="st-summary"></p>
+        <!-- Why this column carried it. Only shown when the story was opened
+             from a feed of the reader's own, because only then is there a set
+             of words to answer with. -->
+        <p class="ar-why" id="st-why" hidden></p>
         <div class="ev-section" id="st-excerpt-section" hidden>
           <h3>From the article</h3>
           <p class="ar-excerpt" id="st-excerpt"></p>

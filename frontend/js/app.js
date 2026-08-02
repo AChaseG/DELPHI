@@ -1725,6 +1725,15 @@ function resizeGrip(col, feed) {
 
 function renderFeedItems(body, feed, allItems) {
   body.innerHTML = "";
+  // Remember which column a story was opened from, so the view can say which
+  // of that column's words are in it. Capture phase, so this runs before the
+  // row's own handler opens the story rather than after it.
+  if (!body._whyWired) {
+    body._whyWired = true;
+    body.addEventListener("click", () => { STORY_FROM_FEED = body._feed || null; },
+                          true);
+  }
+  body._feed = feed && feed.id ? feed : null;
   // Staleness is applied here, not on the server: the threshold is this
   // reader's setting, so changing it re-filters what is already on the page
   // instead of re-querying every column.
@@ -1959,6 +1968,51 @@ function wireRowPressRecovery() {
 let STORY_SEQ = 0;
 // What the Focus view is currently showing, so Export knows its subject.
 let STORY_ON_SCREEN = null;    // which story the view is being drawn for
+// Which of the reader's own columns the open story was pressed in. Only a feed
+// has a set of words to answer "why is this here" with; a story opened from
+// Home, from search or from an alert has nothing to explain.
+let STORY_FROM_FEED = null;
+
+/* Say which of a column's words are in this story, and where they are.
+
+   The question this answers came from a real report: a WNBA story in a feed
+   whose query was six phrases about data centres, none of them anywhere the
+   reader could see. They were in the page's own furniture — a promo rail — and
+   stored as part of the article, which nothing on screen showed. A reader
+   should not have to guess between "the search is broken" and "the words are
+   somewhere I am not looking"; those are fixed in different places. */
+async function showWhyItMatched(articleId) {
+  const box = el("st-why");
+  if (!box) return;
+  box.hidden = true;
+  box.textContent = "";
+  const feed = STORY_FROM_FEED;
+  if (!feed || !articleId) return;
+  let why;
+  try {
+    why = await API.whyItMatched(feed.id, articleId);
+  } catch (e) {
+    return;                       // an explanation is never worth an error
+  }
+  // The view may have moved on while this was in the air.
+  if (!STORY_ON_SCREEN || STORY_ON_SCREEN.id !== articleId) return;
+  if (!why.hits || !why.hits.length) return;
+
+  const WHERE = { headline: "the headline", summary: "the summary",
+                  body: "the article body" };
+  const first = why.hits[0];
+  const more = why.hits.length - 1;
+  box.textContent =
+    `In “${feed.name}”: matched “${first.term}” in ${WHERE[first.where] || first.where}`
+    + (more > 0 ? ` (and ${more} other term${plural(more)})` : "")
+    + (why.body_only
+       ? " — nothing in the headline or summary put it here, so this may be the "
+         + "page's own menu or a promo rather than the story."
+       : ".");
+  box.title = first.snippet || "";
+  box.className = "ar-why" + (why.body_only ? " ar-why-odd" : "");
+  box.hidden = false;
+}
 
 /* A story already fetched, kept briefly so reopening one costs nothing. The
    server answers in about 18ms on a large database, but the round trip does
@@ -2169,6 +2223,8 @@ function paintStory(d, { partial = false } = {}) {
   el("st-summary").textContent = a.summary || "";
   el("st-summary").hidden = !a.summary;
 
+  showWhyItMatched(a.id);
+
   // The body extract, when Delphi fetched one. Some outlets publish only a
   // headline and a link, and paywalled ones are stored headline-only by design.
   const excerpt = (a.excerpt || "").trim();
@@ -2297,6 +2353,7 @@ function closeStory() {
   STORY_SEQ++;                      // an answer still in flight is now stale
   STORY_PAINTED = null;
   STORY_ON_SCREEN = null;           // nothing to export once it is closed
+  STORY_FROM_FEED = null;           // and nothing left to explain
   el("story-backdrop").hidden = true;
 }
 

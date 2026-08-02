@@ -306,6 +306,37 @@ def validate_query(query: str) -> str | None:
         return str(exc)
 
 
+def query_terms(query: str) -> list[tuple[str, re.Pattern]]:
+    """Every literal word or phrase in a query, with the pattern that finds it.
+
+    For explaining a match back to the reader: "this arrived because the words
+    'AI industry' are in it" is a different and far more useful answer than
+    "it matched", especially when those words are nowhere they can see.
+
+    NEAR pairs are skipped — they are compiled as one pattern over two operands
+    with no single piece of text to point at.
+    """
+    try:
+        tree = _Parser(tokenize(query)).parse()
+    except QueryError:
+        return []
+
+    out: list[tuple[str, re.Pattern]] = []
+    seen: set[str] = set()
+
+    def walk(node):
+        if node[0] == "term":
+            if len(node) > 2 and node[2].lower() not in seen:
+                seen.add(node[2].lower())
+                out.append((node[2], node[1]))
+            return
+        for child in node[1:]:
+            walk(child)
+
+    walk(tree)
+    return out
+
+
 def query_advisories(query: str) -> list[str]:
     """Things a valid query probably does not mean. Never an error.
 

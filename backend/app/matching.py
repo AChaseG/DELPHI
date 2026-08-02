@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, defer, joinedload
 
 from sqlalchemy import text
 
-from .boolean_query import QueryError, compile_query, fts_expression
+from .boolean_query import QueryError, compile_query, fts_expression, query_terms
 from .geo import places_match_geo
 from .models import Article, Source, utcnow
 
@@ -92,6 +92,52 @@ def _kw_regex(kw: str) -> re.Pattern:
 def article_text(article: Article) -> str:
     """Everything a text predicate searches: headline, summary, and body."""
     return f"{article.title}\n{article.summary}\n{article.content or ''}"
+
+
+def explain_text_match(criteria: dict, article: Article) -> list[dict]:
+    """Which words put this article in this feed, and where they are.
+
+    A reader who opens a result and cannot find any of their terms in it has no
+    way to tell a broken search from a term sitting somewhere they are not
+    looking. Both happen, and they are fixed in completely different places, so
+    the answer has to say *where*: a phrase in the headline is the search
+    working, and the same phrase found only in the body is usually the page's
+    own furniture — a section link, a "more from" rail, a newsletter promo —
+    which is worth knowing because it is not visible from the card.
+
+    Returns one entry per matching term: the term, the field it was found in,
+    and enough of the surrounding text to recognise it.
+    """
+    fields = (("headline", article.title or ""),
+              ("summary", article.summary or ""),
+              ("body", article.content or ""))
+
+    terms: list[tuple[str, re.Pattern]] = []
+    for kw in (criteria or {}).get("keywords") or []:
+        if kw.strip():
+            terms.append((kw, _kw_regex(kw)))
+    queries = [q for q in ((criteria or {}).get("queries") or []) if q.strip()]
+    legacy = ((criteria or {}).get("query") or "").strip()
+    if legacy:
+        queries.append(legacy)
+    for q in queries:
+        terms.extend(query_terms(q))
+
+    out: list[dict] = []
+    for term, pattern in terms:
+        for field, value in fields:
+            m = pattern.search(value)
+            if not m:
+                continue
+            start, end = max(0, m.start() - 60), min(len(value), m.end() + 60)
+            snippet = " ".join(value[start:end].split())
+            out.append({
+                "term": term,
+                "where": field,
+                "snippet": ("…" if start else "") + snippet + ("…" if end < len(value) else ""),
+            })
+            break        # the first place it appears is the one worth showing
+    return out
 
 
 def headline_text(article: Article) -> str:

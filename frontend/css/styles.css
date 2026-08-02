@@ -702,6 +702,15 @@ body.col-resizing { cursor: col-resize; user-select: none; }
    green nor red: nothing is wrong, and nothing is stopping you saving it. */
 .query-status.warn { color: var(--warning); }
 
+/* Why a column carried this story. Quiet by default; amber when the words are
+   only in the body, which is the case a reader is right to be suspicious of. */
+.ar-why {
+  font-size: 12.5px; color: var(--ink-muted);
+  border-left: 2px solid var(--hairline);
+  padding-left: 9px; margin: 8px 0;
+}
+.ar-why-odd { color: var(--warning); border-left-color: var(--warning); }
+
 .geo-tools { display: flex; align-items: center; gap: 10px; }
 .geo-summary { font-size: 12.5px; color: var(--ink-muted); }
 .builder-map { height: 340px; border-radius: 10px; border: 1px solid var(--border); }

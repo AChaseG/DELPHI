@@ -306,6 +306,8 @@ const API = {
   // are carrying the same thing. Openable from either end.
   story: (id) => api(`/api/story/${id}?x=1${langQS()}`),
   storyByEvent: (id) => api(`/api/story/by-event/${id}?x=1${langQS()}`),
+  // Which of a column's words are in one of its articles, and where.
+  whyItMatched: (feedId, articleId) => api(`/api/feeds/${feedId}/why/${articleId}`),
   markEventViewed: (id) => api(`/api/events/${id}/viewed`, { method: "POST" }),
   // For an article with no event — nothing else can remember it.
   markArticleViewed: (id) => api(`/api/articles/${id}/viewed`, { method: "POST" }),

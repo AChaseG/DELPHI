@@ -313,6 +313,7 @@ GET  /api/feeds/{id}/articles      feed contents (?lang=xx translates)
 GET  /api/feeds/{id}/events        feed contents clustered into events
 GET  /api/events/{id}              one event + full article timeline
 GET  /api/story/{id}/export        one story + every outlet carrying it, as a file
+GET  /api/feeds/{id}/why/{art}     which of a feed's words are in an article, and where
 POST /api/events/rebuild           recluster all stored articles
 GET|POST|PUT|DELETE /api/alerts    per-user alerts
 GET  /api/alerts/{id}/events       alert hit history

@@ -33,9 +33,16 @@ CHANGELOG: list[dict] = [
             "✅ The Boolean engine itself was checked against ordinary logic on "
             "48,000 cases and agrees on every one, so a query does mean what "
             "it says. That check now runs with the tests.",
+            "🔎 And a story now tells you why it is in a column. Open one from "
+            "a feed of your own and it says which of that feed's words are in "
+            "it and where — “matched “AI industry” in the article body” — with "
+            "the surrounding sentence on hover. When nothing in the headline "
+            "or summary put it there, it says so in amber, because that is the "
+            "case worth a second look.",
             "🕓 The clean-up applies to articles collected from now on. "
             "Anything already stored keeps the text it was stored with until "
-            "it ages out.",
+            "it ages out — so a result you are suspicious of today can be "
+            "checked with the line above.",
         ],
     },
     {

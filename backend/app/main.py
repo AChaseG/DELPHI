@@ -36,7 +36,7 @@ from .clustering import assign_events, rebuild_events
 from .database import Base, SessionLocal, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer, search_places
-from .matching import query_articles
+from .matching import explain_text_match, query_articles
 from .models import (Alert, AlertEvent, Article, DiscoveredDomain, Event,
                      FavoriteLocation, Feed,
                      Pantheon, PantheonInvite, PantheonMember, Source,
@@ -1505,6 +1505,34 @@ async def export_search(body: dict, request: Request,
     articles = await scan_articles(db, criteria, sort=sort, limit=limit)
     tr = await translate.translate_articles(db, articles, lang)
     return _export_response(fmt, name, _export_rows(articles, tr))
+
+
+@app.get("/api/feeds/{feed_id}/why/{article_id}")
+def why_it_matched(feed_id: int, article_id: int,
+                   user_id: str = Depends(user_id_header),
+                   db: Session = Depends(get_db)):
+    """Which of this feed's words are in this article, and where.
+
+    A reader who opens a result and can find none of their terms in it cannot
+    tell a broken search from a term sitting somewhere they are not looking —
+    and the two are fixed in completely different places. This says which it
+    is. A phrase in the headline is the search working; the same phrase only in
+    the body is often the page's own furniture, which never appears on the card
+    and is exactly what a reader means by "it matched nothing I asked for".
+    """
+    feed = _shared_item_for_read(db, Feed, feed_id, user_id)
+    article = db.get(Article, article_id)
+    if not article:
+        raise HTTPException(404, "Article not found")
+    hits = explain_text_match(feed.criteria or {}, article)
+    return {
+        "article_id": article.id,
+        "feed_id": feed.id,
+        "hits": hits,
+        # True when nothing in the headline or summary put it here, which is
+        # the case worth explaining.
+        "body_only": bool(hits) and all(h["where"] == "body" for h in hits),
+    }
 
 
 @app.get("/api/feeds/{feed_id}/articles")
