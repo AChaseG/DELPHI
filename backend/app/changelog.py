@@ -13,6 +13,29 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-30",
+        "title": "The feed editor opens straight away",
+        "items": [
+            "✎ Pressing edit on a feed or an alert used to show nothing at all "
+            "— no window, no spinner — until the list of every outlet on the "
+            "server had been fetched. That is most of a megabyte across some "
+            "1,200 outlets, and it got slower every time Delphi discovered "
+            "another one, on a button that ought to be instant. On a hotel "
+            "wifi connection it was taking the better part of half a second "
+            "before anything appeared.",
+            "⚡ The editor now opens immediately and the outlet list catches up "
+            "behind it — measured at about three-hundredths of a second, and "
+            "the same whether the connection is fast or slow, because nothing "
+            "in opening it waits on the network any more.",
+            "📋 The one control that does need the list — “only these outlets”, "
+            "on the last step — says it is still loading rather than sitting "
+            "there looking empty, and says so plainly if the list cannot be "
+            "fetched at all. Every other part of the editor works throughout, "
+            "and once the list has loaded it stays loaded, so opening a second "
+            "feed is instant end to end.",
+        ],
+    },
+    {
         "date": "2026-08-29",
         "title": "The board uses your whole monitor now",
         "items": [

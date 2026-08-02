@@ -38,9 +38,43 @@ const Builder = {
      stays visible after the search that found it is cleared. */
   chosenSources: new Set(),
 
+  /* The catalog is fetched after the wizard opens rather than before it — see
+     openBuilder — so the picker has three states rather than one, and has to
+     say which it is in. Silence here reads as "there are no sources", which is
+     a different and much more alarming thing than "still loading". */
+  _sourcesState: "ready",
+
+  sourcesPending() {
+    this._sourcesState = "loading";
+    this._renderSources();
+  },
+
+  sourcesArrived() {
+    this._sourcesState = "ready";
+    this._renderSources();
+  },
+
+  sourcesFailed(why) {
+    this._sourcesState = "failed";
+    this._sourcesWhy = why || "";
+    this._renderSources();
+  },
+
   _renderSources() {
     const box = el("b-sources");
     if (!box) return;
+    if (this._sourcesState !== "ready" && !this.sources.length) {
+      box.innerHTML = "";
+      const p = document.createElement("div");
+      p.className = "s-meta";
+      p.textContent = this._sourcesState === "loading"
+        ? "Loading the outlet list… everything else here is ready to use."
+        : `Could not load the outlet list (${this._sourcesWhy}). Every other `
+          + "criterion still works; reopen the editor to try again.";
+      box.appendChild(p);
+      this._renderChosenSources();
+      return;
+    }
     const needle = (el("b-src-search")?.value || "").trim();
     const shown = this.sources.filter(s => sourceMatches(s, needle));
     box.innerHTML = "";

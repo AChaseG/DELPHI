@@ -373,6 +373,17 @@ GET  /api/stream                   SSE: live article batches + alert hits
   counts the catalog: producing, silent (polled, never carried anything),
   never polled, and retired. The Sources panel marks them and its filter box
   understands `silent` and `retired`.
+- **The feed/alert editor opens before the source catalog is fetched, not
+  after.** `openBuilder` used to `await ensureSources()`, so pressing ✎ showed
+  nothing at all — no window, no spinner — until half a megabyte covering 1,200
+  outlets had arrived and been parsed, and that wait grew every time discovery
+  added an outlet. Nothing on the step the reader lands on needs it: countries,
+  categories and languages come from `META` at startup, and the outlet picker is
+  one optional control on the last step, which now names its own state
+  (loading / ready / unavailable) instead of rendering an empty list. Cold, with
+  the connection shaped: 79ms on localhost, 201ms on an ordinary home line and
+  438ms on hotel wifi, against 46 / 28 / 30ms after — flat, because opening no
+  longer touches the network.
 - Accounts are self-serve; passwords are PBKDF2-hashed with HMAC-signed
   session tokens (`NEWS_SECRET` env or an auto-generated key beside the DB).
   Every API route except sign-in/register requires a session. **Common

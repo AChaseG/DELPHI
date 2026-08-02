@@ -1045,16 +1045,30 @@ function ensureSources() {
   return sourcesWanted;
 }
 
-// Opening the wizard has to wait for the catalog, or its picker would show an
-// empty list. Everything else in the modal is ready immediately.
-async function openBuilder(mode, item = null) {
-  try {
-    await ensureSources();
-  } catch (e) {
-    // Everything except "only these sources" still works without the catalog.
-    toast("Source list unavailable", `${e.message} — the rest of the ${mode} builder still works.`);
-  }
+/* Open the wizard now; let the source catalog catch up.
+
+   It used to await the catalog first, and that is the whole of what made ✎
+   feel slow: the modal did not appear at all — no frame, no spinner, nothing —
+   until a list of every outlet on the server had been fetched and parsed. That
+   is 484 kB across 1,200 sources and it grows every time discovery finds
+   another one, so the wait got longer as the catalog did, on a control that
+   ought to be instant.
+
+   Nothing on the step the reader lands on needs it. Countries, categories and
+   languages come from META at startup; the outlet picker is one optional
+   control on step 3, and it says so while it loads. */
+function openBuilder(mode, item = null) {
   Builder.open(mode, item);
+  if (SOURCES.length) return;         // already in memory, nothing to wait for
+  Builder.sourcesPending();
+  ensureSources()
+    .then(() => Builder.sourcesArrived())
+    .catch((e) => {
+      // Everything except "only these sources" still works without the catalog.
+      Builder.sourcesFailed(e.message);
+      toast("Source list unavailable",
+            `${e.message} — the rest of the ${mode} builder still works.`);
+    });
 }
 
 async function openSourcesPanel() {
