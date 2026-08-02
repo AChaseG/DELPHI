@@ -2425,6 +2425,19 @@ function wireAdmin() {
   };
   feedback(el("btn-admin"));
   el("btn-close-admin").onclick = () => { el("admin-panel").hidden = true; };
+  el("btn-reclaim-space").onclick = async () => {
+    if (!confirm("Rewrite the database to reclaim disk space?\n\nDelphi will be "
+                 + "unresponsive while this runs — minutes on a large archive. "
+                 + "It only needs doing once.")) return;
+    const r = await API.reclaimSpace();
+    toast(r.converted ? "Disk space reclaimed" : "Nothing to do",
+          r.converted
+            ? `Freed ${(r.freed_bytes / 1e6).toFixed(0)} MB. From now on, clearing `
+              + "out old news returns its space to the disk as it happens."
+            : r.reason, true);
+    renderServiceHealth();
+  };
+  feedback(el("btn-reclaim-space"), "Rewriting…");
   let t;
   el("admin-search").addEventListener("input", () => {
     clearTimeout(t);
@@ -2483,11 +2496,13 @@ async function renderServiceHealth() {
       lines.push(head);
     }
     if (!st.reclaimable) {
-      lines.push("💾 This database hasn't been converted to incremental vacuum "
-                 + "yet, so deleting old articles frees space inside the file but "
-                 + "doesn't hand it back to the disk. Delphi converts it "
-                 + "automatically on the next poll when there's room to do so "
-                 + "safely (it needs free space roughly equal to the database).");
+      lines.push("💾 Deleting old articles frees space inside the database file "
+                 + "but doesn't hand it back to the disk, because this database "
+                 + "predates Delphi setting that up at creation. Converting it is "
+                 + "a one-off — press ♻ below. It rewrites the whole file and the "
+                 + "site is unresponsive while that runs (minutes, on a large "
+                 + "archive), so pick a quiet moment. It also needs free space "
+                 + `roughly equal to the database (${mb(st.db_bytes)}).`);
     }
   } else if (st.detail) {
     lines.push(`💾 Disk: ${st.detail}`);

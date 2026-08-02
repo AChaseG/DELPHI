@@ -13,6 +13,20 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-25",
+        "title": "Reclaiming disk space is now the operator's call",
+        "items": [
+            "💾 Correcting how the last release shipped: on a database made "
+            "before Delphi set this up at creation, handing deleted news back "
+            "to the disk needs a one-off rewrite of the whole file — and that "
+            "was being done automatically on the first poll after a deploy. "
+            "The site is unresponsive while it runs, minutes on a large "
+            "archive, so doing it unannounced at a moment nobody chose was "
+            "wrong. It is now a button in ⚙ Settings → Service health, which "
+            "says what it will cost before you press it.",
+        ],
+    },
+    {
         "date": "2026-08-24",
         "title": "Favourite locations actually carry news now",
         "items": [

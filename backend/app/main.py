@@ -2114,6 +2114,27 @@ async def fetch_content_backfill(body: dict | None = None,
     return {"candidates": len(candidates), "content_fetched": fetched}
 
 
+@app.post("/api/maintenance/reclaim-space")
+async def reclaim_space(admin: User = Depends(require_admin)):
+    """Convert the database so deleted news gives its disk space back.
+
+    Operator-only and deliberately manual. It runs a VACUUM, which rewrites the
+    whole database while holding a lock that blocks readers as well as writers
+    — minutes of a stalled site on a large archive. This shipped running
+    automatically on the first poll after a deploy, which is the same work with
+    nobody told and no moment chosen; that was a mistake and this is it fixed.
+
+    Needed once, and only for a database created before Delphi started making
+    them this way. Afterwards freed pages return to the disk as pruning runs,
+    with no lock and no downtime.
+    """
+    before = storage.db_bytes()
+    result = await asyncio.to_thread(storage.ensure_incremental_vacuum)
+    freed = max(0, before - storage.db_bytes())
+    return {**result, "freed_bytes": freed, "db_bytes": storage.db_bytes(),
+            "mode": storage.auto_vacuum_mode()}
+
+
 @app.post("/api/maintenance/reclassify")
 def reclassify_articles(admin: User = Depends(require_admin),
                         db: Session = Depends(get_db)):

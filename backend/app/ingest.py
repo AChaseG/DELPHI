@@ -863,19 +863,15 @@ async def ingest_loop():
     own interval; nothing starves and no single tick runs long."""
     global _next_prune_at
     status["running"] = True
-    # One attempt, on the first tick rather than at startup: the conversion
-    # holds a write lock for as long as it takes to copy the database, and
-    # doing that before the app is serving would delay every reader and could
-    # trip a health check into a restart loop. It is a no-op after the first
-    # success, and refuses itself when the disk is too full to do it safely.
-    try:
-        converted = await asyncio.to_thread(storage.ensure_incremental_vacuum)
-        if converted["converted"]:
-            log.info("storage: %s", converted["reason"])
-        elif "not enough free space" in converted["reason"]:
-            log.error("storage: %s", converted["reason"])
-    except Exception:
-        log.exception("could not check the database's vacuum mode")
+    # The one-off conversion to incremental auto-vacuum is NOT done here, and
+    # that is a correction to how this shipped. It VACUUMs — rewriting the
+    # whole database while holding a lock that blocks readers, not just
+    # writers, for however long a multi-gigabyte copy takes. Running that
+    # automatically on the first tick after a deploy means the site stalls for
+    # minutes with no warning and no way to choose the moment. It is an
+    # operator's decision now: POST /api/maintenance/reclaim-space, with the
+    # console saying plainly what it will cost. Databases created from here on
+    # are incremental from birth (see database.py) and never need it.
 
     while True:
         new_articles = 0

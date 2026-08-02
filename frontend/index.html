@@ -1416,6 +1416,13 @@
            can be broken for weeks with the only evidence in a log. -->
       <h3 class="set-h">Service health</h3>
       <div id="admin-health" class="admin-health"></div>
+      <div class="set-row">
+        <span>One-off: rewrite the database so deleted news gives its disk space
+              back. Only needed on databases made before Delphi set this up at
+              creation. <b>The site is unresponsive while it runs</b> — minutes on
+              a large archive — so pick a quiet moment.</span>
+        <button class="btn small" id="btn-reclaim-space">♻ Reclaim disk space</button>
+      </div>
 
       <h3 class="set-h">Accounts</h3>
       <div class="source-tools">

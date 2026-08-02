@@ -395,6 +395,9 @@ const API = {
     }
   },
   signOutEverywhere: () => api("/api/auth/sign-out-everywhere", { method: "POST" }),
+  // Long and blocking by nature — give it far more than the usual patience.
+  reclaimSpace: () => api("/api/maintenance/reclaim-space",
+                          { method: "POST", timeout: 15 * 60 * 1000 }),
   // Short-lived credential for the event stream; see connectStream in app.js.
   streamTicket: () => api("/api/stream/ticket", { method: "POST" }),
 };

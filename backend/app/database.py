@@ -31,9 +31,24 @@ def _sqlite_pragmas(dbapi_conn, _record):
     - busy_timeout: a briefly-locked database waits instead of erroring.
     """
     cur = dbapi_conn.cursor()
+    # Before journal_mode, and that ordering is the whole trick: setting the
+    # journal mode writes the database header, and auto_vacuum can only be
+    # chosen while the file has no header yet. Set it second and it silently
+    # stays 0 on a brand-new database — verified by watching exactly that.
+    cur.execute("PRAGMA auto_vacuum=INCREMENTAL")
     cur.execute("PRAGMA journal_mode=WAL")
     cur.execute("PRAGMA synchronous=NORMAL")
     cur.execute("PRAGMA busy_timeout=5000")
+    # Deleting rows never shrinks a SQLite file on its own; freed pages are
+    # reused inside it and the file keeps its high-water mark, which is how a
+    # volume fills while retention appears to be working. Incremental
+    # auto-vacuum lets those pages be handed back (see storage.reclaim).
+    #
+    # This only takes effect on a database with no tables yet, so a new
+    # deployment gets it for free. Converting an existing one requires a full
+    # VACUUM, which rewrites the file while blocking every reader — minutes of
+    # downtime on a large database — so that is an operator action, not
+    # something to do behind their back on the next restart.
     cur.close()
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
