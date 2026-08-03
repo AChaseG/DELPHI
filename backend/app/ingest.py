@@ -377,7 +377,37 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
                 return article, await fetch_article_text(client, article.url)
         results = await asyncio.gather(*(one(a) for a in todo))
     fetched = 0
-    for article, text in results:
+    for i in range(0, len(results), ENRICH_CHUNK):
+        fetched += await asyncio.to_thread(_enrich_chunk, results[i:i + ENRICH_CHUNK])
+    await asyncio.to_thread(db.commit)
+    return fetched
+
+
+# How many articles one enrichment slice covers. Re-reading a body costs about
+# 160ms — 105 for the gazetteer sweep, 53 for categorization — so a slice of 25
+# is roughly four seconds of work before the thread is handed back.
+ENRICH_CHUNK = int(os.environ.get("NEWS_ENRICH_CHUNK", "25"))
+
+
+def _enrich_chunk(batch: list[tuple]) -> int:
+    """Re-derive places, country, categories and language from a full body.
+
+    Off the event loop, in slices, because this is where the server used to go
+    silent. Everything here is pure Python over the whole article text, and a
+    cycle runs up to CONTENT_MAX_PER_CYCLE of it twice — once for the batch just
+    fetched and once for the backlog. Straight-line on the loop that measured
+    24 seconds per pass, during which nothing was served: not a page, not an API
+    call, not /healthz. Fly's check gives up after 10 seconds and de-routes the
+    machine, so the site stopped loading for everyone for over a minute at a
+    time, several times a day, with the app itself perfectly healthy.
+
+    Neither a thread nor a slice makes the work cheaper — the interpreter still
+    runs it one bytecode at a time. What they buy is interruptibility: the loop
+    gets scheduled between slices, so a request waits milliseconds instead of
+    the rest of the pass.
+    """
+    fetched = 0
+    for article, text in batch:
         if not text:
             continue
         article.content = text
@@ -390,7 +420,6 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
         # Full body gives a stronger language signal than the headline did.
         article.language = langdetect.detect(full, article.language)
         fetched += 1
-    db.commit()
     return fetched
 
 
@@ -417,19 +446,27 @@ async def backfill_content(db, spare: int) -> int:
         return 0
     since = utcnow() - timedelta(hours=BACKFILL_HOURS)
     retry_before = utcnow() - timedelta(hours=BACKFILL_RETRY_HOURS)
-    candidates = db.scalars(
-        select(Article)
-        .join(Source, Source.id == Article.source_id)
-        .where(Article.content == "",
-               Article.published_at >= since,
-               Source.paywall.is_(False),
-               # Never tried, or tried long enough ago to be worth one retry.
-               or_(Article.content_tried_at.is_(None),
-                   Article.content_tried_at < retry_before))
-        # Newest first: the articles a reader is most likely to be looking at.
-        .order_by(Article.published_at.desc())
-        .limit(spare)
-    ).all()
+
+    def find():
+        # Bodies are the largest column in the table, and this scans a window of
+        # them looking for the empty ones. Off the loop with the rest of the
+        # cycle's heavy work — it sits in the same gap, immediately after the
+        # enrichment pass, so leaving it here would have kept part of the stall.
+        return db.scalars(
+            select(Article)
+            .join(Source, Source.id == Article.source_id)
+            .where(Article.content == "",
+                   Article.published_at >= since,
+                   Source.paywall.is_(False),
+                   # Never tried, or tried long enough ago to be worth one retry.
+                   or_(Article.content_tried_at.is_(None),
+                       Article.content_tried_at < retry_before))
+            # Newest first: the articles a reader is most likely to be looking at.
+            .order_by(Article.published_at.desc())
+            .limit(spare)
+        ).all()
+
+    candidates = await asyncio.to_thread(find)
     if not candidates:
         return 0
     return await enrich_with_content(db, candidates, cap=spare)
@@ -1040,16 +1077,27 @@ async def ingest_loop():
                     if RETENTION_DAYS > 0 and (due_to_prune or (space["ok"] and space["low"])):
                         if due_to_prune:
                             _next_prune_at = time.monotonic() + PRUNE_EVERY_SECONDS
-                        pruned = prune_old_articles(db)
+
+                        def housekeeping():
+                            # Bulk deletes, a WAL checkpoint and an incremental
+                            # vacuum: minutes of database work on a large table,
+                            # and the same stall as the enrichment pass if it
+                            # runs where requests are answered. Rare — every six
+                            # hours — which is exactly what makes it the kind of
+                            # outage nobody catches in the act.
+                            pruned = prune_old_articles(db)
+                            # Age-based pruning first, then whatever the disk
+                            # still demands beyond it.
+                            prune_to_fit(db)
+                            if pruned["articles"]:
+                                storage.checkpoint()
+                                storage.reclaim()
+                            return pruned
+
+                        pruned = await asyncio.to_thread(housekeeping)
                         if pruned["articles"] or pruned["events"]:
                             log.info("retention: pruned %d articles, %d empty events",
                                      pruned["articles"], pruned["events"])
-                        # Age-based pruning first, then whatever the disk still
-                        # demands beyond it.
-                        prune_to_fit(db)
-                        if pruned["articles"]:
-                            storage.checkpoint()
-                            storage.reclaim()
                 finally:
                     db.close()
         except Exception as exc:

@@ -13,6 +13,32 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-08-31",
+        "title": "The site going unreachable for a minute at a time",
+        "items": [
+            "🚦 Several times a day D.E.L.P.H.I. stopped answering entirely — "
+            "not slow, not partly broken, simply unreachable for a minute or "
+            "more, then fine again with no sign anything had happened. The "
+            "cause was its own news collection. Working out where a story is "
+            "about, what it is about and what language it is in takes about a "
+            "sixth of a second per article once the full text is in hand, and a "
+            "collection round does that for up to three hundred articles in one "
+            "unbroken run — on the same single thread that serves the site. For "
+            "that stretch nothing else could be answered, including the "
+            "automated check that decides whether the app is alive, so the host "
+            "concluded it was dead and stopped sending anyone to it.",
+            "🧵 That work now happens alongside serving the site rather than "
+            "instead of it, and in small batches, so the site stays answerable "
+            "throughout a collection round. It is the same amount of work and "
+            "takes the same total time; it no longer holds everything else up "
+            "while it runs.",
+            "🧹 The six-hourly clear-out of old articles — deleting, compacting "
+            "and reclaiming disk — was doing the same thing, and has had the "
+            "same treatment. It was rarer and so easier to miss, but each one "
+            "was another window where the site could not be reached.",
+        ],
+    },
+    {
         "date": "2026-08-30",
         "title": "The feed editor opens straight away",
         "items": [

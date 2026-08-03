@@ -259,6 +259,7 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_DISABLE_INGEST` | unset | `1` disables the background poller |
 | `NEWS_CONTENT_FETCH` | `1` | fetch article bodies for full-text matching (`0` = headlines/summaries only) |
 | `NEWS_CONTENT_MAX_PER_CYCLE` | `150` | article pages fetched per ingest cycle |
+| `NEWS_ENRICH_CHUNK` | `25` | article bodies re-read per slice before the event loop is handed back |
 | `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
 | `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
 | `NEWS_REMOVE_AFTER` | `5` | consecutive failed polls before a source is retired or removed |
@@ -373,6 +374,24 @@ GET  /api/stream                   SSE: live article batches + alert hits
   counts the catalog: producing, silent (polled, never carried anything),
   never polled, and retired. The Sources panel marks them and its filter box
   understands `silent` and `retired`.
+- **Nothing in a poll cycle that scales with the batch runs on the event
+  loop.** This was a real outage, several times a day: the app logged nothing
+  for 82 seconds, the health check failed, and Fly de-routes a machine whose
+  check is failing — so the site was unreachable for everyone while the app was
+  perfectly healthy. Re-deriving places, categories and language from a full
+  body costs ~160ms (105 gazetteer, 53 categorization), and a cycle does up to
+  `CONTENT_MAX_PER_CYCLE` of them for the new batch and again for the backlog:
+  ~24s a pass, ~48s a cycle, on the one thread that also answers requests.
+  Clustering and alert matching had already been moved to a thread; the
+  enrichment pass, the backlog query and the six-hourly prune/checkpoint/vacuum
+  had not. All are now threaded, and enrichment is handed over in
+  `NEWS_ENRICH_CHUNK` slices (default 25, ~4s) so the loop is given back
+  repeatedly rather than once at the end. A thread does not make the work
+  cheaper — the interpreter still runs it one bytecode at a time — it makes it
+  interruptible, which is the difference between a slow minute and an outage.
+  Note that the earlier defences for this class of stall (the restart warmup and
+  a health check that tells busy from broken) could not help here: both assume
+  the event loop still gets to run.
 - **The feed/alert editor opens before the source catalog is fetched, not
   after.** `openBuilder` used to `await ensureSources()`, so pressing ✎ showed
   nothing at all — no window, no spinner — until half a megabyte covering 1,200
