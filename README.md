@@ -457,6 +457,22 @@ GET  /api/stream                   SSE: live article batches + alert hits
   80→40 and `CITY_PER_TICK` 20→12: a smaller round is not less news, since what
   a source publishes is set by the publisher — a poll that finds three items
   instead of twelve finds them three times as often.
+- **One dedicated core is one core, and it has to serve while it works.**
+  `performance-1x` replaced `shared-cpu-2x`: two throttled vCPUs became one
+  unthrottled one. Throughput went up sharply — a round measured
+  `fetch 30.8s store 4.7s enrich 21.5s backfill 5.2s cluster 13.4s`, 76s against
+  the 6m19s before, with per-article `store` falling from ~115ms to ~25ms — but
+  the count halved, so the thread scoring articles and the thread answering
+  requests now share one processor instead of having one each. Ingestion needs
+  about 45s of that core per 76s round: not saturated, but bursty, and a health
+  check allows 10s. Three consequences: slices are half what they were
+  (`NEWS_ENRICH_CHUNK` 25→10, `NEWS_CLUSTER_CHUNK` 50→25), deciding which
+  sources are due is off the loop, and `sys.setswitchinterval(0.001)` makes the
+  interpreter offer the core to another thread five times more often than its
+  5ms default — a latency setting for a machine that answers while it works.
+  Ruled out by measurement on the way, not by reading: `feedparser.parse` on the
+  loop (22ms for a 100-entry feed, 1.1s for a whole batch — real but far too
+  small), and the search path (`scan_articles` already threads the query).
 - **Each cycle logs how long each phase took** (`fetch store enrich backfill
   cluster`, seconds, on the batch summary line). Every stall above had to be
   located by finding where the log went quiet, which only works for phases that

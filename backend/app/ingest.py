@@ -391,15 +391,18 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
     return fetched
 
 
-# How many articles one enrichment slice covers. Re-reading a body costs about
-# 160ms — 105 for the gazetteer sweep, 53 for categorization — so a slice of 25
-# is roughly four seconds of work before the thread is handed back.
-ENRICH_CHUNK = int(os.environ.get("NEWS_ENRICH_CHUNK", "25"))
+# How many articles one enrichment slice covers. Sized against the machine
+# rather than the work: performance-1x is a *single* dedicated core, so a
+# thread doing this and the thread answering requests are competing for the one
+# processor. The average is comfortable — ingestion needs about 45s of CPU per
+# 76s cycle — but a health check allows 10s and it is burstiness that misses
+# it, not the average. Smaller slices mean more, shorter bursts.
+ENRICH_CHUNK = int(os.environ.get("NEWS_ENRICH_CHUNK", "10"))
 
 # The same handover, for clustering and alert matching. Larger because the work
 # per article is smaller — matching one article against the live events and the
 # active alerts, rather than re-reading a whole body.
-CLUSTER_CHUNK = int(os.environ.get("NEWS_CLUSTER_CHUNK", "50"))
+CLUSTER_CHUNK = int(os.environ.get("NEWS_CLUSTER_CHUNK", "25"))
 
 
 def _enrich_chunk(batch: list[tuple]) -> int:
@@ -1172,9 +1175,16 @@ async def ingest_loop():
                             f"if this persists the volume needs to be larger.")
                         log.error("storage: %s", status["last_error"])
                     else:
-                        enabled = db.scalars(
-                            select(Source).where(Source.enabled.is_(True))).all()
-                        due = due_sources(enabled, utcnow())
+                        # Twelve hundred rows built into ORM objects, every
+                        # fifteen seconds, to decide which handful is due. Small
+                        # next to a batch, but it is on the loop and it repeats
+                        # four times a minute forever.
+                        def due_now():
+                            enabled = db.scalars(
+                                select(Source).where(Source.enabled.is_(True))).all()
+                            return due_sources(enabled, utcnow())
+
+                        due = await asyncio.to_thread(due_now)
                         since_start = time.monotonic() - started_at
                         batch = (
                             [s for s in due if not _is_city(s)]

@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 import urllib.parse
 import uuid
@@ -45,6 +46,24 @@ from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn
 from .scoring import STANDARD_CATEGORIES, classify_categories
 
 logging.basicConfig(level=logging.INFO)
+
+# Hand the interpreter over five times more often than the 5ms default.
+#
+# This machine is performance-1x: one *dedicated* core, against the two
+# throttled ones it replaced. That was the right trade for throughput — a
+# collection round went from 6m19s to 76s — but it means the thread scoring
+# articles and the thread answering requests now share a single processor
+# rather than having one each. Only one Python thread runs at a time, and the
+# interpreter only offers the turn to another every switch interval, so a
+# request can wait behind a burst of scoring for far longer than the work
+# itself would suggest.
+#
+# Ingestion needs roughly 45s of processor per 76s round, so the core is not
+# saturated; the problem is burstiness, and the health check allows 10s. A
+# shorter interval trades a little throughput for the loop getting its turn
+# sooner. It is a latency setting on a machine that has to answer while it
+# works, and 1ms is still thousands of bytecodes.
+sys.setswitchinterval(0.001)
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 DISABLE_INGEST = os.environ.get("NEWS_DISABLE_INGEST", "") == "1"

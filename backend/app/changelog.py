@@ -13,6 +13,28 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-04",
+        "title": "Chasing the last of the \u201ccan\u2019t reach the server\u201d",
+        "items": [
+            "\u26a1 Moving to a dedicated processor worked, and the numbers are "
+            "worth stating: one round of collecting the news went from six "
+            "minutes nineteen seconds to seventy-six, and the most expensive "
+            "stage \u2014 working out what each article is about \u2014 from 143 "
+            "seconds to under five. Pages that were taking four to seven "
+            "seconds are no longer waiting on it.",
+            "\ud83e\udde9 But a dedicated processor is one processor, where the "
+            "shared pair were two. Collecting the news and answering you now "
+            "take turns on the same one, and while the average has plenty of "
+            "room, a burst can still keep you waiting. So the work is now done "
+            "in half-size pieces, and D.E.L.P.H.I. hands the processor back "
+            "five times more often than it used to between them.",
+            "\ud83d\udd0d Two suspects were measured and cleared rather than "
+            "guessed at \u2014 reading a feed, and running a search \u2014 which "
+            "is why neither was \u201cfixed\u201d. The stage timings added "
+            "earlier are what made that possible.",
+        ],
+    },
+    {
         "date": "2026-09-03",
         "title": "Operators can see and limit where an account is being used",
         "items": [

@@ -31,7 +31,7 @@ import re
 
 import pytest
 
-from backend.app import ingest
+from backend.app import ingest, main
 
 
 SOURCE = inspect.getsource(ingest)
@@ -185,3 +185,77 @@ async def test_a_long_enrichment_still_lets_the_loop_run():
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+# ---------- one core, two things to do ----------
+#
+# performance-1x is a single *dedicated* core, replacing two throttled ones. It
+# was the right trade for throughput — a round went from 6m19s to 76s, with
+# `store` falling from 143s to 4.7s — but the thread scoring articles and the
+# thread answering requests now share one processor instead of having one each.
+# Ingestion needs about 45s of that core per 76s round, so it is not saturated;
+# what misses a 10s health check is burstiness.
+
+def test_the_interpreter_hands_over_faster_than_its_default():
+    """5ms is tuned for throughput on a machine with cores to spare. This one
+    has one, and has to answer requests while it works."""
+    import sys
+    assert sys.getswitchinterval() <= 0.002, (
+        f"switch interval is {sys.getswitchinterval()}s; a request can wait "
+        f"behind a scoring burst for far longer than the work itself")
+    assert "sys.setswitchinterval" in inspect.getsource(main), (
+        "the interval is not set by the app, so it only holds where something "
+        "else happens to have set it")
+
+
+def test_a_slice_is_short_enough_to_share_a_core():
+    """Each slice is one uninterrupted burst on the only processor there is."""
+    assert ingest.ENRICH_CHUNK * 0.16 <= 2.0, (
+        f"an enrichment slice is {ingest.ENRICH_CHUNK * 0.16:.1f}s of the core")
+    assert ingest.CLUSTER_CHUNK <= 25
+
+
+def test_deciding_what_is_due_is_off_the_loop():
+    """Twelve hundred rows into ORM objects, four times a minute, forever."""
+    assert "to_thread(due_now)" in inspect.getsource(ingest.ingest_loop)
+
+
+@pytest.mark.anyio
+async def test_a_request_is_answered_during_a_scoring_burst():
+    """The property all of the above is for, exercised against real threads.
+
+    A worker does the kind of pure-Python work a slice does while a heartbeat
+    asks for the loop. On one core the two genuinely compete, so this measures
+    what a health check would experience rather than asserting a constant."""
+    import sys
+
+    gaps = []
+
+    async def heartbeat():
+        last = asyncio.get_event_loop().time()
+        while True:
+            await asyncio.sleep(0.005)
+            now = asyncio.get_event_loop().time()
+            gaps.append(now - last)
+            last = now
+
+    def burn():
+        # ~0.2s of the same shape of work: attribute lookups and arithmetic.
+        total = 0
+        for i in range(400_000):
+            total += i * i % 7
+        return total
+
+    beat = asyncio.create_task(heartbeat())
+    await asyncio.sleep(0.05)
+    for _ in range(5):
+        await asyncio.to_thread(burn)
+    beat.cancel()
+
+    assert gaps, "the heartbeat never ran"
+    worst = max(gaps)
+    # Generous against CI's own noise; the failure this guards against is the
+    # loop being unavailable for seconds, not milliseconds.
+    assert worst < 1.0, (
+        f"the loop went unanswered for {worst:.2f}s during a scoring burst "
+        f"(switch interval {sys.getswitchinterval()}s)")
