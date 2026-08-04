@@ -36,6 +36,18 @@ CHANGELOG: list[dict] = [
             "and reclaiming disk — was doing the same thing, and has had the "
             "same treatment. It was rarer and so easier to miss, but each one "
             "was another window where the site could not be reached.",
+            "🧩 Grouping the new articles into events and checking them against "
+            "your alerts was the last piece, and it needed the same fix: a busy "
+            "minute brings eight hundred articles and doing all of them in one "
+            "go was still enough to lock everything else out for half a minute. "
+            "It now happens in batches as well. Which stories end up grouped "
+            "together is unchanged — that is checked by its own tests, because "
+            "a change there would have been an easy thing not to notice.",
+            "🔍 And each collection round now records how long each of its "
+            "stages took. Every one of these stalls had to be worked out from "
+            "where the log went quiet, which only finds the stages that write "
+            "to the log at all. If it happens again the log will say which "
+            "stage, in seconds.",
         ],
     },
     {

@@ -126,13 +126,28 @@ def _found_event(db: Session, article: Article) -> Event:
     return event
 
 
-def assign_events(db: Session, articles: list[Article]) -> int:
+def live_events(db: Session) -> LiveEvents:
+    """The events a newly ingested article could still be joined to.
+
+    Separable from assign_events so a large batch can be clustered in slices
+    without rebuilding this each time: gathering it is one query and an index
+    over every event of the last WINDOW_HOURS, while the matching it feeds is
+    per-article. Carrying one across the slices also keeps the result identical
+    to clustering the batch in a single pass — an event created by an early
+    article is still there for a later one to join.
+    """
+    since = utcnow() - timedelta(hours=WINDOW_HOURS)
+    return LiveEvents(db.scalars(select(Event).where(Event.updated_at >= since)))
+
+
+def assign_events(db: Session, articles: list[Article],
+                  live: LiveEvents | None = None) -> int:
     """Attach newly ingested articles to live events (or create new ones).
 
     Returns the number of new events created.
     """
-    since = utcnow() - timedelta(hours=WINDOW_HOURS)
-    live = LiveEvents(db.scalars(select(Event).where(Event.updated_at >= since)))
+    if live is None:
+        live = live_events(db)
     created = 0
     for article in sorted(articles, key=lambda a: a.published_at or utcnow()):
         at = live.best_match(article)

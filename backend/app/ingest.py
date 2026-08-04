@@ -21,7 +21,7 @@ import httpx
 from sqlalchemy import delete as sa_delete, exists, or_, select
 
 from . import discovery, home, langdetect, mailer, repair, safefetch, storage
-from .clustering import assign_events
+from .clustering import assign_events, live_events
 from .content import fetch_article_text
 from .database import SessionLocal
 from .events import broadcaster
@@ -388,6 +388,11 @@ async def enrich_with_content(db, articles: list[Article], cap: int | None = Non
 # is roughly four seconds of work before the thread is handed back.
 ENRICH_CHUNK = int(os.environ.get("NEWS_ENRICH_CHUNK", "25"))
 
+# The same handover, for clustering and alert matching. Larger because the work
+# per article is smaller — matching one article against the live events and the
+# active alerts, rather than re-reading a whole body.
+CLUSTER_CHUNK = int(os.environ.get("NEWS_CLUSTER_CHUNK", "50"))
+
 
 def _enrich_chunk(batch: list[tuple]) -> int:
     """Re-derive places, country, categories and language from a full body.
@@ -699,8 +704,23 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
                 "content_fetched": 0, "repaired": 0, "discovered": 0,
                 "retired": 0, "removed": 0,
                 "sources_ok": 0, "sources_total": 0}
+    # Phase timings, logged with the batch summary. Every stall this poller has
+    # caused was one phase running long, and each time it had to be inferred
+    # from where the log went quiet — which only works if the phase is the sort
+    # that logs at all. Measuring them is a few microseconds and turns the next
+    # occurrence into something to read rather than deduce.
+    phase: dict[str, float] = {}
+    _t = time.monotonic()
+
+    def mark(name):
+        nonlocal _t
+        now = time.monotonic()
+        phase[name] = now - _t
+        _t = now
+
     recent = _recent_clusters(db)
     results = await _fetch_batch(sources)
+    mark("fetch")
 
     all_new: list[Article] = []
     ok_sources = 0
@@ -812,24 +832,45 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
         log.exception("source discovery failed")
 
     # Pull article bodies BEFORE alert evaluation so alerts see full text.
+    mark("store")
     content_fetched = 0
     backfilled = 0
     if CONTENT_FETCH:
         content_fetched = await enrich_with_content(db, all_new)
+        mark("enrich")
         # Whatever the cap did not spend on this batch goes to the articles
         # earlier batches had to skip, so a busy spell is caught up on the
         # quiet minutes that follow it rather than being lost.
         backfilled = await backfill_content(db, CONTENT_MAX_PER_CYCLE - content_fetched)
+        mark("backfill")
 
-    # Clustering and alert matching scale with the batch and are equally
-    # blocking — same treatment, so a large batch can't stall the server.
-    def cluster_and_match():
-        events = assign_events(db, all_new)
-        matched = evaluate_alerts(db, all_new)
-        db.commit()
-        return events, matched
+    # Clustering and alert matching scale with the batch too, and a busy
+    # minute brings 800+ articles. Moving them to a thread was not enough on
+    # its own: one thread holding the interpreter for the whole batch starves
+    # the loop just as thoroughly as running there, it merely stops logging
+    # about it. Sliced, like the enrichment pass above, for the same reason.
+    #
+    # Sorted once here rather than inside each slice, so slicing an ordered
+    # list preserves the chronological order the clustering depends on, and one
+    # LiveEvents is carried across the slices — clustering the batch this way
+    # gives the same answer as clustering it in a single pass.
+    all_new.sort(key=lambda a: a.published_at or utcnow())
+    live = await asyncio.to_thread(live_events, db)
+    new_events = 0
+    hits: list[dict] = []
+    for i in range(0, len(all_new), CLUSTER_CHUNK):
+        def slice_(chunk=all_new[i:i + CLUSTER_CHUNK]):
+            created = assign_events(db, chunk, live=live)
+            matched = evaluate_alerts(db, chunk)
+            # Per slice, so the transaction stays small and a reader sees the
+            # batch land progressively instead of all at once at the end.
+            db.commit()
+            return created, matched
 
-    new_events, hits = await asyncio.to_thread(cluster_and_match)
+        created, matched = await asyncio.to_thread(slice_)
+        new_events += created
+        hits.extend(matched)
+    mark("cluster")
     # Out-of-app delivery (email/webhook) for alerts that opted in — after the
     # commit so a delivery hiccup can't lose the persisted hit.
     try:
@@ -868,9 +909,11 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     for hit in hits:
         broadcaster.publish({"type": "alert", **hit})
     log.info("ingest batch: %d/%d sources ok (%d unchanged), %d new articles, "
-             "%d alert hits, %d repaired, %d discovered, %d retired, %d removed",
+             "%d alert hits, %d repaired, %d discovered, %d retired, %d removed "
+             "[%s]",
              ok_sources, len(sources), unchanged, len(all_new), len(hits),
-             repaired, discovered, retired, removed)
+             repaired, discovered, retired, removed,
+             " ".join(f"{name} {secs:.1f}s" for name, secs in phase.items()))
     return {"new_articles": len(all_new), "new_events": new_events, "unchanged": unchanged,
             "alert_hits": len(hits), "content_fetched": content_fetched,
             "backfilled": backfilled,

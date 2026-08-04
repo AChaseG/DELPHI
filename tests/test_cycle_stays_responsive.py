@@ -104,14 +104,45 @@ def test_housekeeping_is_off_the_loop():
     assert "def housekeeping" in body
 
 
-def test_clustering_and_alert_matching_stay_off_the_loop():
-    """These were moved earlier; the outage came from the phases that were
-    missed at the time. Pinned so the next pass does not undo this one."""
-    assert "to_thread(cluster_and_match)" in _body("_ingest_batch")
+def test_clustering_and_alert_matching_are_sliced_too():
+    """Threading these was the first fix and it was not enough: the live
+    machine still went quiet for 37 seconds afterwards, because one thread
+    holding the interpreter for an 800-article batch starves the loop as
+    thoroughly as running on it — it just stops logging about it."""
+    body = _body("_ingest_batch")
+    assert "CLUSTER_CHUNK" in body, "the whole batch is clustered in one block again"
+    assert "to_thread(slice_)" in body
+    assert "to_thread(live_events" in body, (
+        "the live-event index is gathered on the loop, or rebuilt per slice")
+
+
+def test_a_cluster_slice_is_a_few_seconds_at_most():
+    assert isinstance(ingest.CLUSTER_CHUNK, int)
+    assert 0 < ingest.CLUSTER_CHUNK <= 200, (
+        f"a slice of {ingest.CLUSTER_CHUNK} articles is not a slice")
+
+
+def test_the_batch_is_ordered_before_it_is_sliced():
+    """assign_events depends on chronological order. Slicing an unsorted list
+    would quietly change which stories cluster together."""
+    body = _body("_ingest_batch")
+    sorted_at = body.index("all_new.sort(")
+    sliced_at = body.index("CLUSTER_CHUNK")
+    assert sorted_at < sliced_at, "the batch is sliced before it is sorted"
 
 
 def test_storing_a_source_stays_off_the_loop():
     assert re.search(r"to_thread\(\s*store", _body("_ingest_batch"))
+
+
+def test_the_batch_summary_reports_where_the_time_went():
+    """Every stall so far had to be inferred from where the log went quiet,
+    which only works for phases that log at all. The next one should be
+    readable."""
+    body = _body("_ingest_batch")
+    for name in ("fetch", "store", "enrich", "backfill", "cluster"):
+        assert f'mark("{name}")' in body, f"the {name} phase is not timed"
+    assert "phase.items()" in body, "the timings are collected but never logged"
 
 
 # ---------- the behaviour the above is a proxy for ----------

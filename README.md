@@ -260,6 +260,7 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_CONTENT_FETCH` | `1` | fetch article bodies for full-text matching (`0` = headlines/summaries only) |
 | `NEWS_CONTENT_MAX_PER_CYCLE` | `150` | article pages fetched per ingest cycle |
 | `NEWS_ENRICH_CHUNK` | `25` | article bodies re-read per slice before the event loop is handed back |
+| `NEWS_CLUSTER_CHUNK` | `50` | articles clustered and alert-matched per slice, same reason |
 | `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
 | `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
 | `NEWS_REMOVE_AFTER` | `5` | consecutive failed polls before a source is retired or removed |
@@ -382,13 +383,26 @@ GET  /api/stream                   SSE: live article batches + alert hits
   body costs ~160ms (105 gazetteer, 53 categorization), and a cycle does up to
   `CONTENT_MAX_PER_CYCLE` of them for the new batch and again for the backlog:
   ~24s a pass, ~48s a cycle, on the one thread that also answers requests.
-  Clustering and alert matching had already been moved to a thread; the
-  enrichment pass, the backlog query and the six-hourly prune/checkpoint/vacuum
-  had not. All are now threaded, and enrichment is handed over in
-  `NEWS_ENRICH_CHUNK` slices (default 25, ~4s) so the loop is given back
-  repeatedly rather than once at the end. A thread does not make the work
-  cheaper — the interpreter still runs it one bytecode at a time — it makes it
-  interruptible, which is the difference between a slow minute and an outage.
+  Every phase that scales with the batch is now threaded *and sliced*: the
+  enrichment pass in `NEWS_ENRICH_CHUNK` articles (default 25, ~4s), clustering
+  and alert matching in `NEWS_CLUSTER_CHUNK` (default 50), plus the backlog
+  query and the six-hourly prune/checkpoint/vacuum. Threading alone was not
+  enough and the live machine proved it: after clustering was moved to a thread
+  it still went quiet for 37 seconds, because one thread holding the interpreter
+  for an 800-article batch starves the loop as thoroughly as running on it — it
+  only stops logging about it. A thread does not make the work cheaper (the
+  interpreter still runs it one bytecode at a time); slicing is what makes it
+  interruptible, and that is the difference between a slow minute and an outage.
+  Slicing the clustering is only sound because one `LiveEvents` is carried
+  across the slices over a pre-sorted batch, so the grouping is identical to a
+  single pass — asserted directly in `test_matching_clustering.py`, since a
+  change there would be invisible in any other test.
+- **Each cycle logs how long each phase took** (`fetch store enrich backfill
+  cluster`, seconds, on the batch summary line). Every stall above had to be
+  located by finding where the log went quiet, which only works for phases that
+  log at all — the enrichment pass and the clustering pass are both silent by
+  nature. The timings cost microseconds and turn the next occurrence into
+  something to read instead of deduce.
   Note that the earlier defences for this class of stall (the restart warmup and
   a health check that tells busy from broken) could not help here: both assume
   the event loop still gets to run.

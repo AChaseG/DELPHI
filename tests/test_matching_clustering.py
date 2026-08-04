@@ -142,3 +142,93 @@ def test_corroboration_counts_distinct_other_outlets(db):
     # Articles arriving in the same batch corroborate each other.
     recent.add(6, tokens)
     assert recent.corroboration(1, tokens) == 3
+
+
+# ---------- clustering in slices ----------
+#
+# A busy minute brings 800+ articles and clustering all of them in one go held
+# the interpreter long enough to take the site off the internet, so the batch is
+# now clustered in slices with the loop given back between them. That is only
+# an acceptable trade if the slices reach the same answer as one pass — an
+# article must still join an event that an earlier article in the same batch
+# created, even when a slice boundary falls between them.
+
+def _batch(db, titles, src):
+    now = utcnow()
+    arts = []
+    for i, t in enumerate(titles):
+        a = Article(source_id=src.id, url=f"http://w/s{i}", title=t, summary="",
+                    language="en", importance=60,
+                    published_at=now - timedelta(minutes=len(titles) - i),
+                    cluster_tokens=cluster_tokens(t))
+        db.add(a); arts.append(a)
+    db.flush()
+    return arts
+
+
+def _grouping(articles):
+    """Which articles share an event, independent of the ids themselves."""
+    groups = {}
+    for a in articles:
+        groups.setdefault(a.event_id, set()).add(a.url)
+    return sorted(sorted(g) for g in groups.values())
+
+
+TITLES = [
+    "Massive earthquake strikes near Tokyo tsunami warning",
+    "Stock markets rally on strong tech earnings report",
+    "Earthquake near Tokyo triggers tsunami warning authorities say",
+    "Tech earnings beat expectations stock markets rally",
+    "Flooding closes roads across three northern counties",
+    "Earthquake Tokyo tsunami warning issued for coastal areas",
+]
+
+
+def test_slicing_a_batch_clusters_it_the_same_way(db):
+    """The whole justification for slicing. Same articles, same order, one
+    LiveEvents carried across — the grouping must not move."""
+    from backend.app.clustering import live_events
+
+    src = Source(name="W", rss_url="http://w/s", scope="international", tier=1,
+                 added_by="user")
+    db.add(src); db.flush()
+
+    whole = _batch(db, TITLES, src)
+    assign_events(db, whole)
+    db.commit()
+    expected = _grouping(whole)
+
+    # Same batch again, clustered two at a time against a fresh event table.
+    db.query(Article).delete(); db.query(Event).delete(); db.commit()
+    sliced = _batch(db, TITLES, src)
+    sliced.sort(key=lambda a: a.published_at)
+    live = live_events(db)
+    created = 0
+    for i in range(0, len(sliced), 2):
+        created += assign_events(db, sliced[i:i + 2], live=live)
+        db.commit()
+
+    assert _grouping(sliced) == expected
+    assert created == len(expected)
+
+
+def test_a_slice_can_join_an_event_an_earlier_slice_created(db):
+    """The failure mode if LiveEvents were rebuilt per slice, or not carried:
+    every slice would start blind and duplicate the events before it."""
+    from backend.app.clustering import live_events
+
+    src = Source(name="W", rss_url="http://w/j", scope="international", tier=1,
+                 added_by="user")
+    db.add(src); db.flush()
+    pair = _batch(db, [TITLES[0], TITLES[2]], src)   # the same earthquake
+    pair.sort(key=lambda a: a.published_at)
+
+    live = live_events(db)
+    first = assign_events(db, pair[:1], live=live)
+    db.commit()
+    second = assign_events(db, pair[1:], live=live)
+    db.commit()
+
+    assert first == 1, "the first article should have opened an event"
+    assert second == 0, "the second opened its own event instead of joining"
+    assert pair[0].event_id == pair[1].event_id
