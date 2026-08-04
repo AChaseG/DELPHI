@@ -42,8 +42,15 @@ CONCURRENCY = int(os.environ.get("NEWS_FETCH_CONCURRENCY", "10"))
 # out per host by a steady gap so a rate-limited host (news.google.com, which
 # backs ~500 city feeds) gets a gentle drip instead of a serialized burst.
 POLL_TICK = float(os.environ.get("NEWS_POLL_TICK", "15"))        # seconds between ticks
-POLL_BATCH = int(os.environ.get("NEWS_POLL_BATCH", "80"))         # max non-city fetches per tick
-CITY_PER_TICK = int(os.environ.get("NEWS_CITY_PER_TICK", "20"))   # max city feeds per tick (bounds the google drip)
+# Halved after a round was measured at 6m19s end to end — longer than the
+# refresh interval it was serving, so sources were permanently overdue, every
+# poll came back with a full load, and the machine never had an idle moment for
+# anything else. A smaller round is not less news: what a source publishes is
+# set by the publisher, and a poll that finds three items instead of twelve
+# finds them three times as often. It is the same articles through a narrower
+# door, which is what leaves room to answer a page request.
+POLL_BATCH = int(os.environ.get("NEWS_POLL_BATCH", "40"))         # max non-city fetches per tick
+CITY_PER_TICK = int(os.environ.get("NEWS_CITY_PER_TICK", "12"))   # max city feeds per tick (bounds the google drip)
 # Refresh intervals. Both came down when polling became conditional: a feed
 # that hasn't changed now answers 304 with no body and nothing to parse, so the
 # cost of asking more often is a request rather than a download. Wires moved

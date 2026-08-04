@@ -37,6 +37,7 @@ def db():
     home.clear()   # a warm Home board must not outlive the rows it was built from
     from backend.app import main as _main
     _main._invalidate_sources_cache()
+    _main._invalidate_stats_cache()
     _main._DB_STATE = (0.0, True, "")
     s = SessionLocal()
     try:
@@ -54,6 +55,10 @@ def client():
     home.clear()
     from backend.app import main as _main
     _main._invalidate_sources_cache()   # rendered per process; a fresh table needs a fresh one
+    # Same for the dashboard's headline numbers: they are counted once a minute
+    # and shared, so an emptied table must not be described by the last test's
+    # totals.
+    _main._invalidate_stats_cache()
     # /healthz remembers its last answer between checks; a test that breaks the
     # database must not be handed a previous test's "ok".
     _main._DB_STATE = (0.0, True, "")

@@ -543,26 +543,49 @@ def _article_json(a: Article, tr: dict | None = None,
 
 # ---------- meta ----------
 
+# The headline numbers on the dashboard: four aggregates, one of them a count
+# of every article ever stored. They are read on every page load and they are
+# the same for everybody, and while the poller has the machine busy this was
+# measured at 31.8s live — past the browser's 30s patience, so the dashboard
+# reported the server as unreachable when it was merely occupied. They describe
+# a catalog that changes over minutes, so a minute-old answer is the same
+# answer; recomputing it per reader is the only thing that ever made it slow.
+_STATS_CACHE: tuple[float, dict] | None = None
+STATS_CACHE_TTL = 60.0
+
+
+def _invalidate_stats_cache() -> None:
+    global _STATS_CACHE
+    _STATS_CACHE = None
+
+
+def _stats(db) -> dict:
+    global _STATS_CACHE
+    if _STATS_CACHE and time.monotonic() - _STATS_CACHE[0] < STATS_CACHE_TTL:
+        return _STATS_CACHE[1]
+    from datetime import timedelta
+    day_ago = utcnow().replace(microsecond=0) - timedelta(hours=24)
+    stats = {
+        "total_articles": db.scalar(select(func.count(Article.id))) or 0,
+        "articles_24h": db.scalar(
+            select(func.count(Article.id)).where(Article.fetched_at >= day_ago)) or 0,
+        "countries_24h": db.scalar(
+            select(func.count(func.distinct(Article.country))).where(
+                Article.fetched_at >= day_ago, Article.country != "")) or 0,
+        "sources_ok": db.scalar(
+            select(func.count(Source.id)).where(Source.enabled.is_(True),
+                                                Source.last_status.startswith("ok"))) or 0,
+        "sources_total": db.scalar(
+            select(func.count(Source.id)).where(Source.enabled.is_(True))) or 0,
+    }
+    _STATS_CACHE = (time.monotonic(), stats)
+    return stats
+
+
 @app.get("/api/meta")
 def meta(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     gaz = load_gazetteer()
     me_user = db.get(User, _acct_id(user_id))
-    total_articles = db.scalar(select(func.count(Article.id))) or 0
-    day_ago = utcnow().replace(microsecond=0)
-    from datetime import timedelta
-    articles_24h = db.scalar(
-        select(func.count(Article.id)).where(Article.fetched_at >= day_ago - timedelta(hours=24))
-    ) or 0
-    countries_24h = db.scalar(
-        select(func.count(func.distinct(Article.country))).where(
-            Article.fetched_at >= day_ago - timedelta(hours=24), Article.country != ""
-        )
-    ) or 0
-    sources_ok = db.scalar(
-        select(func.count(Source.id)).where(Source.enabled.is_(True),
-                                            Source.last_status.startswith("ok"))
-    ) or 0
-    sources_total = db.scalar(select(func.count(Source.id)).where(Source.enabled.is_(True))) or 0
     return {
         "categories": STANDARD_CATEGORIES,
         "scopes": ["local", "national", "international"],
@@ -576,13 +599,7 @@ def meta(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
         "languages": sorted(set(db.scalars(select(func.distinct(Source.language)))) | {"en"}),
         "ui_languages": translate.UI_LANGUAGES,
         "translation": {"provider": translate.PROVIDER, "enabled": translate.enabled()},
-        "stats": {
-            "total_articles": total_articles,
-            "articles_24h": articles_24h,
-            "countries_24h": countries_24h,
-            "sources_ok": sources_ok,
-            "sources_total": sources_total,
-        },
+        "stats": _stats(db),
         "ingest": ingest.status,
         "is_admin": bool(me_user and _is_admin(me_user)),
     }

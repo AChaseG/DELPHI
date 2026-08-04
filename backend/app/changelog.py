@@ -13,6 +13,37 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-01",
+        "title": "Why the dashboard kept saying it couldn't reach the server",
+        "items": [
+            "🧾 The stage timings added yesterday found it on their first "
+            "reading. One round of collecting the news was taking six minutes "
+            "and nineteen seconds and starting again fifteen seconds later, so "
+            "the server was never once idle — and the request for the "
+            "dashboard's headline numbers was measured at 31.8 seconds, past "
+            "the half-minute a browser waits before declaring a server "
+            "unreachable. Nothing was broken. It was simply too busy to answer "
+            "in time, which looks identical from the outside.",
+            "🖥 D.E.L.P.H.I. now runs on a dedicated processor rather than a "
+            "shared one. Reading a headline takes about three thousandths of a "
+            "second; on the shared processor, under sustained load, it was "
+            "taking forty times that, because that kind of processor is "
+            "deliberately slowed down when something uses it continuously — "
+            "which is exactly what watching a thousand news sources does.",
+            "⏱ And each round of collection now takes on about half as much at "
+            "a time. This is not less news: what a source publishes is decided "
+            "by the publisher, and checking it more often simply finds fewer "
+            "items each time. The same articles arrive through a narrower door, "
+            "which is what leaves the machine room to answer you.",
+            "📊 The headline numbers themselves — articles stored, countries "
+            "covered, sources answering — were being counted from scratch for "
+            "every reader on every page load, including a count of every "
+            "article ever collected. They are the same for everyone and they "
+            "describe something that changes over minutes, so they are now "
+            "worked out once a minute and shared.",
+        ],
+    },
+    {
         "date": "2026-08-31",
         "title": "The site going unreachable for a minute at a time",
         "items": [

@@ -38,15 +38,25 @@ primary_region = 'ams'
 
 [[vm]]
   # Delphi's poller is a *sustained* workload — it never idles — and Fly
-  # throttles shared CPUs hard once the burst allowance is spent, which is what
-  # made the dashboard crawl on shared-cpu-1x. Two shared vCPUs and 2 GB give
-  # ingestion room to run while the app stays responsive.
+  # throttles shared CPUs hard once the burst allowance is spent. On
+  # shared-cpu-2x that stopped being a theory: with the phase timings in the
+  # log, one collection round measured
   #
-  # Still not fast enough? Change size to 'performance-1x' for a *dedicated*
-  # core with no throttling (costs several times more, but it is the right
-  # answer for continuous ingestion at this catalog size).
+  #     fetch 45.3s  store 143.0s  enrich 89.0s  backfill 18.5s  cluster 83.4s
+  #
+  # — six and a quarter minutes, restarting fifteen seconds later, so the
+  # machine was never idle and every request queued behind it. Reading a
+  # headline costs 2.8ms of Python here; the same work was taking ~115ms there.
+  # That gap is the throttle. Requests that should take milliseconds were
+  # logged at 4s, 6.5s, and — for the dashboard's own headline numbers — 31.8s,
+  # past the browser's 30s patience, which is what made a working site report
+  # itself unreachable.
+  #
+  # performance-1x is a *dedicated* core with no throttling. It costs several
+  # times more, and for continuous ingestion at this catalog size it is what
+  # the workload actually needs.
   #
   # Keep count at 1 — the scheduler, SQLite database, and rate limiter are all
   # in-process. Scale this machine up, never out.
-  size = 'shared-cpu-2x'
+  size = 'performance-1x'
   memory = '2048mb'

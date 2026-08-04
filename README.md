@@ -261,6 +261,8 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_CONTENT_MAX_PER_CYCLE` | `150` | article pages fetched per ingest cycle |
 | `NEWS_ENRICH_CHUNK` | `25` | article bodies re-read per slice before the event loop is handed back |
 | `NEWS_CLUSTER_CHUNK` | `50` | articles clustered and alert-matched per slice, same reason |
+| `NEWS_POLL_BATCH` | `40` | non-city sources fetched per tick (was 80; a round was outlasting its own refresh interval) |
+| `NEWS_CITY_PER_TICK` | `12` | city feeds per tick, which bounds the Google drip |
 | `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
 | `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
 | `NEWS_REMOVE_AFTER` | `5` | consecutive failed polls before a source is retired or removed |
@@ -397,6 +399,19 @@ GET  /api/stream                   SSE: live article batches + alert hits
   across the slices over a pre-sorted batch, so the grouping is identical to a
   single pass — asserted directly in `test_matching_clustering.py`, since a
   change there would be invisible in any other test.
+- **The machine is `performance-1x`, not shared, and the poll batch is half
+  what it was.** The phase timings below found this on their first reading: a
+  round measured `fetch 45.3s store 143.0s enrich 89.0s backfill 18.5s cluster
+  83.4s` — 6m19s, restarting 15s later, so the machine never idled and requests
+  queued behind it. `/api/meta` was logged at **31.8s**, past the browser's 30s
+  timeout, which is how a healthy server came to report itself unreachable
+  while passing every health check. Reading a headline costs 2.8ms of Python
+  (`extract_places` 2.1 + `classify_categories` 0.7); the live machine was
+  spending ~115ms per article, and that ~40x gap is Fly throttling a *shared*
+  vCPU under sustained load. Hence a dedicated core. `POLL_BATCH` also went
+  80→40 and `CITY_PER_TICK` 20→12: a smaller round is not less news, since what
+  a source publishes is set by the publisher — a poll that finds three items
+  instead of twelve finds them three times as often.
 - **Each cycle logs how long each phase took** (`fetch store enrich backfill
   cluster`, seconds, on the batch summary line). Every stall above had to be
   located by finding where the log went quiet, which only works for phases that
