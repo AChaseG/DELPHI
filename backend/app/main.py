@@ -28,8 +28,8 @@ from starlette.concurrency import run_in_threadpool
 
 import re as _username_re
 
-from . import (auth, devices, export, geocode, home, ingest, langdetect, mailer,
-               passwords, ratelimit, repair, safefetch, storage, translate)
+from . import (auth, devices, discovery, export, geocode, home, ingest, langdetect,
+               mailer, passwords, ratelimit, repair, safefetch, storage, translate)
 from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -2411,6 +2411,23 @@ async def reclaim_space(admin: User = Depends(require_admin)):
     freed = max(0, before - storage.db_bytes())
     return {**result, "freed_bytes": freed, "db_bytes": storage.db_bytes(),
             "mode": storage.auto_vacuum_mode()}
+
+
+@app.post("/api/maintenance/audit-sources")
+async def audit_sources(admin: User = Depends(require_admin),
+                        db: Session = Depends(get_db)):
+    """Re-check the catalog against the current adoption rules, now.
+
+    The same sweep the poller runs daily and on every restart. Here so an
+    operator who has just recognised something that should never have been
+    adopted does not have to wait a day to see it acted on.
+
+    Disables; never deletes. The source stays visible in the Sources panel
+    saying why it was switched off, and anything a person added by hand is
+    left alone.
+    """
+    result = await asyncio.to_thread(discovery.audit_catalog, db)
+    return result
 
 
 @app.post("/api/maintenance/reclassify")

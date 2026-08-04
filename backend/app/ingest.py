@@ -102,6 +102,11 @@ def warmup_batch(full: int, since_start: float) -> int:
 # (with their translations and alert-history rows); 0 disables pruning.
 RETENTION_DAYS = float(os.environ.get("NEWS_RETENTION_DAYS", "30"))
 PRUNE_EVERY_SECONDS = 6 * 3600
+# How often the catalog is re-checked against the current adoption rules.
+# Daily: the rules change when somebody notices something that should never
+# have been adopted, which is not an hourly event, and the sweep reads every
+# source row.
+AUDIT_EVERY_SECONDS = float(os.environ.get("NEWS_AUDIT_EVERY_S", str(24 * 3600)))
 USER_AGENT = "Delphi/1.0 (+RSS reader; respects robots and publisher feeds)"
 # Some CDNs 403 any unknown agent while happily serving browsers the same
 # public syndication feed; retry once with a browser UA before giving up.
@@ -1055,6 +1060,10 @@ def prune_to_fit(db) -> dict:
 
 
 _next_prune_at: float = 0.0  # monotonic deadline for the next retention pass
+# Zero, so the first tick after a restart runs it. Tightening the rules is
+# pointless if the catalog keeps yesterday's until this time tomorrow, and a
+# deploy is exactly when the rules have just changed.
+_next_audit_at: float = 0.0
 
 
 async def warm_home():
@@ -1144,7 +1153,7 @@ async def ingest_loop():
     (news wires first, then a bounded slice of city feeds), paced per host so
     Google gets a steady drip rather than a burst. Each source refreshes on its
     own interval; nothing starves and no single tick runs long."""
-    global _next_prune_at
+    global _next_prune_at, _next_audit_at
     status["running"] = True
     started_at = time.monotonic()      # the warmup ramp measures from here
     # The one-off conversion to incremental auto-vacuum is NOT done here, and
@@ -1193,6 +1202,17 @@ async def ingest_loop():
                             [:warmup_batch(CITY_PER_TICK, since_start)])
                         if batch:
                             new_articles = (await _ingest_batch(db, batch))["new_articles"]
+
+                    if time.monotonic() >= _next_audit_at:
+                        _next_audit_at = time.monotonic() + AUDIT_EVERY_SECONDS
+                        # Reads every source row and writes a handful, so it
+                        # goes where the rest of the cycle's database work
+                        # goes rather than on the loop.
+                        audit = await asyncio.to_thread(discovery.audit_catalog, db)
+                        status["last_audit"] = utcnow().isoformat()
+                        status["last_audit_disabled"] = audit["disabled"]
+                        status["audited_total"] = (
+                            status.get("audited_total", 0) + audit["disabled"])
 
                     due_to_prune = time.monotonic() >= _next_prune_at
                     # When space is short, prune every tick rather than every

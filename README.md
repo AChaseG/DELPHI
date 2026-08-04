@@ -264,6 +264,7 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_POLL_BATCH` | `40` | non-city sources fetched per tick (was 80; a round was outlasting its own refresh interval) |
 | `NEWS_CITY_PER_TICK` | `12` | city feeds per tick, which bounds the Google drip |
 | `NEWS_TRANSLATE_CONCURRENCY` | `8` | articles translated at once; each issues title and summary together, so in-flight requests are about double this |
+| `NEWS_AUDIT_EVERY_S` | `86400` | how often the catalog is re-checked against the current adoption rules |
 | `NEWS_DISCOVER_MIN_SIGHTINGS` | `2` | times a publisher must be seen before auto-discovery probes it |
 | `NEWS_DEVICE_LIMIT` | `0` | devices an account may be *in use on* at once (`0` = no limit); per-account overrides in the console |
 | `NEWS_DEVICE_ACTIVE_WINDOW_S` | `300` | silence after which a device stops counting as in use |
@@ -473,6 +474,15 @@ GET  /api/stream                   SSE: live article batches + alert hits
   Recurrence is what separates an outlet from a one-off without enumerating
   every kind of website that is not a newspaper. A `seen` record deliberately
   does *not* count as "known", or a domain could never reach its second sighting.
+  **The rules apply backwards too**: `audit_catalog()` runs on every restart and
+  then daily (`NEWS_AUDIT_EVERY_S`), disabling — never deleting — catalog
+  sources that today's rules would refuse, with the reason in `last_status`
+  where the Sources panel shows it. `POST /api/maintenance/audit-sources` runs
+  it on demand. Two exemptions that matter: a source added by hand is left
+  alone, and only `_SKIP_NOT_NEWS` is swept. That split exists because
+  `news.google.com` is on the never-adopt list while the 497 city sources and
+  every topic tracker *are* Google News searches — sweeping the whole list would
+  switch off the city coverage.
 - **The query builder warns about bare ambiguous words.** Same report, other
   half: `("solar" OR "wind" OR "coal" OR "nuclear" …)` is a list of ordinary
   English words. `AMBIGUOUS_TERMS` in `boolean_query.py` maps each to the

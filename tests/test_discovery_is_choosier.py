@@ -144,3 +144,126 @@ async def test_a_blocked_platform_is_refused_however_often_it_appears(db, monkey
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+# ---------- the rules applied backwards, to what is already here ----------
+#
+# Tightening what may be adopted does nothing about what already was, and the
+# catalog is 85% auto-adopted — the ticketing calendar that started this was
+# still in it, still enabled, still filed as national news.
+
+def _src(db, name, rss, added_by="auto-discovered", homepage="", enabled=True):
+    s = Source(name=name, rss_url=rss, homepage=homepage, added_by=added_by,
+               enabled=enabled, scope="national", tier=3)
+    db.add(s)
+    db.commit()
+    return s
+
+
+def test_it_disables_a_platform_already_in_the_catalog(db):
+    kk = _src(db, "KKTIX", "https://baodaorecords.kktix.cc/events.atom")
+    result = discovery.audit_catalog(db)
+    db.refresh(kk)
+    assert result["disabled"] == 1
+    assert kk.enabled is False
+    assert "not a news source" in kk.last_status
+
+
+def test_it_disables_rather_than_deletes(db):
+    """Deleting would take the articles with it, and those are shared by every
+    feed on the instance. An operator who disagrees can switch it back on."""
+    _src(db, "KKTIX", "https://baodaorecords.kktix.cc/events.atom")
+    discovery.audit_catalog(db)
+    assert db.query(Source).count() == 1
+
+
+def test_the_reason_is_visible_where_an_operator_looks(db):
+    kk = _src(db, "KKTIX", "https://welcome-music.kktix.cc/events.atom")
+    discovery.audit_catalog(db)
+    db.refresh(kk)
+    # Not a bare "disabled" — the Sources panel shows last_status, and an
+    # operator finding a dead source needs to know who switched it off.
+    assert kk.last_status.startswith("disabled:")
+
+
+def test_it_matches_on_the_homepage_too(db):
+    """A source can carry the platform on either URL."""
+    s = _src(db, "Tickets", "https://feeds.example.com/x.xml",
+             homepage="https://someone.eventbrite.com/")
+    discovery.audit_catalog(db)
+    db.refresh(s)
+    assert s.enabled is False
+
+
+def test_it_never_touches_a_source_a_person_added(db):
+    """They chose it, and this is a heuristic."""
+    mine = _src(db, "My ticket feed", "https://baodaorecords.kktix.cc/events.atom",
+                added_by="user")
+    result = discovery.audit_catalog(db)
+    db.refresh(mine)
+    assert result["disabled"] == 0
+    assert mine.enabled is True
+
+
+def test_it_does_not_disable_the_city_coverage(db):
+    """The footgun. news.google.com is on the never-adopt list, and the 497
+    city sources and every topic tracker are Google News searches — sweeping
+    the whole list would switch off the city coverage entirely."""
+    city = _src(db, "Taipei", "https://news.google.com/rss/search?q=Taipei",
+                added_by="city-catalog")
+    topic = _src(db, "Topic: energy", "https://news.google.com/rss/search?q=energy",
+                 added_by="topic-tracker")
+    repaired = _src(db, "Repaired outlet",
+                    "https://news.google.com/rss/search?q=site:outlet.com")
+
+    assert discovery.audit_catalog(db)["disabled"] == 0
+    for s in (city, topic, repaired):
+        db.refresh(s)
+        assert s.enabled is True
+
+
+def test_an_ordinary_outlet_is_left_alone(db):
+    good = _src(db, "Kyiv Post", "https://kyivpost.com/feed", added_by="catalog")
+    assert discovery.audit_catalog(db)["disabled"] == 0
+    db.refresh(good)
+    assert good.enabled is True
+
+
+def test_running_it_twice_changes_nothing_the_second_time(db):
+    _src(db, "KKTIX", "https://baodaorecords.kktix.cc/events.atom")
+    assert discovery.audit_catalog(db)["disabled"] == 1
+    assert discovery.audit_catalog(db)["disabled"] == 0, (
+        "an already-disabled source was counted again")
+
+
+def test_the_two_lists_are_kept_apart(db):
+    """Only the not-news half may be applied backwards."""
+    assert "news.google.com" in discovery._SKIP_AGGREGATORS
+    assert "news.google.com" not in discovery._SKIP_NOT_NEWS
+    assert "kktix.cc" in discovery._SKIP_NOT_NEWS
+    # Adoption still refuses both.
+    assert discovery.skipped("news.google.com") and discovery.skipped("kktix.cc")
+    assert not discovery.not_news("news.google.com")
+
+
+# ---------- and it runs on its own ----------
+
+def test_the_poller_audits_daily_and_on_restart():
+    import inspect
+
+    from backend.app import ingest
+
+    loop = inspect.getsource(ingest.ingest_loop)
+    assert "discovery.audit_catalog" in loop, "nothing runs the sweep"
+    assert "_next_audit_at" in loop
+    assert ingest.AUDIT_EVERY_SECONDS == 24 * 3600
+    # Zero at import, so the first tick after a restart runs it — a deploy is
+    # exactly when the rules have just changed.
+    assert ingest._next_audit_at == 0.0
+
+
+def test_the_sweep_is_off_the_event_loop():
+    import inspect
+
+    from backend.app import ingest
+    assert "to_thread(discovery.audit_catalog" in inspect.getsource(ingest.ingest_loop)

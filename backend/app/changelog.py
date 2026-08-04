@@ -28,6 +28,11 @@ CHANGELOG: list[dict] = [
             "power\u201d, \u201cwind farm\u201d, \u201cnuclear reactor\u201d. "
             "It is advice, not an error; the search still saves exactly as "
             "written.",
+            "\ud83e\uddf9 The same rules are now applied to sources already "
+            "collected, not just new ones \u2014 once when D.E.L.P.H.I. starts "
+            "and once a day after that. Anything the current rules would "
+            "refuse is switched off, never deleted, and says in the Sources "
+            "panel why. Sources you added yourself are left alone.",
             "\ud83d\udeab And the source should never have been in the catalog. "
             "It was a ticketing calendar that D.E.L.P.H.I. adopted by itself "
             "because it publishes a feed. Ticketing and event platforms are "

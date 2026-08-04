@@ -42,31 +42,51 @@ DISCOVER_CONCURRENCY = int(os.environ.get("NEWS_DISCOVER_CONCURRENCY", "4"))
 RECHECK_DAYS = float(os.environ.get("NEWS_DISCOVER_RECHECK_DAYS", "30"))
 MAX_CANDIDATES = 8
 
-# Aggregators and platforms that must never be added as "outlets".
+# Domains that must never be adopted as "outlets", in two kinds — and the
+# distinction matters, because only one of them can be applied backwards.
 #
-# Matched by suffix, not equality — see `skipped`. As exact strings these
-# missed every subdomain, which is how baodaorecords.kktix.cc, a record
-# label's ticketing calendar, became a "national news" source and put concert
-# listings into an energy feed.
-_SKIP_DOMAINS = {
-    # Aggregators and social platforms.
+# Aggregators and social platforms are not outlets, but Delphi builds feeds on
+# some of them on purpose: the 497 city sources and every topic tracker are
+# news.google.com searches, and automatic repair can rewire a dead outlet onto
+# one. Refusing to *adopt* them is right; sweeping the catalog for them would
+# disable the city coverage.
+_SKIP_AGGREGATORS = {
     "news.google.com", "google.com", "youtube.com", "youtu.be",
     "reddit.com", "bsky.app", "twitter.com", "x.com", "facebook.com",
     "instagram.com", "t.me", "medium.com", "msn.com", "news.yahoo.com",
-    # Ticketing and events. These publish feeds that look like news feeds —
-    # dated entries with headlines and bodies — and are not news at all.
+}
+
+# Not news under any circumstances, however the source got here. Ticketing and
+# event platforms publish feeds with exactly the shape of a news feed — dated
+# entries, headlines, bodies — which is how baodaorecords.kktix.cc, a record
+# label's ticket calendar, became a "national news" source and put concert
+# listings into an energy feed. Storefronts and job boards are the same shape
+# and the same problem. This set is safe to apply to sources already adopted.
+_SKIP_NOT_NEWS = {
     "kktix.cc", "eventbrite.com", "eventbrite.co.uk", "ticketmaster.com",
     "peatix.com", "accupass.com", "kkday.com", "klook.com", "meetup.com",
     "bandsintown.com", "songkick.com", "dice.fm", "ticketek.com",
-    # Storefronts and listings, same shape and the same problem.
     "shopify.com", "etsy.com", "ebay.com", "amazon.com", "craigslist.org",
     "indeed.com", "linkedin.com",
 }
 
+_SKIP_DOMAINS = _SKIP_AGGREGATORS | _SKIP_NOT_NEWS
+
+
+def _under(domain: str, blocked: set[str]) -> bool:
+    """Matched by suffix, not equality. As exact strings these missed every
+    subdomain, which is how baodaorecords.kktix.cc got in past kktix.cc."""
+    return any(domain == bad or domain.endswith("." + bad) for bad in blocked)
+
+
+def not_news(domain: str) -> bool:
+    """A domain that is not a news source however it arrived."""
+    return _under(domain, _SKIP_NOT_NEWS)
+
 
 def skipped(domain: str) -> bool:
     """Is this domain — or anything under it — on the never-adopt list?"""
-    return any(domain == bad or domain.endswith("." + bad) for bad in _SKIP_DOMAINS)
+    return _under(domain, _SKIP_DOMAINS)
 
 
 # Sightings required before a domain is probed at all.
@@ -240,3 +260,39 @@ async def discover_new_sources(db, publishers: dict[str, tuple[str, str]]
                 _record(db, dom, "no-feed")
                 log.info("discovery: no usable feed for %s (%s)", name, dom)
     return added
+
+
+def audit_catalog(db) -> dict:
+    """Apply today's adoption rules to sources adopted under yesterday's.
+
+    Tightening what may be adopted does nothing about what already was, and
+    the catalog is 85% auto-adopted — the ticketing calendar that started this
+    was still sitting in it, still enabled, still filed as national news.
+
+    Disabled, not deleted, and never silently: the source stays in the Sources
+    panel saying why it was switched off, so an operator who disagrees can
+    switch it back on. Deleting would also take its articles, and those are
+    shared by every feed on the instance.
+
+    Two deliberate exemptions. A source a person added by hand is left alone —
+    they chose it, and this is a heuristic. And only `_SKIP_NOT_NEWS` is swept:
+    the aggregator half of the list includes news.google.com, which the 497
+    city sources and every topic tracker are built on, so sweeping for it
+    would disable the city coverage entirely.
+    """
+    hits: list[Source] = []
+    for src in db.scalars(select(Source).where(Source.enabled.is_(True))):
+        if src.added_by == "user":
+            continue
+        if any(not_news(d) for d in (domain_of(src.rss_url), domain_of(src.homepage)) if d):
+            hits.append(src)
+
+    for src in hits:
+        src.enabled = False
+        src.last_status = "disabled: not a news source (event/commerce platform)"
+    if hits:
+        db.commit()
+        log.info("catalog audit: disabled %d non-news source(s): %s",
+                 len(hits), ", ".join(s.name for s in hits[:10]))
+    return {"checked": True, "disabled": len(hits),
+            "names": [s.name for s in hits[:20]]}
