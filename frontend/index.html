@@ -736,7 +736,28 @@
             <li><b>Reset password</b> sets a new one for someone locked out.</li>
             <li><b>Delete</b> removes the account with its feeds and alerts. Pantheons it
               owned pass to the next most senior member rather than being destroyed.</li>
+            <li><b>Devices</b> lists what an account is being used on — the kind of
+              device, its platform and browser — marking which are in use right now and
+              when the others were last seen.</li>
+            <li><b>Device limit</b> caps how many devices the account may be used on at
+              the same time. Leave it empty to follow the server-wide default
+              (<code>NEWS_DEVICE_LIMIT</code>); <b>0</b> means no limit.</li>
+            <li><b>Sign out devices</b> clears the list and ends every session on the
+              account. Use it when somebody is locked out by the limit and can't receive
+              the emailed link — a lost phone, for instance, holds its slot until it
+              falls quiet.</li>
           </ul>
+          <p><b>"In use" is not "signed in".</b> A sign-in lasts thirty days, so counting
+             those would report a phone somebody used once last month. Each row counts
+             devices something has actually arrived from in the last few minutes; close a
+             laptop and it stops counting shortly after. Several tabs on one machine
+             count as one device. A browser whose site data has been cleared, or a
+             private window, looks like a device that has never been seen before —
+             devices are recognised by an identifier the browser stores, not by
+             fingerprinting it.</p>
+          <p>Somebody who hits the limit is told which limit they hit and offered a link,
+             by email, that signs the account out everywhere so they can start again on
+             the device in their hand.</p>
           <p>Accounts designated in <code>NEWS_ADMIN_USERS</code> can't be suspended or
              deleted from here — change the server setting instead.</p>
         </details>

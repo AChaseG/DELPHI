@@ -13,6 +13,35 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-03",
+        "title": "Operators can see and limit where an account is being used",
+        "items": [
+            "📱 The operator console now shows how many devices each account is "
+            "being used on <b>right now</b> — which is not the same as how many "
+            "it is signed in on. A sign-in lasts thirty days, so counting those "
+            "would report a phone somebody used once last month. This counts "
+            "devices something has arrived from in the last five minutes. Close "
+            "the laptop and it stops counting shortly after.",
+            "💻 <b>Devices</b> on any account lists what those devices are — "
+            "\"Chrome on Windows (desktop)\", \"Safari on iOS (mobile)\" — "
+            "marking which are in use now and when the rest were last seen. "
+            "Four tabs on one laptop count as one laptop.",
+            "🚦 <b>Device limit</b> caps how many an account may be used on at "
+            "once. Each account can have its own, or follow a server-wide "
+            "default (NEWS_DEVICE_LIMIT). There is no limit at all unless one "
+            "is set, so nothing changes for anyone until you choose it.",
+            "✉️ Somebody who hits the limit is told so plainly and offered an "
+            "emailed link that signs the account out of every device, so a lost "
+            "or replaced phone can't lock its owner out until the count lapses. "
+            "An operator can do the same from the console for anyone who cannot "
+            "receive the mail.",
+            "🔒 Devices are recognised by an identifier this browser stores for "
+            "itself, not by fingerprinting. Clearing site data or using a "
+            "private window therefore looks like a new device — that is the "
+            "honest limit of the approach, and the console says so.",
+        ],
+    },
+    {
         "date": "2026-09-02",
         "title": "Stories arrive already translated",
         "items": [

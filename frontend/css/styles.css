@@ -1332,3 +1332,12 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
    and stop other columns claiming the cursor. */
 body.board-reordering { user-select: none; cursor: grabbing; }
 body.board-reordering .feed-col:not(.col-dragging) { transition: transform 120ms ease; }
+
+/* Device list in the operator console. Two states worth telling apart at a
+   glance: in use right now, and seen before. */
+.dev-list { list-style: none; margin: .5rem 0; padding: 0; }
+.dev-list li { padding: .35rem 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.dev-list li:last-child { border-bottom: 0; }
+.dev-list li.in-use b::before { content: "● "; color: var(--good); }
+/* An account at its limit — the state an operator is looking for. */
+.admin-meta.warn { color: var(--warning); }

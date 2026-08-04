@@ -166,3 +166,26 @@ def send_password_reset(to: str, username: str, link: str) -> bool:
         f"The link is valid for 1 hour. If you didn't request this, you can safely ignore it —\n"
         f"your current password keeps working.\n",
     )
+
+
+def send_device_release(to: str, username: str, link: str, in_use: int) -> bool:
+    """The way back in for someone the device limit has locked out.
+
+    They cannot reach the app to ask, so the request is made from the sign-in
+    screen with their address alone — which means this mail has to be
+    self-explanatory to somebody who did not ask for it, and has to say what
+    the link will do before they follow it.
+    """
+    return send(
+        to, "Sign out of your other D.E.L.P.H.I. devices",
+        f"Hello {username},\n\n"
+        f"Someone (hopefully you) could not open D.E.L.P.H.I. because the account is "
+        f"already in use on {in_use} {'device' if in_use == 1 else 'devices'}, which is "
+        f"its limit.\n\n"
+        f"Following this link signs the account out everywhere and clears the list, so "
+        f"you can\nsign in again on the device you are holding:\n\n{link}\n\n"
+        f"The link is valid for 1 hour and can be used once. Every device, including any "
+        f"you are\nstill using, will need to sign in again.\n\n"
+        f"If you didn't request this, ignore it — nothing changes unless the link is "
+        f"followed, and\nit does not reveal your password or let anyone in.\n",
+    )

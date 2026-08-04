@@ -184,6 +184,81 @@ async function signOutReason(resp) {
        + "nothing of yours was lost.";
 }
 
+/* The account is in use on as many devices as it is allowed to be, and this is
+   one too many.
+
+   It takes over the page rather than raising a toast because it is not a
+   failed action — nothing on the board can load, so leaving the dashboard
+   visible behind a notice would be a lie about what the reader is looking at.
+   Shown once however many requests were refused; the flag is what stops a
+   board of eight columns stacking eight identical copies of it.
+
+   The way out is an emailed link, because the two obvious alternatives are
+   both worse: signing out one of the other devices from here would let anyone
+   holding the password evict the person actually using the account, and
+   waiting for the activity window to lapse strands someone who has genuinely
+   lost the other device. */
+let deviceLimitShown = false;
+
+function showDeviceLimit(message) {
+  if (deviceLimitShown) return;
+  deviceLimitShown = true;
+
+  const wrap = document.createElement("div");
+  wrap.className = "modal-backdrop";
+  wrap.innerHTML = `
+    <div class="modal narrow">
+      <div class="modal-head"><h2>This account is in use elsewhere</h2></div>
+      <div class="modal-body">
+        <p></p>
+        <p>If you no longer have the other devices — or you'd rather start
+           fresh — we can email you a link that signs the account out of all of
+           them. Every device will need to sign in again, including this one.</p>
+        <label class="field"><span>Your email address</span>
+          <input id="devlimit-email" type="email" autocomplete="email"
+                 placeholder="you@example.com"></label>
+        <p id="devlimit-status" class="s-meta"></p>
+      </div>
+      <div class="modal-foot">
+        <button id="devlimit-send" class="btn btn-primary">Email me a sign-out link</button>
+        <span class="spacer"></span>
+        <button id="devlimit-retry" class="btn">Try again</button>
+      </div>
+    </div>`;
+  // The server's sentence, set as text rather than interpolated into the
+  // markup above — safe today, and it stays safe the day it carries a value
+  // somebody else supplied.
+  wrap.querySelector(".modal-body p").textContent = message;
+  document.body.appendChild(wrap);
+
+  const status = wrap.querySelector("#devlimit-status");
+  wrap.querySelector("#devlimit-retry").onclick = () => location.reload();
+  wrap.querySelector("#devlimit-send").onclick = async () => {
+    const email = (wrap.querySelector("#devlimit-email").value || "").trim();
+    if (!email) { status.textContent = "Enter the address the account uses."; return; }
+    status.textContent = "Sending…";
+    try {
+      const r = await fetch("/api/auth/devices/release-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const body = await r.json().catch(() => ({}));
+      // Deliberately the same words whether or not that address has an
+      // account: this endpoint is reachable without signing in, and a
+      // different answer would turn it into a way to test addresses.
+      status.textContent = body.mail_enabled === false
+        ? "This server has no email configured, so it cannot send the link. "
+          + "An operator can clear the devices from the admin console."
+        : "If that address has an account here, the link is on its way. "
+          + "It is valid for one hour.";
+    } catch (e) {
+      status.textContent = "Could not reach the server. Check your connection "
+                         + "and try again.";
+    }
+  };
+}
+
 /* Set while this browser is swapping its own token for a new one.
 
    Changing a password mints a replacement, and the old token stops being
@@ -195,10 +270,36 @@ async function signOutReason(resp) {
    thing; measured in a browser, it happened in roughly one attempt in six. */
 let rotation = null;
 
+/* This browser's identity as a *device*, so the server can tell how many
+   places an account is being used in at once.
+
+   Kept in local storage rather than derived from the browser, because the
+   question is "is this the laptop or the phone" and the honest way to know
+   that is to have written it down here the first time. Every tab in this
+   browser reads the same value, which is the point: four tabs on one laptop
+   are one device, and a limit that counted tabs would be unusable.
+
+   It identifies, it never authenticates. The session token proves who the
+   account is; this only says which of that account's devices is asking, so a
+   copied value gains nothing that the token did not already grant. Clearing
+   site data or opening a private window makes a new one — the honest limit of
+   recognising a browser without fingerprinting it. */
+function deviceKey() {
+  let key = localStorage.getItem("gnd_device");
+  if (!key || !/^[A-Za-z0-9_-]{8,64}$/.test(key)) {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    key = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem("gnd_device", key);
+  }
+  return key;
+}
+
 async function api(path, options = {}) {
   const sentWith = Session.token();
   const headers = {
     "Content-Type": "application/json",
+    "X-Delphi-Device": deviceKey(),
     ...(options.headers || {}),
   };
   if (Session.token()) headers["Authorization"] = "Bearer " + Session.token();
@@ -252,11 +353,20 @@ async function api(path, options = {}) {
   if (!resp.ok) {
     let detail = null;
     let reference = resp.headers.get("X-Delphi-Error") || "";
+    let code = "";
     try {
       const body = await resp.json();
       detail = body.detail ?? null;
       reference = body.reference || reference;
+      code = body.code || "";
     } catch (e) { /* not json — a proxy page, or an empty body */ }
+    // The device limit is refused per request, so without this every panel on
+    // the board would raise its own copy of the same message and the reader
+    // would get a pile of toasts instead of one thing to do about it.
+    if (code === "device_limit") {
+      showDeviceLimit(errorText(detail, resp.status));
+      return new Promise(() => {});
+    }
     let message = `${trying} — ${errorText(detail, resp.status)}`;
     // The reference ties this exact failure to one line in the server log.
     if (reference && !message.includes(reference))
@@ -376,6 +486,14 @@ const API = {
     api("/api/auth/forgot", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (token, password) =>
     api("/api/auth/reset", { method: "POST", body: JSON.stringify({ token, password }) }),
+  releaseDevices: (token) =>
+    api("/api/auth/devices/release", { method: "POST", body: JSON.stringify({ token }) }),
+  adminDevices: (uid) => api(`/api/admin/users/${uid}/devices`),
+  adminSetDeviceLimit: (uid, limit) =>
+    api(`/api/admin/users/${uid}/device-limit`,
+        { method: "POST", body: JSON.stringify({ limit }) }),
+  adminReleaseDevices: (uid) =>
+    api(`/api/admin/users/${uid}/devices/release`, { method: "POST" }),
   /* Adopts the new token itself rather than leaving that to the caller: the
      old one is dead from the moment the server commits, so the gap between
      the reply arriving and the session being updated is a window in which

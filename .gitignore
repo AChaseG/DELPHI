@@ -4,6 +4,13 @@ __pycache__/
 venv/
 backend/data/*.db
 backend/data/*.db-journal
+# WAL mode keeps two sidecars beside the database; they are as local as it is.
+backend/data/*.db-wal
+backend/data/*.db-shm
+# The token-signing secret, generated on first run when NEWS_SECRET is unset.
+# Committing it would publish the key every session token on the deployment is
+# signed with — anyone holding it could mint one for any account.
+backend/data/secret.key
 .DS_Store
 node_modules/
 .env

@@ -264,6 +264,9 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_POLL_BATCH` | `40` | non-city sources fetched per tick (was 80; a round was outlasting its own refresh interval) |
 | `NEWS_CITY_PER_TICK` | `12` | city feeds per tick, which bounds the Google drip |
 | `NEWS_TRANSLATE_CONCURRENCY` | `8` | articles translated at once; each issues title and summary together, so in-flight requests are about double this |
+| `NEWS_DEVICE_LIMIT` | `0` | devices an account may be *in use on* at once (`0` = no limit); per-account overrides in the console |
+| `NEWS_DEVICE_ACTIVE_WINDOW_S` | `300` | silence after which a device stops counting as in use |
+| `NEWS_DEVICE_TOUCH_EVERY_S` | `30` | how often a device's last-seen time is actually written |
 | `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
 | `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
 | `NEWS_REMOVE_AFTER` | `5` | consecutive failed polls before a source is retired or removed |
@@ -400,6 +403,30 @@ GET  /api/stream                   SSE: live article batches + alert hits
   across the slices over a pre-sorted batch, so the grouping is identical to a
   single pass — asserted directly in `test_matching_clustering.py`, since a
   change there would be invisible in any other test.
+- **Devices are counted by recent use, not by valid sign-ins.** Sessions are
+  stateless HMAC tokens with a thirty-day life, so "how many devices is this
+  account signed in on" is both large and uninteresting — a phone used once
+  last month still holds a token. `devices.py` counts what has actually sent a
+  request inside `NEWS_DEVICE_ACTIVE_WINDOW_S` (default 5 min), per *device*
+  rather than per session or connection: one laptop with four tabs is one
+  laptop, because tabs share the browser's local storage and therefore its
+  `device_key`. That key is minted client-side and sent as `X-Delphi-Device`;
+  it identifies, it never authenticates — the token already proved the account,
+  so a copied key gains nothing. Clearing site data or opening a private window
+  reads as a new device, which is the honest limit of recognising a browser
+  without fingerprinting one. A client that sends no key is allowed and not
+  counted: the header comes from our own script, so refusing requests without
+  one would be a lockout dressed as a limit.
+  Enforcement lives in the `require_account` middleware, which already loads
+  the account on every request, and `last_seen_at` is only written every
+  `NEWS_DEVICE_TOUCH_EVERY_S` — a per-request write is exactly the cost that
+  has taken this machine down before. Over the limit answers 403 with
+  `code: "device_limit"` so the client shows one takeover screen rather than a
+  toast per panel, offering an emailed link (`/api/auth/devices/release-link`,
+  unauthenticated by necessity — the person asking is the one being refused)
+  that clears the devices *and* bumps `token_version`. Both halves: clearing
+  alone would free the slot while the evicted device's token still worked, so
+  it could take the slot straight back.
 - **Translation is warmed between cycles, not paid for by the first reader.**
   A translation is cached forever after the first request that needs it — but
   that first request was a reader's, inside their page load, and

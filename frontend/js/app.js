@@ -1004,7 +1004,7 @@ function wireGate() {
   // #param= links are still accepted so anything already sent keeps working.
   const query = new URLSearchParams(location.search);
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
-  const path = location.pathname.match(/^\/(reset|verify)\/(.+)$/);
+  const path = location.pathname.match(/^\/(reset|verify|devices)\/(.+)$/);
   const actionToken = (name) =>
     (path && path[1] === name ? decodeURIComponent(path[2]) : null)
     || fragment.get(name) || query.get(name);
@@ -1024,6 +1024,15 @@ function wireGate() {
         history.replaceState(null, "", location.pathname);
       } catch (e) { say(e.message); }
     });
+  } else if (actionToken("devices")) {
+    // The sign-out-everywhere link from the device-limit mail. It ends every
+    // session on the account, so it lands the reader on the sign-in card with
+    // an explanation rather than back on a board they are no longer holding a
+    // token for.
+    API.releaseDevices(actionToken("devices"))
+      .then((r) => say(r.detail, true))
+      .catch((e) => say(e.message));
+    history.replaceState(null, "", location.pathname);
   }
 
   el("auth-password").addEventListener("keydown", (e) => { if (e.key === "Enter") el("btn-login").click(); });
@@ -2697,6 +2706,10 @@ function wireActionRail() {
 
 /* ---------- admin / operator console ---------- */
 let ADMIN_ME = null;   // caller's own account id, so the UI never offers self-lockout
+// The server-wide device limit and activity window, so a row can say what
+// "follows the default" currently resolves to rather than just naming it.
+let ADMIN_DEVICE_DEFAULT = 0;
+let ADMIN_DEVICE_WINDOW_S = 300;
 
 function wireAdmin() {
   el("btn-admin").onclick = async () => {
@@ -2878,11 +2891,98 @@ async function renderAdminUsers(q = "") {
     return;
   }
   ADMIN_ME = data.me;
+  ADMIN_DEVICE_DEFAULT = data.device_default_limit || 0;
+  ADMIN_DEVICE_WINDOW_S = data.device_active_window_s || 300;
   el("admin-summary").textContent =
     `${data.users.length} account${plural(data.users.length)} · ${data.admin_count} operator${plural(data.admin_count)}`;
   box.innerHTML = "";
   if (!data.users.length) { box.textContent = "No matching accounts."; return; }
   for (const u of data.users) box.appendChild(adminUserRow(u));
+}
+
+/* What one account is being used on, and what those things are.
+
+   Shows every device it has ever been seen on, not only the ones in use, and
+   marks which is which. The count alone answers "how many" but not the
+   question behind it: an operator reading "3 devices" wants to know whether
+   that is a phone, a laptop and a tablet, or one laptop counted three times
+   because its browser storage keeps being cleared.
+
+   Built as nodes rather than markup. Every value here is a device's own
+   self-description, which is to say a string an unknown client chose, and
+   textContent cannot be talked into being anything but text. */
+function showDevices(data, username) {
+  const mins = Math.round((data.active_window_s || 300) / 60);
+  const wrap = document.createElement("div");
+  wrap.className = "modal-backdrop";
+
+  const modal = document.createElement("div");
+  modal.className = "modal narrow";
+
+  const head = document.createElement("div");
+  head.className = "modal-head";
+  const title = document.createElement("h2");
+  title.textContent = `Devices · ${username}`;
+  head.appendChild(title);
+  modal.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "modal-body";
+
+  const summary = document.createElement("p");
+  summary.textContent =
+    `${data.active} in use right now, limit `
+    + `${data.effective_limit ? data.effective_limit : "none"}. "In use" means `
+    + `something arrived from it in the last ${mins} minute${mins === 1 ? "" : "s"} — `
+    + `not that it holds a valid sign-in, which lasts thirty days.`;
+  body.appendChild(summary);
+
+  if (data.devices.length) {
+    const list = document.createElement("ul");
+    list.className = "dev-list";
+    for (const d of data.devices) {
+      const li = document.createElement("li");
+      if (d.in_use) li.className = "in-use";
+      const name = document.createElement("b");
+      name.textContent = d.label;
+      li.appendChild(name);
+      const rest = document.createElement("span");
+      const when = d.last_seen_at ? timeAgo(d.last_seen_at) : "never";
+      rest.textContent = d.in_use ? " — in use now" : ` — last used ${when}`;
+      if (d.first_seen_at) rest.textContent += ` · first seen ${timeAgo(d.first_seen_at)}`;
+      li.appendChild(rest);
+      list.appendChild(li);
+    }
+    body.appendChild(list);
+  } else {
+    const none = document.createElement("p");
+    none.textContent = "This account has not been used on any device yet.";
+    body.appendChild(none);
+  }
+
+  const note = document.createElement("p");
+  note.className = "s-meta";
+  note.textContent = "A browser whose storage has been cleared, or a private "
+    + "window, looks like a new device. That is the limit of recognising a "
+    + "browser without fingerprinting it.";
+  body.appendChild(note);
+  modal.appendChild(body);
+
+  const foot = document.createElement("div");
+  foot.className = "modal-foot";
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+  foot.appendChild(spacer);
+  const close = document.createElement("button");
+  close.className = "btn btn-primary";
+  close.textContent = "Close";
+  close.onclick = () => wrap.remove();
+  foot.appendChild(close);
+  modal.appendChild(foot);
+
+  wrap.appendChild(modal);
+  wrap.addEventListener("click", (e) => { if (e.target === wrap) wrap.remove(); });
+  document.body.appendChild(wrap);
 }
 
 function adminUserRow(u) {
@@ -2914,6 +3014,22 @@ function adminUserRow(u) {
     + `${u.alerts} alert${plural(u.alerts)}, ${u.pantheons} pantheon${plural(u.pantheons)} · ${seen}`;
   row.appendChild(meta);
 
+  /* Devices in use, which is not the same as devices signed in — a token
+     lasts thirty days, so "signed in" counts a phone somebody used once last
+     month. The limit is shown beside the count because the count only means
+     something against it, and "2 of 2" is the state worth noticing. */
+  const dev = document.createElement("div");
+  dev.className = "admin-meta";
+  const cap = u.effective_device_limit
+    ? ` of ${u.effective_device_limit}${u.device_limit === null ? " (server default)" : ""}`
+    : " · no limit";
+  dev.textContent = `${u.active_devices} device${plural(u.active_devices)} in use${cap}`
+    + (u.known_devices > u.active_devices
+        ? ` · ${u.known_devices} known` : "");
+  if (u.effective_device_limit && u.active_devices >= u.effective_device_limit)
+    dev.classList.add("warn");
+  row.appendChild(dev);
+
   const acts = document.createElement("div");
   acts.className = "admin-acts";
   const btn = (label, title, fn, cls = "") => {
@@ -2934,6 +3050,38 @@ function adminUserRow(u) {
   if (!u.email_verified)
     btn("Verify", "Mark this email verified", () =>
       guard(() => API.adminVerify(u.id), `${u.username} verified.`));
+
+  btn("Devices", "What this account is being used on right now", async () => {
+    try { showDevices(await API.adminDevices(u.id), u.username); }
+    catch (e) { toast("Couldn't read the device list", e.message); }
+  });
+
+  btn("Device limit", "How many devices this account may be used on at once", () => {
+    const now = u.device_limit === null ? "" : String(u.device_limit);
+    const answer = prompt(
+      `How many devices may ${u.username} be in use on at the same time?\n\n`
+      + `0 = no limit. Leave empty to follow the server default `
+      + `(currently ${ADMIN_DEVICE_DEFAULT || "no limit"}).`, now);
+    if (answer === null) return;      // cancelled
+    const trimmed = answer.trim();
+    if (trimmed !== "" && !/^\d+$/.test(trimmed)) {
+      toast("That isn't a limit", "Enter a whole number, or leave it empty to "
+            + "follow the server default.");
+      return;
+    }
+    guard(() => API.adminSetDeviceLimit(u.id, trimmed === "" ? null : Number(trimmed)),
+          trimmed === "" ? `${u.username} follows the server default.`
+                         : `${u.username} is limited to ${trimmed} device(s).`);
+  });
+
+  if (u.known_devices)
+    btn("Sign out devices", "Clear this account's devices and end its sessions", () => {
+      if (!confirm(`Sign ${u.username} out of every device?\n\n`
+                   + `They will need to sign in again everywhere. Use this when `
+                   + `somebody is locked out by the limit and cannot receive the `
+                   + `emailed link.`)) return;
+      guard(() => API.adminReleaseDevices(u.id), `${u.username} signed out everywhere.`);
+    });
 
   if (u.id !== ADMIN_ME && !u.config_admin) {
     if (u.is_admin)

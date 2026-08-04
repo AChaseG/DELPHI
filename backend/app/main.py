@@ -27,8 +27,8 @@ from starlette.concurrency import run_in_threadpool
 
 import re as _username_re
 
-from . import (auth, export, geocode, home, ingest, langdetect, mailer, passwords,
-               ratelimit, repair, safefetch, storage, translate)
+from . import (auth, devices, export, geocode, home, ingest, langdetect, mailer,
+               passwords, ratelimit, repair, safefetch, storage, translate)
 from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -37,7 +37,7 @@ from .database import Base, SessionLocal, engine, get_db
 from .events import broadcaster
 from .geo import load_gazetteer, search_places
 from .matching import explain_text_match, query_articles
-from .models import (Alert, AlertEvent, Article, DiscoveredDomain, Event,
+from .models import (Alert, AlertEvent, Article, Device, DiscoveredDomain, Event,
                      FavoriteLocation, Feed,
                      Pantheon, PantheonInvite, PantheonMember, Source,
                      Translation, User, ViewedArticle, ViewedEvent, utcnow)
@@ -83,7 +83,8 @@ def _ensure_schema():
                   "settings": "TEXT",
                   "is_admin": "BOOLEAN DEFAULT 0",
                   "disabled": "BOOLEAN DEFAULT 0",
-                  "token_version": "INTEGER DEFAULT 0"},
+                  "token_version": "INTEGER DEFAULT 0",
+                  "device_limit": "INTEGER"},
         "favorite_locations": {"place_name": "VARCHAR(120) DEFAULT ''",
                                "country": "VARCHAR(2) DEFAULT ''",
                                "source_id": "INTEGER"},
@@ -415,6 +416,30 @@ async def require_account(request: Request, call_next):
             # Named in the failure log, so a crash can be traced to a person
             # who reported it rather than to an anonymous request.
             request.state.user_id = f"acct:{uid}"
+
+            # Which device this is, and whether the account may be in use on
+            # it. Here rather than in a dependency for the same reason as the
+            # account re-read above: it has to cover every route, including
+            # those that take no user_id.
+            #
+            # A browser that sends no key is not blocked. The header comes from
+            # our own script, so anything without one is a curl, a script, or
+            # an older cached copy of the app, and refusing those would be a
+            # lockout dressed up as a limit. It is not counted either, which is
+            # the honest trade: this measures browsers, not API clients.
+            key = request.headers.get("x-delphi-device", "").strip()
+            if devices.valid_key(key):
+                over = devices.would_exceed(session, user, key)
+                if over:
+                    return JSONResponse(
+                        {"detail": f"This account is already in use on {over} "
+                                   f"{'device' if over == 1 else 'devices'}, which is its "
+                                   "limit. Stop using it on one of them and try again in "
+                                   "a few minutes, or have a sign-out link emailed to you "
+                                   "to clear them all at once.",
+                         "code": "device_limit", "limit": over},
+                        status_code=403)
+                devices.touch(session, uid, key, request.headers.get("user-agent", ""))
     return await call_next(request)
 
 
@@ -835,6 +860,49 @@ def forgot_password(body: dict, request: Request, background: BackgroundTasks,
                             auth.make_scoped_token("reset", user.id, 3600))
         background.add_task(mailer.send_password_reset, user.email, user.username, link)
     return {"ok": True, "mail_enabled": mailer.enabled()}
+
+
+@app.post("/api/auth/devices/release-link")
+def request_device_release(body: dict, request: Request, background: BackgroundTasks,
+                           db: Session = Depends(get_db)):
+    """Email a link that signs the account out of every device.
+
+    Under /api/auth/ deliberately: someone asking for this has been refused by
+    the device limit, so it must be reachable without getting past the very
+    check that is blocking them. That means it is unauthenticated, and it is
+    built like the other unauthenticated mail endpoint — always 200, no hint
+    whether the address exists, sent in the background so the response time
+    cannot answer that question either.
+    """
+    ratelimit.check("forgot", request)
+    email = (body.get("email") or "").strip().lower()
+    user = db.scalar(select(User).where(User.email == email))
+    if user and mailer.enabled():
+        link = _action_link(request, "devices",
+                            auth.make_scoped_token("devices", user.id, 3600))
+        background.add_task(mailer.send_device_release, user.email, user.username,
+                            link, devices.active_count(db, user.id))
+    return {"ok": True, "mail_enabled": mailer.enabled()}
+
+
+@app.post("/api/auth/devices/release")
+def confirm_device_release(body: dict, request: Request, db: Session = Depends(get_db)):
+    """Follow-through for that link: forget every device and end every session.
+
+    Both, not either. Forgetting the devices alone frees the slots while the
+    old sessions keep their tokens, so a device that was pushed out could come
+    straight back and take the slot again — and the person who asked to be
+    signed out everywhere would not have been.
+    """
+    ratelimit.check("reset", request)
+    uid = auth.parse_scoped_token("devices", body.get("token") or "")
+    user = db.get(User, uid) if uid else None
+    if not user:
+        raise HTTPException(400, "This sign-out link is invalid or has expired")
+    released = devices.release_all(db, user)
+    return {"ok": True, "released": released,
+            "detail": f"Signed out of {released} {'device' if released == 1 else 'devices'}. "
+                      "Sign in again on this one to continue."}
 
 
 @app.post("/api/auth/reset")
@@ -3114,6 +3182,16 @@ def _user_admin_json(db: Session, u: User) -> dict:
         "alerts": db.scalar(select(func.count(Alert.id)).where(Alert.user_id == acct)) or 0,
         "pantheons": db.scalar(select(func.count(PantheonMember.id)).where(
             PantheonMember.user_id == u.id)) or 0,
+        # Devices the account is being used on *now* — not how many it is
+        # signed in on, which a thirty-day token makes a much larger and much
+        # less interesting number.
+        "active_devices": devices.active_count(db, u.id),
+        "known_devices": db.scalar(select(func.count(Device.id)).where(
+            Device.user_id == u.id)) or 0,
+        # None means "follow the server default", which is reported alongside
+        # so the console can show what that currently resolves to.
+        "device_limit": u.device_limit,
+        "effective_device_limit": devices.limit_for(u),
     }
 
 
@@ -3216,7 +3294,89 @@ def admin_list_users(admin: User = Depends(require_admin), db: Session = Depends
                               func.lower(User.email).like(like)))
     users = db.scalars(stmt.limit(500)).all()
     return {"users": [_user_admin_json(db, u) for u in users],
-            "admin_count": _admin_count(db), "me": admin.id}
+            "admin_count": _admin_count(db), "me": admin.id,
+            "device_default_limit": devices.DEFAULT_LIMIT,
+            "device_active_window_s": devices.ACTIVE_WINDOW_S}
+
+
+@app.get("/api/admin/users/{uid}/devices")
+def admin_list_devices(uid: int, admin: User = Depends(require_admin),
+                       db: Session = Depends(get_db)):
+    """What an account is being used on, and what those things are.
+
+    Every device ever seen, in-use ones first, each saying whether it is in use
+    now. Showing only the active ones would answer the count but not the
+    question behind it — an operator looking at "3 devices" wants to know
+    whether that is a phone, a laptop and a tablet, or the same laptop counted
+    three times because its browser storage keeps being cleared.
+    """
+    user = _admin_target(db, uid)
+    rows = devices.all_devices(db, user.id)
+    return {
+        "user_id": user.id,
+        "username": user.username,
+        "active": devices.active_count(db, user.id),
+        "limit": user.device_limit,
+        "effective_limit": devices.limit_for(user),
+        "default_limit": devices.DEFAULT_LIMIT,
+        "active_window_s": devices.ACTIVE_WINDOW_S,
+        "devices": [{
+            "id": d.id,
+            # Never the key itself: it is the value a browser presents to say
+            # which device it is, and an operator has no use for it.
+            "kind": d.kind,
+            "platform": d.platform,
+            "browser": d.browser,
+            "label": devices.describe(d),
+            "in_use": devices.is_active(d),
+            "first_seen_at": d.first_seen_at.isoformat() + "Z" if d.first_seen_at else None,
+            "last_seen_at": d.last_seen_at.isoformat() + "Z" if d.last_seen_at else None,
+        } for d in rows],
+    }
+
+
+@app.post("/api/admin/users/{uid}/device-limit")
+def admin_set_device_limit(uid: int, body: dict, admin: User = Depends(require_admin),
+                           db: Session = Depends(get_db)):
+    """Cap how many devices an account may be in use on at once.
+
+    `limit: null` hands the account back to the server default rather than
+    setting it to the default's current value, so changing the default later
+    still moves it. `0` is unlimited, spelled the same way as the default is.
+    """
+    user = _admin_target(db, uid)
+    raw = body.get("limit", None)
+    if raw is None:
+        user.device_limit = None
+    else:
+        # Strictly a whole number. int() would take 1.5 and quietly store 1 —
+        # an operator who typed a wrong thing would be told it worked and get
+        # a different limit than the one they set.
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            raise HTTPException(400, "The limit must be a whole number, or null to "
+                                     "follow the server default")
+        limit = raw
+        if limit < 0 or limit > 100:
+            raise HTTPException(400, "The limit must be between 0 (unlimited) and 100")
+        user.device_limit = limit
+    db.commit()
+    return {"ok": True, "limit": user.device_limit,
+            "effective_limit": devices.limit_for(user),
+            "active": devices.active_count(db, user.id)}
+
+
+@app.post("/api/admin/users/{uid}/devices/release")
+def admin_release_devices(uid: int, admin: User = Depends(require_admin),
+                          db: Session = Depends(get_db)):
+    """Clear an account's devices and end its sessions.
+
+    The operator-side equivalent of the emailed link, for the case where
+    somebody cannot receive the mail — and the only way to free a slot held by
+    a device that no longer exists.
+    """
+    user = _admin_target(db, uid)
+    released = devices.release_all(db, user)
+    return {"ok": True, "released": released}
 
 
 @app.post("/api/admin/users/{uid}/disable")
@@ -3311,6 +3471,7 @@ def api_fallback(path: str):
 
 @app.get("/reset/{token:path}")
 @app.get("/verify/{token:path}")
+@app.get("/devices/{token:path}")
 def action_link_page(token: str):
     """Serve the app for emailed action links.
 

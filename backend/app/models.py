@@ -54,6 +54,10 @@ class User(Base):
     # which is the only way to end a session that has already been issued.
     # Password reset and "sign out everywhere" bump it. See auth.py.
     token_version: Mapped[int] = mapped_column(Integer, default=0)
+    # How many devices this account may be *in use on* at once. NULL means
+    # "whatever the server default is", so raising or lowering the default
+    # moves everyone who has not been given a number of their own.
+    device_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
 
 
 class Source(Base):
@@ -328,3 +332,39 @@ class AlertEvent(Base):
 
     alert = relationship("Alert", back_populates="events")
     article = relationship("Article")
+
+
+class Device(Base):
+    """One browser profile on one machine, and when it was last used.
+
+    Sessions here are stateless — a signed token carrying an account id, a
+    version and an expiry — which is cheap and revocable but records nothing
+    about where it is being used. There was no way to answer "how many places
+    is this account open in right now", because nothing was ever written down.
+
+    `device_key` is minted by the browser and kept in its local storage, so it
+    survives tabs, reloads and restarts and distinguishes a laptop from a phone
+    — which counting tokens or connections cannot do, since one laptop with
+    four tabs is still one device. It identifies, it does not authenticate:
+    the token does that, and this row is only ever read for an account the
+    token already proved. Clearing site data or opening a private window looks
+    like a new device, which is the honest limit of identifying a browser
+    without fingerprinting one.
+    """
+    __tablename__ = "devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    device_key: Mapped[str] = mapped_column(String(64), index=True)
+    # Parsed from the user agent once, on first sight: "desktop" | "mobile" |
+    # "tablet" | "unknown", plus the platform and browser behind it.
+    kind: Mapped[str] = mapped_column(String(16), default="unknown")
+    platform: Mapped[str] = mapped_column(String(32), default="")
+    browser: Mapped[str] = mapped_column(String(32), default="")
+    user_agent: Mapped[str] = mapped_column(String(300), default="")
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # The whole point of the table. "Active" is this within a recent window,
+    # not "holds a valid token" — a token lives for thirty days.
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+    __table_args__ = (UniqueConstraint("user_id", "device_key", name="uq_device_user_key"),)
