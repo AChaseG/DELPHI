@@ -202,6 +202,13 @@ def test_discovery_probes_run_together_not_one_after_another(db, monkeypatch):
     publishers = {f"outlet{i}.test": (f"Outlet {i}", f"http://outlet{i}.test")
                   for i in range(4)}
 
+    # Discovery waits for a second sighting before probing anything, so the
+    # first pass records the domains and probes nothing. This test is about
+    # how the probes overlap once they do run — get past the gate first.
+    assert run(discovery.discover_new_sources(db, publishers)) == []
+    assert order == [], "a domain was probed on its first sighting"
+    db.commit()
+
     started = _time.perf_counter()
     added = run(discovery.discover_new_sources(db, publishers))
     took = _time.perf_counter() - started

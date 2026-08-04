@@ -104,6 +104,7 @@ def _ensure_schema():
                   "disabled": "BOOLEAN DEFAULT 0",
                   "token_version": "INTEGER DEFAULT 0",
                   "device_limit": "INTEGER"},
+        "discovered_domains": {"sightings": "INTEGER DEFAULT 0"},
         "favorite_locations": {"place_name": "VARCHAR(120) DEFAULT ''",
                                "country": "VARCHAR(2) DEFAULT ''",
                                "source_id": "INTEGER"},

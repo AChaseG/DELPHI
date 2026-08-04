@@ -106,8 +106,14 @@ class DiscoveredDomain(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     domain: Mapped[str] = mapped_column(String(200), unique=True, index=True)
-    status: Mapped[str] = mapped_column(String(20), default="no-feed")  # added | no-feed
+    status: Mapped[str] = mapped_column(String(20), default="no-feed")  # added | no-feed | seen
     checked_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # How many separate cycles this domain has turned up as a publisher.
+    # Adoption waits for a second sighting: a real outlet keeps appearing in
+    # coverage, while a ticketing calendar or a funeral home surfaces once and
+    # never again. Counting is what tells them apart without a list of every
+    # kind of website that is not a newspaper.
+    sightings: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Event(Base):

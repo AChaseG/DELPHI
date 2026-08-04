@@ -264,6 +264,7 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_POLL_BATCH` | `40` | non-city sources fetched per tick (was 80; a round was outlasting its own refresh interval) |
 | `NEWS_CITY_PER_TICK` | `12` | city feeds per tick, which bounds the Google drip |
 | `NEWS_TRANSLATE_CONCURRENCY` | `8` | articles translated at once; each issues title and summary together, so in-flight requests are about double this |
+| `NEWS_DISCOVER_MIN_SIGHTINGS` | `2` | times a publisher must be seen before auto-discovery probes it |
 | `NEWS_DEVICE_LIMIT` | `0` | devices an account may be *in use on* at once (`0` = no limit); per-account overrides in the console |
 | `NEWS_DEVICE_ACTIVE_WINDOW_S` | `300` | silence after which a device stops counting as in use |
 | `NEWS_DEVICE_TOUCH_EVERY_S` | `30` | how often a device's last-seen time is actually written |
@@ -457,6 +458,29 @@ GET  /api/stream                   SSE: live article batches + alert hits
   80→40 and `CITY_PER_TICK` 20→12: a smaller round is not less news, since what
   a source publishes is set by the publisher — a poll that finds three items
   instead of twelve finds them three times as often.
+- **Auto-discovery needs more than a working feed.** 3,826 of ~4,500 live
+  sources were adopted automatically, on the sole test "this domain serves a
+  feed". That admitted a record label's ticketing calendar
+  (`baodaorecords.kktix.cc`, filed as national news) whose concert listings then
+  matched an energy query — the performer has a song called "Innocent Wind", so
+  the article genuinely contains the word and whole-word matching found it
+  correctly. A funeral home got in the same way. Two gates now, because neither
+  suffices alone: `_SKIP_DOMAINS` matches by *suffix* (`skipped()`), which is
+  what the old exact-string test missed — it never saw the subdomain — and it
+  covers ticketing/event platforms whose feeds have exactly the shape of a news
+  feed; and a publisher must be sighted `NEWS_DISCOVER_MIN_SIGHTINGS` times
+  (default 2) before it is probed at all, tracked on `DiscoveredDomain.sightings`.
+  Recurrence is what separates an outlet from a one-off without enumerating
+  every kind of website that is not a newspaper. A `seen` record deliberately
+  does *not* count as "known", or a domain could never reach its second sighting.
+- **The query builder warns about bare ambiguous words.** Same report, other
+  half: `("solar" OR "wind" OR "coal" OR "nuclear" …)` is a list of ordinary
+  English words. `AMBIGUOUS_TERMS` in `boolean_query.py` maps each to the
+  pairing that usually fixes it, and `query_advisories` surfaces it in amber
+  beside the existing AND/OR precedence note — advice, never an error, and the
+  query saves exactly as written. Phrases and wildcards are left alone: someone
+  who wrote `"wind power"` has already done the thing this would advise, and
+  `wind*` is a deliberate widening.
 - **One dedicated core is one core, and it has to serve while it works.**
   `performance-1x` replaced `shared-cpu-2x`: two throttled vCPUs became one
   unthrottled one. Throughput went up sharply — a round measured

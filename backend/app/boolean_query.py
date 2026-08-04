@@ -337,6 +337,68 @@ def query_terms(query: str) -> list[tuple[str, re.Pattern]]:
     return out
 
 
+# Bare words that mean one thing in a query and something else in the world.
+#
+# This exists because of a real report: an energy feed built from
+# ("solar" OR "wind" OR "coal" OR "nuclear" OR …) carried a Taiwanese concert
+# listing. Nothing was broken — the page lists the performer's songs and one is
+# called "Innocent Wind", so the article genuinely contains the word. A search
+# for a bare common word finds every use of it, and most uses of these words
+# are not about energy.
+#
+# A list, not a language model, and deliberately short: only words that are
+# both frequently searched for in a specialist sense and frequently written in
+# an everyday one. The suggestions are the pairing that fixes it, because
+# "your term is ambiguous" without a next move is just a complaint.
+AMBIGUOUS_TERMS: dict[str, str] = {
+    "wind":     '"wind power", "wind farm", "offshore wind"',
+    "solar":    '"solar power", "solar farm", "solar panel"',
+    "coal":     '"coal-fired", "coal plant", "coal mine"',
+    "nuclear":  '"nuclear power", "nuclear plant", "nuclear reactor"',
+    "gas":      '"natural gas", "gas pipeline", "gas field"',
+    "oil":      '"crude oil", "oil field", "oil refinery"',
+    "power":    '"power plant", "power grid", "power outage"',
+    "plant":    '"power plant", "chemical plant", "plant closure"',
+    "mine":     '"coal mine", "gold mine", "mine collapse"',
+    "grid":     '"power grid", "grid operator"',
+    "strike":   '"labour strike", "air strike", "strike action"',
+    "crash":    '"plane crash", "market crash", "car crash"',
+    "fire":     '"wildfire", "house fire", "fire crews"',
+    "storm":    '"tropical storm", "winter storm", "storm damage"',
+    "shell":    '"Shell plc", "shell company", "artillery shell"',
+    "apple":    '"Apple Inc", "Apple iPhone"',
+    "amazon":   '"Amazon.com", "Amazon rainforest"',
+    "meta":     '"Meta Platforms", "Meta AI"',
+    "target":   '"Target Corp", "target of"',
+    "delta":    '"Delta Air Lines", "Nile delta", "Delta variant"',
+    "orange":   '"Orange SA", "Orange County"',
+}
+
+
+def ambiguous_terms(query: str) -> list[str]:
+    """The bare one-word terms in `query` that are known to over-match.
+
+    Only bare words count. A phrase is already specific — somebody who wrote
+    "wind power" has done the very thing this would advise — and a wildcard is
+    a deliberate widening, which is a different decision and not one to
+    second-guess.
+    """
+    try:
+        tokens = tokenize(query)
+    except QueryError:
+        return []
+    seen: list[str] = []
+    for tok in tokens:
+        if tok.kind != "TERM":
+            continue
+        word = tok.value.strip().lower()
+        if " " in word or "*" in word or "?" in word:
+            continue
+        if word in AMBIGUOUS_TERMS and word not in seen:
+            seen.append(word)
+    return seen
+
+
 def query_advisories(query: str) -> list[str]:
     """Things a valid query probably does not mean. Never an error.
 
@@ -375,4 +437,18 @@ def query_advisories(query: str) -> list[str]:
                 "AND binds tighter than OR. Put the OR list in brackets — "
                 "(a OR b) NOT c — to exclude from all of it.")
             break
+
+    bare = ambiguous_terms(query)
+    if bare:
+        for word in bare[:3]:      # three is enough to make the point
+            notes.append(
+                f"“{word}” on its own matches every use of the word, not just "
+                f"the one you mean — song titles, company names and ordinary "
+                f"prose included. Pairing it with its context is usually what "
+                f"was intended: {AMBIGUOUS_TERMS[word]}.")
+        rest = len(bare) - 3
+        if rest > 0:
+            notes.append(f"{rest} more bare term{'s' if rest > 1 else ''} in this "
+                         f"query {'have' if rest > 1 else 'has'} the same problem: "
+                         f"{', '.join(bare[3:])}.")
     return notes

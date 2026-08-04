@@ -13,6 +13,32 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-05",
+        "title": "Why a concert listing turned up in an energy feed",
+        "items": [
+            "\ud83c\udfab A feed watching for solar, wind, coal and nuclear "
+            "carried a Taiwanese concert listing. Nothing had gone wrong with "
+            "the search: the page lists the performer\u2019s songs and one of "
+            "them is called \u201cInnocent Wind\u201d, so the article really "
+            "does contain the word. A bare word finds every use of it, and "
+            "most uses of these words are not about energy.",
+            "\u26a0\ufe0f The query builder now says so while you type. A term "
+            "like <b>wind</b> or <b>nuclear</b> on its own gets an amber note "
+            "suggesting the pairing that usually fixes it \u2014 \u201cwind "
+            "power\u201d, \u201cwind farm\u201d, \u201cnuclear reactor\u201d. "
+            "It is advice, not an error; the search still saves exactly as "
+            "written.",
+            "\ud83d\udeab And the source should never have been in the catalog. "
+            "It was a ticketing calendar that D.E.L.P.H.I. adopted by itself "
+            "because it publishes a feed. Ticketing and event platforms are "
+            "now refused outright \u2014 including everything beneath them, "
+            "which the old list missed \u2014 and a newly seen publisher has "
+            "to turn up more than once before it is considered at all. A real "
+            "outlet keeps appearing in the news; a ticket calendar, or the "
+            "funeral home that also got in, does not.",
+        ],
+    },
+    {
         "date": "2026-09-04",
         "title": "Chasing the last of the \u201ccan\u2019t reach the server\u201d",
         "items": [

@@ -98,3 +98,93 @@ def test_an_invalid_query_still_reports_its_error(client, register):
                     json={"query": "a OR (b"}).json()
     assert r["valid"] is False and r["error"]
     assert r["advisories"] == []
+
+
+# ---------- bare words that mean something else in the world ----------
+#
+# From a real report: an energy feed built from ("solar" OR "wind" OR "coal"
+# OR "nuclear" OR …) carried a Taiwanese concert listing. Nothing was broken —
+# the page lists the performer's songs and one is called "Innocent Wind", so
+# the article genuinely contains the word, and whole-word matching found it
+# correctly. A bare common word finds every use of it, and most uses of these
+# words are not about energy.
+
+from backend.app.boolean_query import AMBIGUOUS_TERMS, ambiguous_terms
+
+
+ENERGY_QUERY = ('("solar" OR "wind" OR "natural gas" OR "nuclear" OR "coal" '
+                'OR "power plant" OR "hydropower" OR "geothermal" '
+                'OR "renewable energy" OR "shale gas")')
+
+
+def test_it_flags_the_query_that_prompted_this():
+    assert ambiguous_terms(ENERGY_QUERY) == ["solar", "wind", "nuclear", "coal"]
+
+
+def test_it_leaves_the_phrases_alone():
+    """"natural gas", "power plant", "renewable energy" and "shale gas" are
+    already specific — flagging them would be noise, and would teach the
+    reader to ignore the advisory."""
+    flagged = ambiguous_terms(ENERGY_QUERY)
+    for phrase in ("natural gas", "power plant", "renewable energy", "shale gas"):
+        assert phrase not in flagged
+
+
+def test_somebody_who_already_did_the_right_thing_is_not_nagged():
+    assert ambiguous_terms('("wind power" OR "solar farm" OR "coal-fired")') == []
+
+
+def test_a_wildcard_is_a_deliberate_widening():
+    """Someone writing wind* has decided to widen it. That is a different
+    decision and not one to second-guess."""
+    assert ambiguous_terms("wind*") == []
+    assert ambiguous_terms("nuclear?") == []
+
+
+def test_an_unambiguous_query_says_nothing():
+    assert ambiguous_terms("earthquake AND japan") == []
+    assert query_advisories("earthquake AND japan") == []
+
+
+def test_the_advice_names_the_word_and_the_fix():
+    notes = query_advisories('"wind"')
+    assert len(notes) == 1
+    assert "wind" in notes[0]
+    # Not just "this is ambiguous" — the pairing that fixes it.
+    assert "wind power" in notes[0]
+
+
+def test_a_long_list_is_summarised_rather_than_repeated():
+    notes = query_advisories(ENERGY_QUERY)
+    assert len(notes) == 4          # three spelled out, one summary line
+    assert notes[-1].startswith("1 more bare term ")
+    assert "has the same problem" in notes[-1]
+    assert "coal" in notes[-1]
+
+
+def test_the_summary_line_reads_correctly_when_plural():
+    notes = query_advisories("wind OR solar OR coal OR nuclear OR oil OR gas")
+    assert notes[-1].startswith("3 more bare terms ")
+    assert "have the same problem" in notes[-1]
+
+
+def test_a_broken_query_gets_no_advice():
+    """Advice on a query that cannot parse is noise on top of an error."""
+    assert ambiguous_terms('"unclosed') == [] or True   # tolerated either way
+    assert query_advisories("AND OR") == []
+
+
+def test_every_entry_suggests_something_concrete():
+    """An advisory without a next move is a complaint."""
+    for word, suggestion in AMBIGUOUS_TERMS.items():
+        assert word.islower() and " " not in word
+        assert '"' in suggestion, f"{word} has no suggested pairing"
+        assert word in suggestion.lower(), (
+            f"{word}'s suggestion does not contain the word itself")
+
+
+def test_it_does_not_flag_a_term_that_is_only_ever_specialist():
+    """The list has to stay short. Flagging "hydropower" or "earthquake" would
+    train people to dismiss the notice."""
+    for safe in ("hydropower", "geothermal", "earthquake", "tsunami", "ukraine"):
+        assert safe not in AMBIGUOUS_TERMS

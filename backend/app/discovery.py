@@ -43,11 +43,41 @@ RECHECK_DAYS = float(os.environ.get("NEWS_DISCOVER_RECHECK_DAYS", "30"))
 MAX_CANDIDATES = 8
 
 # Aggregators and platforms that must never be added as "outlets".
+#
+# Matched by suffix, not equality — see `skipped`. As exact strings these
+# missed every subdomain, which is how baodaorecords.kktix.cc, a record
+# label's ticketing calendar, became a "national news" source and put concert
+# listings into an energy feed.
 _SKIP_DOMAINS = {
+    # Aggregators and social platforms.
     "news.google.com", "google.com", "youtube.com", "youtu.be",
     "reddit.com", "bsky.app", "twitter.com", "x.com", "facebook.com",
     "instagram.com", "t.me", "medium.com", "msn.com", "news.yahoo.com",
+    # Ticketing and events. These publish feeds that look like news feeds —
+    # dated entries with headlines and bodies — and are not news at all.
+    "kktix.cc", "eventbrite.com", "eventbrite.co.uk", "ticketmaster.com",
+    "peatix.com", "accupass.com", "kkday.com", "klook.com", "meetup.com",
+    "bandsintown.com", "songkick.com", "dice.fm", "ticketek.com",
+    # Storefronts and listings, same shape and the same problem.
+    "shopify.com", "etsy.com", "ebay.com", "amazon.com", "craigslist.org",
+    "indeed.com", "linkedin.com",
 }
+
+
+def skipped(domain: str) -> bool:
+    """Is this domain — or anything under it — on the never-adopt list?"""
+    return any(domain == bad or domain.endswith("." + bad) for bad in _SKIP_DOMAINS)
+
+
+# Sightings required before a domain is probed at all.
+#
+# A blocklist can only name the kinds of site somebody thought of; the catalog
+# had picked up a funeral home. What separates an outlet from a one-off is
+# recurrence — a real publisher keeps appearing in coverage, while a ticketing
+# calendar or a local business surfaces once. Waiting for a second sighting
+# costs a cycle and needs no list of every kind of website that is not a
+# newspaper.
+MIN_SIGHTINGS = int(os.environ.get("NEWS_DISCOVER_MIN_SIGHTINGS", "2"))
 
 
 def domain_of(url: str) -> str:
@@ -63,7 +93,7 @@ def collect_publishers(entries: list) -> dict[str, tuple[str, str]]:
         href = (src.get("href") or src.get("url") or "").strip()
         title = (src.get("title") or "").strip()
         dom = domain_of(href)
-        if href.startswith("http") and title and dom and dom not in _SKIP_DOMAINS \
+        if href.startswith("http") and title and dom and not skipped(dom) \
                 and dom not in out:
             out[dom] = (title[:200], href[:500])
     return out
@@ -79,9 +109,37 @@ def _known_domains(db) -> set[str]:
                 known.add(d)
     cutoff = utcnow() - timedelta(days=RECHECK_DAYS)
     for rec in db.scalars(select(DiscoveredDomain)):
-        if rec.status == "added" or rec.checked_at >= cutoff:
+        # "seen" is a domain still on its way to a second sighting, not a
+        # settled outcome — it must stay eligible or it could never reach one.
+        if rec.status == "added" or (rec.status != "seen" and rec.checked_at >= cutoff):
             known.add(rec.domain)
     return known
+
+
+def _sightings(db, domains: set[str]) -> dict[str, int]:
+    if not domains:
+        return {}
+    return {rec.domain: rec.sightings or 0 for rec in db.scalars(
+        select(DiscoveredDomain).where(DiscoveredDomain.domain.in_(domains)))}
+
+
+def note_sighting(db, domain: str) -> int:
+    """Record that `domain` published something, and return the running count."""
+    rec = db.scalar(select(DiscoveredDomain).where(DiscoveredDomain.domain == domain))
+    if rec is None:
+        rec = DiscoveredDomain(domain=domain, status="seen", sightings=1)
+        db.add(rec)
+        # Flushed, not just added: the next lookup of this domain — the same
+        # outlet appearing twice in one batch, or the next cycle before a
+        # commit — has to find the row. Without it every sighting is a first
+        # sighting and nothing is ever adopted.
+        db.flush()
+        return 1
+    rec.sightings = (rec.sightings or 0) + 1
+    rec.checked_at = utcnow()
+    if rec.status not in ("added", "no-feed"):
+        rec.status = "seen"
+    return rec.sightings
 
 
 def _record(db, domain: str, status: str):
@@ -131,8 +189,20 @@ async def discover_new_sources(db, publishers: dict[str, tuple[str, str]]
     if not AUTO_DISCOVER or not publishers:
         return []
     known = _known_domains(db)
-    todo = [(dom, name, home) for dom, (name, home) in publishers.items()
-            if dom not in known][:DISCOVER_MAX_PER_CYCLE]
+    candidates = {dom: v for dom, v in publishers.items()
+                  if dom not in known and not skipped(dom)}
+
+    # Count this cycle's sighting first, then take only the domains that have
+    # now been seen often enough. A domain on its first sighting is recorded
+    # and left alone; if it is a real outlet it will be back.
+    seen_counts = _sightings(db, set(candidates))
+    todo = []
+    for dom, (name, home) in candidates.items():
+        count = note_sighting(db, dom)
+        seen_counts[dom] = count
+        if count >= MIN_SIGHTINGS:
+            todo.append((dom, name, home))
+    todo = todo[:DISCOVER_MAX_PER_CYCLE]
     if not todo:
         return []
     taken = set(db.scalars(select(Source.rss_url)))
