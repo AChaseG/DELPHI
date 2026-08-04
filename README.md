@@ -263,6 +263,7 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_CLUSTER_CHUNK` | `50` | articles clustered and alert-matched per slice, same reason |
 | `NEWS_POLL_BATCH` | `40` | non-city sources fetched per tick (was 80; a round was outlasting its own refresh interval) |
 | `NEWS_CITY_PER_TICK` | `12` | city feeds per tick, which bounds the Google drip |
+| `NEWS_TRANSLATE_CONCURRENCY` | `8` | articles translated at once; each issues title and summary together, so in-flight requests are about double this |
 | `NEWS_TRANSLATE_PROVIDER` | `google` | `google` \| `libretranslate` \| `off` |
 | `NEWS_LIBRETRANSLATE_URL` | unset | LibreTranslate server URL (with provider above) |
 | `NEWS_REMOVE_AFTER` | `5` | consecutive failed polls before a source is retired or removed |
@@ -399,6 +400,23 @@ GET  /api/stream                   SSE: live article batches + alert hits
   across the slices over a pre-sorted batch, so the grouping is identical to a
   single pass — asserted directly in `test_matching_clustering.py`, since a
   change there would be invisible in any other test.
+- **Translation is warmed between cycles, not paid for by the first reader.**
+  A translation is cached forever after the first request that needs it — but
+  that first request was a reader's, inside their page load, and
+  `translate_articles` awaits every miss before returning. A column of forty
+  foreign-language stories was dozens of round-trips deep: `slow:7.2s POST
+  /api/articles/search` in the live log. `warm_translations()` now runs after
+  `warm_home()` each cycle, translating exactly the articles Home has warmed
+  (`home.warm_article_ids()`) into the languages accounts have actually chosen
+  (`reading_languages()`, read from the `lang` key in `User.settings` — not all
+  sixteen offered). The reader's request then finds them already stored.
+  **Rejected on purpose:** returning original text immediately and filling
+  translations in behind. It makes the page appear sooner and be useless —
+  someone who reads only English is not better served by Mandarin arriving
+  quickly. The wait is moved off the request, not moved onto the screen.
+  Separately, `_translate_one` now fetches a title and its summary with
+  `asyncio.gather` rather than awaiting one then the other, halving the depth
+  of any translation that still happens live.
 - **The machine is `performance-1x`, not shared, and the poll batch is half
   what it was.** The phase timings below found this on their first reading: a
   round measured `fetch 45.3s store 143.0s enrich 89.0s backfill 18.5s cluster

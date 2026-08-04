@@ -13,6 +13,30 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-02",
+        "title": "Stories arrive already translated",
+        "items": [
+            "🌍 A column of foreign-language reporting was taking seconds to "
+            "appear, and the reason was the translation: a story is translated "
+            "the first time somebody looks at it, so whoever opened the board "
+            "first paid for every story on it, one at a time, before the page "
+            "could be drawn. Forty stories meant dozens of waits.",
+            "⏳ D.E.L.P.H.I. now translates the stories on the front page "
+            "between collection rounds, before anyone opens it — so by the "
+            "time you look, the English is already there and the page just "
+            "loads. It only translates into languages an account here has "
+            "actually chosen, so nothing is spent on the fifteen it isn't "
+            "reading in.",
+            "⚡ And when a story does still have to be translated while you "
+            "wait, its headline and summary are now fetched at the same time "
+            "rather than one after the other, which halves that wait.",
+            "🈶 Deliberately unchanged: you are never shown the original "
+            "language first with the English following behind. Seeing Mandarin "
+            "sooner is no use to a reader who wants English — the wait has "
+            "been moved off your request, not moved onto your screen.",
+        ],
+    },
+    {
         "date": "2026-09-01",
         "title": "Why the dashboard kept saying it couldn't reach the server",
         "items": [

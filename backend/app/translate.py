@@ -31,7 +31,11 @@ PROVIDER = os.environ.get("NEWS_TRANSLATE_PROVIDER", "google")
 LIBRETRANSLATE_URL = os.environ.get("NEWS_LIBRETRANSLATE_URL", "").rstrip("/")
 LIBRETRANSLATE_KEY = os.environ.get("NEWS_LIBRETRANSLATE_KEY", "")
 TIMEOUT = float(os.environ.get("NEWS_TRANSLATE_TIMEOUT", "10"))
-CONCURRENCY = int(os.environ.get("NEWS_TRANSLATE_CONCURRENCY", "6"))
+# Articles in flight at once. Each now issues its title and summary together,
+# so the requests actually in the air are about twice this. Raised from 6 with
+# the free gtx endpoint in mind rather than the network: it is not an
+# SLA-backed API and leaning on it harder is how you find its rate limit.
+CONCURRENCY = int(os.environ.get("NEWS_TRANSLATE_CONCURRENCY", "8"))
 MAX_SUMMARY_CHARS = 700
 
 # Offered in the dashboard language picker (code -> native name).
@@ -70,14 +74,27 @@ async def _libretranslate(client: httpx.AsyncClient, text: str, target: str) -> 
     return resp.json()["translatedText"]
 
 
+async def _nothing() -> str:
+    """An article with no summary still has to return one, and returning it
+    from a coroutine keeps the gather below symmetrical."""
+    return ""
+
+
 async def _translate_one(client, sem, article: Article, target: str):
     fn = _libretranslate if PROVIDER == "libretranslate" else _google
     async with sem:
         try:
-            title = await fn(client, article.title, target)
-            summary = ""
-            if article.summary:
-                summary = await fn(client, article.summary[:MAX_SUMMARY_CHARS], target)
+            # Together, not one after the other. A title and a summary have
+            # nothing to do with each other, but asking for the second only
+            # once the first came back doubled the depth of every article's
+            # translation — on a board of forty stories that is forty waits
+            # arranged in series for no reason, and it was most of the delay a
+            # reader sat through before the page appeared.
+            title, summary = await asyncio.gather(
+                fn(client, article.title, target),
+                fn(client, article.summary[:MAX_SUMMARY_CHARS], target)
+                if article.summary else _nothing(),
+            )
             return article.id, title.strip(), summary.strip()
         except Exception as exc:
             log.warning("translate failed for article %s -> %s: %s", article.id, target, exc)

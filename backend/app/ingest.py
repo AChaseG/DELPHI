@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import calendar
+import json
 import logging
 import os
 import re
@@ -20,7 +21,7 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, or_, select
 
-from . import discovery, home, langdetect, mailer, repair, safefetch, storage
+from . import discovery, home, langdetect, mailer, repair, safefetch, storage, translate
 from .clustering import assign_events, live_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -1072,6 +1073,69 @@ async def warm_home():
         log.exception("could not warm the Home board")
 
 
+def reading_languages(db) -> list[str]:
+    """The languages accounts on this server actually read in.
+
+    Read from the settings blob rather than assumed, so a server whose only
+    reader is English does not pay to translate the world into sixteen
+    languages nobody has selected.
+    """
+    langs: dict[str, None] = {}
+    for blob in db.scalars(select(User.settings)):
+        if not blob:
+            continue
+        try:
+            lang = (json.loads(blob) or {}).get("lang")
+        except (ValueError, TypeError):
+            continue
+        if isinstance(lang, str) and lang.strip():
+            langs[lang.strip().lower()[:2]] = None
+    return list(langs)
+
+
+async def warm_translations():
+    """Translate Home's warmed stories before a reader opens the board.
+
+    Translation is per article and per language, cached forever after the
+    first time — but the first time was being paid by whoever opened the
+    board, inside their request, one network round-trip deep per story. A
+    column of forty foreign-language stories meant a reader waiting on dozens
+    of calls to a translation service before the page could be drawn at all,
+    which is what a `slow:7.2s POST /api/articles/search` in the log was.
+
+    Showing the original text sooner is not an answer: someone who reads only
+    English is no better served by Mandarin arriving quickly. So the wait is
+    moved rather than shortened — the stories Home has just warmed are
+    translated here, between cycles, into the languages this server's accounts
+    actually read, so that by the time anyone looks the answer is already in
+    the database and the request costs one query.
+
+    Best-effort throughout. A translation service that is slow, rate-limiting
+    or down must delay news, not stop it, so every failure is logged and
+    swallowed; the reader simply pays for that story the old way.
+    """
+    if not translate.enabled():
+        return
+    db = None
+    try:
+        ids = home.warm_article_ids()
+        if not ids:
+            return
+        db = SessionLocal()
+        langs = await asyncio.to_thread(reading_languages, db)
+        if not langs:
+            return
+        articles = await asyncio.to_thread(
+            lambda: db.scalars(select(Article).where(Article.id.in_(ids))).all())
+        for lang in langs:
+            await translate.translate_articles(db, articles, lang)
+    except Exception:
+        log.exception("could not warm translations")
+    finally:
+        if db is not None:
+            db.close()
+
+
 async def ingest_loop():
     """Continuous rolling poll: every tick, fetch whichever sources are due
     (news wires first, then a bounded slice of city feeds), paced per host so
@@ -1161,4 +1225,7 @@ async def ingest_loop():
         if (new_articles or not warm["columns"]
                 or warm["oldest_age_s"] > home.MAX_AGE_S / 2):
             await warm_home()
+            # Straight after, so the stories it just warmed are readable in
+            # the reader's own language before the reader arrives.
+            await warm_translations()
         await asyncio.sleep(POLL_TICK)

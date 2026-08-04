@@ -123,6 +123,20 @@ def refresh(db: Session) -> int:
     return len(built)
 
 
+def warm_article_ids() -> list[int]:
+    """Every article id currently sitting in a warmed column, de-duplicated.
+
+    These are exactly the stories the next reader to open Home will be shown,
+    which makes them the ones worth translating before anyone asks rather than
+    while they wait.
+    """
+    seen: dict[int, None] = {}
+    for ids, _ in _warm.values():
+        for article_id in ids:
+            seen[article_id] = None
+    return list(seen)
+
+
 def clear() -> None:
     """Drop everything warmed — for tests, and after a bulk deletion."""
     global _warm
