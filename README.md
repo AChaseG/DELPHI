@@ -264,6 +264,7 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_POLL_BATCH` | `40` | non-city sources fetched per tick (was 80; a round was outlasting its own refresh interval) |
 | `NEWS_CITY_PER_TICK` | `12` | city feeds per tick, which bounds the Google drip |
 | `NEWS_TRANSLATE_CONCURRENCY` | `8` | articles translated at once; each issues title and summary together, so in-flight requests are about double this |
+| `NEWS_WATCHDOG_STALL_S` | `3` | how late the event loop must be before it is recorded as a stall |
 | `NEWS_AUDIT_EVERY_S` | `86400` | how often the catalog is re-checked against the current adoption rules |
 | `NEWS_DISCOVER_MIN_SIGHTINGS` | `2` | times a publisher must be seen before auto-discovery probes it |
 | `NEWS_DEVICE_LIMIT` | `0` | devices an account may be *in use on* at once (`0` = no limit); per-account overrides in the console |
@@ -507,6 +508,20 @@ GET  /api/stream                   SSE: live article batches + alert hits
   Ruled out by measurement on the way, not by reading: `feedparser.parse` on the
   loop (22ms for a 100-entry feed, 1.1s for a whole batch — real but far too
   small), and the search path (`scan_articles` already threads the query).
+- **Stalls are recorded, not just logged.** `watchdog.py` runs a coroutine that
+  asks for the event loop every second and notes how late it was. Thirteen
+  seconds late means thirteen seconds in which nothing else ran either — no
+  page, no API call, no health check — which is exactly what "can't reach the
+  server" is, measured directly rather than inferred from a gap between log
+  lines. Every "unreachable" so far had to be reconstructed from a log buffer
+  that holds about a minute, and by the time anyone looked it had scrolled
+  away; twice that meant fixing a real cause that turned out not to be the
+  whole one. The last 40 stalls — timestamp, seconds late, and which cycle
+  phase was running (`ingest:cluster`, `ingest:enrich`, `idle`) — are served
+  from `/api/ingest/status` as `stalls`, so "what was it doing at 03:40?" has
+  an answer that outlives the log. Started outside the `DISABLE_INGEST` guard
+  on purpose: the loop can be starved by a request or by the single core, and a
+  watchdog that only runs alongside the poller could not say so.
 - **Each cycle logs how long each phase took** (`fetch store enrich backfill
   cluster`, seconds, on the batch summary line). Every stall above had to be
   located by finding where the log went quiet, which only works for phases that

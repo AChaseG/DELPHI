@@ -21,7 +21,8 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, or_, select
 
-from . import discovery, home, langdetect, mailer, repair, safefetch, storage, translate
+from . import (discovery, home, langdetect, mailer, repair, safefetch, storage,
+               translate, watchdog)
 from .clustering import assign_events, live_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -729,14 +730,23 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
     _t = time.monotonic()
 
     def mark(name):
+        """Close off the phase that just ended, and name the one starting."""
         nonlocal _t
         now = time.monotonic()
         phase[name] = now - _t
         _t = now
 
+    def start(name):
+        # So a stall recorded mid-cycle can say which phase was running. The
+        # timings are only printed when a cycle ends, which is no help if the
+        # question is what it was doing while it was stuck.
+        watchdog.doing(f"ingest:{name}")
+
+    start("fetch")
     recent = _recent_clusters(db)
     results = await _fetch_batch(sources)
     mark("fetch")
+    start("store")
 
     all_new: list[Article] = []
     ok_sources = 0
@@ -849,16 +859,19 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
 
     # Pull article bodies BEFORE alert evaluation so alerts see full text.
     mark("store")
+    start("enrich")
     content_fetched = 0
     backfilled = 0
     if CONTENT_FETCH:
         content_fetched = await enrich_with_content(db, all_new)
         mark("enrich")
+        start("backfill")
         # Whatever the cap did not spend on this batch goes to the articles
         # earlier batches had to skip, so a busy spell is caught up on the
         # quiet minutes that follow it rather than being lost.
         backfilled = await backfill_content(db, CONTENT_MAX_PER_CYCLE - content_fetched)
         mark("backfill")
+        start("cluster")
 
     # Clustering and alert matching scale with the batch too, and a busy
     # minute brings 800+ articles. Moving them to a thread was not enough on
@@ -887,6 +900,7 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
         new_events += created
         hits.extend(matched)
     mark("cluster")
+    watchdog.doing("idle")
     # Out-of-app delivery (email/webhook) for alerts that opted in — after the
     # commit so a delivery hiccup can't lose the persisted hit.
     try:
@@ -924,6 +938,8 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
         broadcaster.publish({"type": "articles", "count": len(all_new)})
     for hit in hits:
         broadcaster.publish({"type": "alert", **hit})
+    status["stalls"] = watchdog.stalls()
+    status["worst_stall_s"] = watchdog.worst()
     log.info("ingest batch: %d/%d sources ok (%d unchanged), %d new articles, "
              "%d alert hits, %d repaired, %d discovered, %d retired, %d removed "
              "[%s]",

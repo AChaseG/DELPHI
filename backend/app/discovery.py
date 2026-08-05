@@ -66,8 +66,15 @@ _SKIP_NOT_NEWS = {
     "kktix.cc", "eventbrite.com", "eventbrite.co.uk", "ticketmaster.com",
     "peatix.com", "accupass.com", "kkday.com", "klook.com", "meetup.com",
     "bandsintown.com", "songkick.com", "dice.fm", "ticketek.com",
-    "shopify.com", "etsy.com", "ebay.com", "amazon.com", "craigslist.org",
+    "shopify.com", "etsy.com", "ebay.com", "craigslist.org",
     "indeed.com", "linkedin.com",
+    # Deliberately NOT amazon.com. The first sweep of the live catalog
+    # disabled "Amazon Web Services (AWS)" — aws.amazon.com/rss, a product
+    # and outage announcement feed a tech watcher would want — because the
+    # entry aimed at the storefront matched every subdomain. Suffix matching
+    # is what makes this list work and also what makes a broad entry
+    # dangerous; the storefront publishes nothing anyone would discover as
+    # news, so the entry was all cost and no benefit.
 }
 
 _SKIP_DOMAINS = _SKIP_AGGREGATORS | _SKIP_NOT_NEWS

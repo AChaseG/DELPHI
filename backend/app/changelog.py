@@ -13,6 +13,29 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-06",
+        "title": "Keeping a record of the moments it goes quiet",
+        "items": [
+            "\ud83d\udcdd Every time D.E.L.P.H.I. has been unreachable, the "
+            "evidence was gone before anyone could look \u2014 the server\u2019s "
+            "log holds about a minute, and by the time the page is refreshed "
+            "and someone checks, it is healthy again. Twice that meant a real "
+            "cause was found and fixed while the rest of it stayed hidden.",
+            "\ud83d\udd52 It now keeps its own record instead: whenever the "
+            "server is unable to answer for more than a moment, it writes down "
+            "when, for how long, and what it was doing. The last forty are kept "
+            "and shown in the operator console, so a report of \u201cit was "
+            "down around four\u201d can be checked against what actually "
+            "happened at four.",
+            "\u2699\ufe0f Also corrected: yesterday\u2019s clean-up of "
+            "non-news sources switched off the Amazon Web Services feed, "
+            "because the rule written for the shop matched everything beneath "
+            "it. AWS is a legitimate source of technology news and the rule was "
+            "too broad. It has been narrowed; re-enable the source in "
+            "\ud83d\udce1 Sources.",
+        ],
+    },
+    {
         "date": "2026-09-05",
         "title": "Why a concert listing turned up in an energy feed",
         "items": [

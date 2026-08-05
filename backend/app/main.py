@@ -29,7 +29,8 @@ from starlette.concurrency import run_in_threadpool
 import re as _username_re
 
 from . import (auth, devices, discovery, export, geocode, home, ingest, langdetect,
-               mailer, passwords, ratelimit, repair, safefetch, storage, translate)
+               mailer, passwords, ratelimit, repair, safefetch, storage, translate,
+               watchdog)
 from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -211,6 +212,10 @@ async def lifespan(app: FastAPI):
         # the sign-in page immediately; until it lands, columns are matched live.
         tasks.append(asyncio.create_task(ingest.warm_home()))
         tasks.append(asyncio.create_task(ingest.ingest_loop()))
+    # Outside the ingest check on purpose. The loop can be starved by anything
+    # — a slow request, a background job, this machine's single core — and a
+    # watchdog that only runs when the poller does cannot say so.
+    tasks.append(asyncio.create_task(watchdog.watch()))
     yield
     for task in tasks:
         task.cancel()
@@ -2351,6 +2356,13 @@ def ingest_status(db: Session = Depends(get_db)):
     # lookup is here too, so "no address suggestions" can be told apart from
     # "nobody searched for one" without reading the log.
     return {**ingest.status, "home": home.status(),
+            # Every moment this process could not answer, newest first, with
+            # what it was doing. The reason it is here rather than only in the
+            # log: the log holds about a minute, and by the time anybody looks
+            # at an outage it has scrolled away.
+            "stalls": watchdog.stalls(),
+            "worst_stall_s": watchdog.worst(),
+            "doing": watchdog.activity(),
             "geocoder": {"provider": geocode.PROVIDER if geocode.enabled() else "off",
                          **geocode.status},
             # Mail is sent in the background so a reader can't time the reply
