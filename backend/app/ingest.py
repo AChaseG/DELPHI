@@ -103,6 +103,10 @@ def warmup_batch(full: int, since_start: float) -> int:
 # (with their translations and alert-history rows); 0 disables pruning.
 RETENTION_DAYS = float(os.environ.get("NEWS_RETENTION_DAYS", "30"))
 PRUNE_EVERY_SECONDS = 6 * 3600
+# When a bounded pass did not reach the cutoff, the gap before trying again.
+# Long enough that catching up does not become the only thing the poller does,
+# short enough that a changed retention window takes hours rather than days.
+PRUNE_CATCHUP_SECONDS = float(os.environ.get("NEWS_PRUNE_CATCHUP_S", "60"))
 # How often the catalog is re-checked against the current adoption rules.
 # Daily: the rules change when somebody notices something that should never
 # have been adopted, which is not an hourly event, and the sweep reads every
@@ -1002,7 +1006,8 @@ def _delete_articles(db, ids: list[int]) -> None:
 def _drop_empty_events(db, cutoff) -> int:
     orphan_ids = db.scalars(select(Event.id).where(
         Event.updated_at < cutoff,
-        ~exists().where(Article.event_id == Event.id))).all()
+        ~exists().where(Article.event_id == Event.id))
+        .order_by(Event.updated_at.asc()).limit(EMPTY_EVENT_BATCH)).all()
     for i in range(0, len(orphan_ids), 500):
         chunk = orphan_ids[i:i + 500]
         db.execute(sa_delete(ViewedEvent).where(ViewedEvent.event_id.in_(chunk)))
@@ -1022,18 +1027,44 @@ MIN_KEEP_DAYS = float(os.environ.get("NEWS_MIN_KEEP_DAYS", "2"))
 # down over several passes instead of stalling a tick.
 OVERSIZE_BATCH = int(os.environ.get("NEWS_OVERSIZE_BATCH", "5000"))
 
+# The same ceiling for the age-driven rule, and it was missing. Ordinarily
+# age-based pruning removes one day's tail per pass and a bound never binds —
+# but *lowering* RETENTION_DAYS makes every article between the old cutoff and
+# the new one eligible at once, and `_next_prune_at` starts at zero so it runs
+# on the first tick after the deploy that changed it. Unbounded, that is one
+# delete of several hundred thousand rows, each cascading through the full-text
+# index, on the tick a deploy has just restarted: precisely the hours-long
+# outage this module keeps trying to prevent, triggered by the setting meant to
+# prevent it. Bounded, the same change is absorbed over a few passes.
+RETENTION_BATCH = int(os.environ.get("NEWS_RETENTION_BATCH", "5000"))
+
+# Events are dropped by scanning for those no articles point at any more, which
+# is a full pass over a table with as many rows as there are stories. Bounded
+# for the same reason.
+EMPTY_EVENT_BATCH = int(os.environ.get("NEWS_EMPTY_EVENT_BATCH", "5000"))
+
 
 def prune_old_articles(db) -> dict:
     """Retention: drop articles older than RETENTION_DAYS along with their
     translations, alert history and viewed markers, then events that no longer
     have any articles. Keeps the working set — and every board/search scan —
-    bounded as ingestion runs forever."""
+    bounded as ingestion runs forever.
+
+    Oldest first and bounded per pass, so shortening the retention window is
+    absorbed over several passes rather than in one stalling delete. `more`
+    says the window is not caught up yet, so a caller can come back sooner
+    than the usual six hours instead of leaving the backlog until tomorrow.
+    """
     if RETENTION_DAYS <= 0:
-        return {"articles": 0, "events": 0}
+        return {"articles": 0, "events": 0, "more": False}
     cutoff = utcnow() - timedelta(days=RETENTION_DAYS)
-    old_ids = db.scalars(select(Article.id).where(Article.published_at < cutoff)).all()
+    old_ids = db.scalars(
+        select(Article.id).where(Article.published_at < cutoff)
+        .order_by(Article.published_at.asc()).limit(RETENTION_BATCH)).all()
     _delete_articles(db, list(old_ids))
-    return {"articles": len(old_ids), "events": _drop_empty_events(db, cutoff)}
+    events = _drop_empty_events(db, cutoff)
+    return {"articles": len(old_ids), "events": events,
+            "more": len(old_ids) >= RETENTION_BATCH}
 
 
 def prune_to_fit(db) -> dict:
@@ -1258,6 +1289,16 @@ async def ingest_loop():
                         if pruned["articles"] or pruned["events"]:
                             log.info("retention: pruned %d articles, %d empty events",
                                      pruned["articles"], pruned["events"])
+                        # A bounded pass that filled its batch means the window
+                        # is not caught up. Come back on the next tick instead
+                        # of in six hours: shortening the retention window would
+                        # otherwise take days to take effect, one batch a
+                        # quarter-day, which is indistinguishable from the
+                        # setting having been ignored.
+                        if pruned.get("more"):
+                            _next_prune_at = time.monotonic() + PRUNE_CATCHUP_SECONDS
+                            log.info("retention: more to remove, next pass in %.0fs",
+                                     PRUNE_CATCHUP_SECONDS)
                 finally:
                     db.close()
         except Exception as exc:

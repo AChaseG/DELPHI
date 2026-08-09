@@ -14,3 +14,4 @@ backend/data/secret.key
 .DS_Store
 node_modules/
 .env
+.venv/
