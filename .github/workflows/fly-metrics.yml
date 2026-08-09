@@ -1,0 +1,94 @@
+# Read Fly's own metrics for this app — the only record that outlives a deploy.
+#
+# Everything else forgets. `fly logs` holds about a minute. Machine event logs
+# are replaced when a deploy replaces the machine. The watchdog's records live
+# in the process that stalled. So an outage at 23:05 is unreadable by the time
+# anybody looks, unless the numbers are kept somewhere else. Fly keeps them:
+# memory, CPU and instance state, at 15-second resolution, for about 30 days.
+#
+# GitHub -> Actions -> "Read Fly metrics" -> Run workflow.
+#
+#   metric: names   -> list every metric name available for this app
+#   metric: memory  -> memory used vs total
+#   metric: cpu     -> CPU seconds per second by mode (1.0 = one core saturated)
+#   metric: up      -> whether the instance was running (gaps = restarts)
+#   metric: <promql> -> anything else, as a raw range query
+#
+# Read-only: a GET against Fly's Prometheus endpoint, nothing else.
+name: Read Fly metrics
+
+on:
+  workflow_dispatch:
+    inputs:
+      metric:
+        description: 'names | memory | cpu | up | raw PromQL'
+        required: true
+        default: memory
+      hours:
+        description: 'How many hours back to look'
+        required: true
+        default: '72'
+      step:
+        description: 'Seconds between samples (larger = coarser, less output)'
+        required: true
+        default: '300'
+      org:
+        description: 'Fly organization slug'
+        required: true
+        default: personal
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          METRIC: ${{ inputs.metric }}
+          HOURS: ${{ inputs.hours }}
+          STEP: ${{ inputs.step }}
+          ORG: ${{ inputs.org }}
+        run: |
+          set -euo pipefail
+          base="https://api.fly.io/prometheus/$ORG"
+          auth="Authorization: Bearer $FLY_API_TOKEN"
+          app='app="delphi-2vir0g"'
+
+          if [ "$METRIC" = "names" ]; then
+            curl -sS -H "$auth" "$base/api/v1/label/__name__/values" \
+              | jq -r '.data[]? // empty' | grep -i "fly_" || echo "(no names returned)"
+            exit 0
+          fi
+
+          case "$METRIC" in
+            memory) query="fly_instance_memory_mem_total{$app} - fly_instance_memory_mem_available{$app}" ;;
+            cpu)    query="sum by (mode) (rate(fly_instance_cpu{$app}[2m]))" ;;
+            up)     query="fly_instance_up{$app}" ;;
+            *)      query="$METRIC" ;;
+          esac
+
+          end=$(date -u +%s)
+          start=$((end - HOURS * 3600))
+          echo "query: $query"
+          echo "range: $(date -u -d @$start '+%Y-%m-%d %H:%M') -> $(date -u -d @$end '+%Y-%m-%d %H:%M') UTC, step ${STEP}s"
+          echo
+
+          # One line per sample: UTC timestamp, series labels, value. Plain text
+          # so it reads in the log without a dashboard.
+          curl -sS -G -H "$auth" "$base/api/v1/query_range" \
+            --data-urlencode "query=$query" \
+            --data-urlencode "start=$start" \
+            --data-urlencode "end=$end" \
+            --data-urlencode "step=$STEP" \
+            | jq -r '
+                if .status != "success" then
+                  "ERROR: \(.error // .errorType // "unknown")"
+                elif (.data.result | length) == 0 then
+                  "(no data — check the metric name with metric: names)"
+                else
+                  .data.result[] as $s
+                  | ($s.metric | del(.__name__) | to_entries
+                     | map("\(.key)=\(.value)") | join(",")) as $labels
+                  | $s.values[]
+                  | "\(.[0] | strftime("%Y-%m-%d %H:%M"))  \($labels)  \(.[1])"
+                end'
