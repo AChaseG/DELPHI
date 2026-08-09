@@ -46,12 +46,12 @@ CHANGELOG: list[dict] = [
         "date": "2026-09-06",
         "title": "Keeping a record of the moments it goes quiet",
         "items": [
-            "\ud83d\udcdd Every time D.E.L.P.H.I. has been unreachable, the "
+            "📝 Every time D.E.L.P.H.I. has been unreachable, the "
             "evidence was gone before anyone could look \u2014 the server\u2019s "
             "log holds about a minute, and by the time the page is refreshed "
             "and someone checks, it is healthy again. Twice that meant a real "
             "cause was found and fixed while the rest of it stayed hidden.",
-            "\ud83d\udd52 It now keeps its own record instead: whenever the "
+            "🕒 It now keeps its own record instead: whenever the "
             "server is unable to answer for more than a moment, it writes down "
             "when, for how long, and what it was doing. The last forty are kept "
             "and shown in the operator console, so a report of \u201cit was "
@@ -62,14 +62,14 @@ CHANGELOG: list[dict] = [
             "because the rule written for the shop matched everything beneath "
             "it. AWS is a legitimate source of technology news and the rule was "
             "too broad. It has been narrowed; re-enable the source in "
-            "\ud83d\udce1 Sources.",
+            "📡 Sources.",
         ],
     },
     {
         "date": "2026-09-05",
         "title": "Why a concert listing turned up in an energy feed",
         "items": [
-            "\ud83c\udfab A feed watching for solar, wind, coal and nuclear "
+            "🎫 A feed watching for solar, wind, coal and nuclear "
             "carried a Taiwanese concert listing. Nothing had gone wrong with "
             "the search: the page lists the performer\u2019s songs and one of "
             "them is called \u201cInnocent Wind\u201d, so the article really "
@@ -81,12 +81,12 @@ CHANGELOG: list[dict] = [
             "power\u201d, \u201cwind farm\u201d, \u201cnuclear reactor\u201d. "
             "It is advice, not an error; the search still saves exactly as "
             "written.",
-            "\ud83e\uddf9 The same rules are now applied to sources already "
+            "🧹 The same rules are now applied to sources already "
             "collected, not just new ones \u2014 once when D.E.L.P.H.I. starts "
             "and once a day after that. Anything the current rules would "
             "refuse is switched off, never deleted, and says in the Sources "
             "panel why. Sources you added yourself are left alone.",
-            "\ud83d\udeab And the source should never have been in the catalog. "
+            "🚫 And the source should never have been in the catalog. "
             "It was a ticketing calendar that D.E.L.P.H.I. adopted by itself "
             "because it publishes a feed. Ticketing and event platforms are "
             "now refused outright \u2014 including everything beneath them, "
@@ -106,13 +106,13 @@ CHANGELOG: list[dict] = [
             "stage \u2014 working out what each article is about \u2014 from 143 "
             "seconds to under five. Pages that were taking four to seven "
             "seconds are no longer waiting on it.",
-            "\ud83e\udde9 But a dedicated processor is one processor, where the "
+            "🧩 But a dedicated processor is one processor, where the "
             "shared pair were two. Collecting the news and answering you now "
             "take turns on the same one, and while the average has plenty of "
             "room, a burst can still keep you waiting. So the work is now done "
             "in half-size pieces, and D.E.L.P.H.I. hands the processor back "
             "five times more often than it used to between them.",
-            "\ud83d\udd0d Two suspects were measured and cleared rather than "
+            "🔍 Two suspects were measured and cleared rather than "
             "guessed at \u2014 reading a feed, and running a search \u2014 which "
             "is why neither was \u201cfixed\u201d. The stage timings added "
             "earlier are what made that possible.",
