@@ -4561,11 +4561,20 @@ function showBootFailure(e) {
   // The client raises these two itself when fetch fails or times out; anything
   // else reaching here came out of the dashboard's own code.
   const unreachable = /reach the server|didn't respond within/i.test(msg);
+  // ...except a crash on the server, which arrives as a normal reply carrying
+  // the server's own error reference. Two buckets were one too few: a 500 was
+  // being reported as "a fault in the dashboard itself", sending the search for
+  // the cause into the browser console when the cause was a traceback on the
+  // server. That is the same wrong turn this function was written to stop.
+  const reference = /reference ([0-9a-f]{6})/i.exec(msg);
+  const serverFault = !unreachable && !!reference;
 
   const panel = document.createElement("div");
   panel.className = "empty-state boot-error";
   const h = document.createElement("h2");
-  h.textContent = unreachable ? "Can't reach the server" : "D.E.L.P.H.I. failed to start";
+  h.textContent = unreachable ? "Can't reach the server"
+    : serverFault ? "The server hit an error"
+    : "D.E.L.P.H.I. failed to start";
   const p = document.createElement("p");
   p.textContent = msg;
   const hint = document.createElement("p");
@@ -4573,6 +4582,10 @@ function showBootFailure(e) {
   hint.textContent = unreachable
     ? "The server isn't answering. It may be restarting or under load — this "
       + "usually clears on its own within a minute."
+    : serverFault
+    ? `This failed on the server, not in your browser, and it has been recorded. `
+      + `An operator can look up reference ${reference[1]} in the console under `
+      + `Service health. Retrying is worth a try — it may not happen twice.`
     : "This is a fault in the dashboard itself rather than the connection. The "
       + "browser console has the full details, including which line failed.";
   const retry = document.createElement("button");

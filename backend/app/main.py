@@ -11,6 +11,7 @@ import urllib.parse
 import uuid
 
 import httpx
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -271,6 +272,12 @@ SLOW_REQUEST_S = float(os.environ.get("NEWS_SLOW_REQUEST_S", "3"))
 _slow_log = logging.getLogger("slow")
 _fail_log = logging.getLogger("failure")
 
+# The last few unhandled errors, newest first, so a reference quoted by a reader
+# can be looked up after the log has scrolled past it. Deliberately small: this
+# is for "what was that", not an error tracker.
+MAX_RECENT_FAILURES = 20
+recent_failures: deque[dict] = deque(maxlen=MAX_RECENT_FAILURES)
+
 
 @app.exception_handler(Exception)
 async def unhandled_error(request: Request, exc: Exception):
@@ -284,9 +291,16 @@ async def unhandled_error(request: Request, exc: Exception):
     a header, so "it broke, reference 4f2a1c" is enough to find the exact
     failure.
 
-    The reference is deliberately not an id anyone can look up — it identifies
-    one moment in the log, nothing else — and the exception's own text never
-    reaches the browser, because tracebacks name file paths and query shapes.
+    The exception's own text never reaches the browser, because tracebacks name
+    file paths and query shapes.
+
+    The reference used to identify one moment in the log and nothing else. That
+    was a mistake on this deployment: the log holds about a minute, so by the
+    time a reference is reported it names a line nobody can still read, and
+    three separate faults have now been chased without ever seeing the
+    exception. The last few are kept in memory as well and served to operators
+    through /api/ingest/status, so "reference bd0de7" is a question with an
+    answer. Bounded, for the same reason the stall record is.
     """
     reference = uuid.uuid4().hex[:6]
     _fail_log.exception(
@@ -294,6 +308,16 @@ async def unhandled_error(request: Request, exc: Exception):
         reference, type(exc).__name__, request.method, request.url.path,
         f"?{request.url.query}" if request.url.query else "",
         getattr(request.state, "user_id", None) or "anonymous")
+    recent_failures.appendleft({
+        "reference": reference,
+        "at": utcnow().isoformat() + "Z",
+        "error": type(exc).__name__,
+        # The message, not the traceback: enough to recognise the fault without
+        # putting file paths anywhere but the log.
+        "detail": str(exc)[:200],
+        "method": request.method,
+        "path": request.url.path,
+    })
     return JSONResponse(
         status_code=500,
         headers={"X-Delphi-Error": reference},
@@ -650,7 +674,15 @@ def meta(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
         "ui_languages": translate.UI_LANGUAGES,
         "translation": {"provider": translate.PROVIDER, "enabled": translate.enabled()},
         "stats": _stats(db),
-        "ingest": ingest.status,
+        # A snapshot, not the poller's own dict. `ingest.status` starts with
+        # four keys and grows to twenty as a cycle reports what it did, so
+        # handing the live object to the response serializer means iterating a
+        # dict another task is adding keys to — which raises "dictionary
+        # changed size during iteration" and turns a page load into a 500. Rare
+        # enough to look random, and likelier exactly when the machine is busy,
+        # because that is when requests queue into the moment a cycle finishes.
+        # /api/ingest/status already copied it; this one did not.
+        "ingest": dict(ingest.status),
         "is_admin": bool(me_user and _is_admin(me_user)),
     }
 
@@ -2363,6 +2395,9 @@ def ingest_status(db: Session = Depends(get_db)):
             "stalls": watchdog.stalls(),
             "worst_stall_s": watchdog.worst(),
             "doing": watchdog.activity(),
+            # So a reader quoting "reference bd0de7" can be answered, rather
+            # than the reference naming a log line that expired minutes later.
+            "failures": list(recent_failures),
             "geocoder": {"provider": geocode.PROVIDER if geocode.enabled() else "off",
                          **geocode.status},
             # Mail is sent in the background so a reader can't time the reply
