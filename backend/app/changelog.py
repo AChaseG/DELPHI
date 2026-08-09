@@ -13,6 +13,36 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-07",
+        "title": "Found it: the nightly outage was the backup",
+        "items": [
+            "🎯 The “can’t reach the server” screen "
+            "that has been appearing every night was not D.E.L.P.H.I. failing. "
+            "Once a day, at the same minute, the host was making a backup copy "
+            "of the entire news archive — and reading six and a half "
+            "gigabytes off the disk left nothing for reading a headline. The "
+            "server stayed perfectly healthy the whole time, which is exactly "
+            "why five rounds of looking for a bug found nothing: by the time "
+            "anyone refreshed and checked, it was over.",
+            "📈 It appeared out of nowhere and got worse because it "
+            "grew with the archive. Three nights at under 4.7 GB passed "
+            "unnoticed; the night it reached 5.6 GB the site was down for 85 "
+            "minutes, and at 6.5 GB for four hours. Tonight would have been "
+            "worse again.",
+            "🛠️ The nightly copy is now switched off, so the "
+            "outage stops tonight and no news is lost. The trade is that "
+            "there is no automatic backup any more: a day of news costs about "
+            "0.84 GB, and keeping enough history to be useful is not "
+            "compatible with copying all of it every night on this machine.",
+            "🧹 Also fixed, before it could bite: shortening the "
+            "retention window would have deleted every article past the new "
+            "cutoff in one go, on the first tick after the change — the "
+            "same hours-long freeze, caused by the setting meant to prevent "
+            "it. Clean-up now works in bounded batches and comes back for the "
+            "rest a minute later.",
+        ],
+    },
+    {
         "date": "2026-09-06",
         "title": "Keeping a record of the moments it goes quiet",
         "items": [

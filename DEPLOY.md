@@ -137,6 +137,59 @@ fly ssh console -C "cat /data/news.db" > backup-$(date +%F).db
 
 Restore by shipping the file back to `/data/news.db` and restarting the app.
 
+#### Automatic snapshots are OFF on delphi-news.com, deliberately
+
+Read this before turning them back on.
+
+A snapshot reads the whole volume. On a single-core machine whose every request
+needs SQLite on that same volume, a big one saturates the disk for as long as it
+takes, and during it the app answers nothing: `/healthz` misses the 10-second
+timeout, Fly de-routes the machine, and the site reports itself unreachable
+while the process is perfectly healthy. That is what the nightly "can't reach
+the server" was — for days, at 23:05 UTC, with nothing left in the one-minute
+log buffer by the time anyone looked.
+
+It scaled with the database, which is why it appeared out of nowhere and then
+got worse:
+
+| snapshot | size | site |
+|---|---|---|
+| 2026-08-04 23:25 | 3.40 GB | fine |
+| 2026-08-05 23:26 | 3.92 GB | fine |
+| 2026-08-06 23:27 | 4.70 GB | fine |
+| 2026-08-07 23:27 | 5.59 GB | **down 85 min** |
+| 2026-08-08 23:28 | 6.48 GB | **down 4 h 03** |
+
+Measured alongside it: a day of news costs about **0.84 GB**, confirmed twice
+over — 6.67 GB holding ~8 days of articles, and the snapshot growing
+0.85 GB/night. So the trade is direct, and there is no third way. Trimming
+stored article text does not work (average body is already 1,332 characters
+against the 20,000 cap, so capping it lower saves ~7% of the file — text is
+only a third of the database, the rest being the FTS index, the JSON place and
+category columns, five indexes, and the events table). More CPU does not work
+either: `performance-2x` would be two cores waiting on the same disk.
+
+Disabled with:
+
+```bash
+fly volumes update <vol-id> --scheduled-snapshots=false
+```
+
+**What this costs.** There is no automatic backup. Losing the volume means
+rebuilding the archive from the feeds, which only reaches back as far as the
+feeds themselves do — days, not weeks. The news is re-fetchable; **accounts,
+feeds, alerts, pantheons and watched places are not**, and they are a few
+megabytes of the six gigabytes. If you take one thing from this section, take a
+copy of those.
+
+To turn snapshots back on, first get the database under about 4.5 GB — the
+level the nights that stayed up were at — by lowering `NEWS_DB_MAX_MB` (an
+explicit ceiling beats `NEWS_DB_MAX_FRACTION`, and it decouples the cap from
+the volume size so growing the volume for vacuum headroom does not grow the
+snapshot). At 0.84 GB/day that is about five days of history. The alternative
+is to watch fewer sources: 4,655 enabled feeds produce ~170k articles a day,
+and halving that doubles the days of history per gigabyte.
+
 ---
 
 ## First-run behavior
