@@ -267,6 +267,8 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_WATCHDOG_STALL_S` | `3` | how late the event loop must be before it is recorded as a stall |
 | `NEWS_AUDIT_EVERY_S` | `86400` | how often the catalog is re-checked against the current adoption rules |
 | `NEWS_DISCOVER_MIN_SIGHTINGS` | `2` | times a publisher must be seen before auto-discovery probes it |
+| `NEWS_ACCOUNT_BACKUP_EVERY_S` | `86400` | how often the accounts-only backup is mailed to operators (`0` = off) |
+| `NEWS_ACCOUNT_BACKUP_TO` | *(operators)* | comma-separated addresses for that backup, instead of the operator accounts |
 | `NEWS_DEVICE_LIMIT` | `0` | devices an account may be *in use on* at once (`0` = no limit); per-account overrides in the console |
 | `NEWS_DEVICE_ACTIVE_WINDOW_S` | `300` | silence after which a device stops counting as in use |
 | `NEWS_DEVICE_TOUCH_EVERY_S` | `30` | how often a device's last-seen time is actually written |

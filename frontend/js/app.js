@@ -2815,6 +2815,37 @@ async function renderServiceHealth() {
     lines.push(`💾 Disk: ${st.detail}`);
   }
 
+  // The only backup there is, now that the host's nightly whole-volume copy is
+  // off. Reported rather than assumed: a backup that quietly stopped looks
+  // exactly like one that is working, right up until it is needed.
+  const bk = s.account_backup || {};
+  if (!bk.every_s) {
+    lines.push("🗄️ The daily account backup is switched off "
+               + "(NEWS_ACCOUNT_BACKUP_EVERY_S is 0). Nothing else is backing up "
+               + "accounts — take one with the button below and keep it safe.");
+  } else if (!mail.configured) {
+    // Said explicitly, because otherwise this line promises a copy that the
+    // line about mail above has already explained cannot be sent.
+    lines.push("🗄️ The daily account backup cannot be sent: it goes by email, "
+               + "and mail is not configured. Until it is, use the button below "
+               + "and keep the file somewhere other than this server.");
+  } else if (!bk.recipients) {
+    lines.push("🗄️ The daily account backup has nowhere to go: no operator "
+               + "account has an email address. Add one, or set "
+               + "NEWS_ACCOUNT_BACKUP_TO.");
+  } else if (bk.last_sent_at) {
+    lines.push(`🗄️ Account backup emailed ${timeAgo(bk.last_sent_at)} to `
+               + `${bk.recipients} operator${plural(bk.recipients)} `
+               + `(${bk.sent_total} in total).`
+               + (bk.last_skipped_reason ? ` Last attempt: ${bk.last_skipped_reason}.` : ""));
+  } else {
+    lines.push("🗄️ Account backup: none sent yet"
+               + (bk.last_skipped_reason ? ` — ${bk.last_skipped_reason}.` : ", the "
+                  + "first goes out within the hour.")
+               + " It is the only backup of accounts, columns, alerts and watched "
+               + "places; the news itself is not backed up and does not need to be.");
+  }
+
   const geo = s.geocoder || {};
   if (geo.provider === "off") {
     lines.push("📍 Address lookup is off; only Delphi's own list of cities and "

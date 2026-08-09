@@ -183,10 +183,32 @@ megabytes of the six gigabytes. So take those separately — see below.
 
 #### The account backup (the part worth keeping)
 
-Operator console → Service health → **💾 Download account backup**, or
-`GET /api/admin/backup/accounts` signed in as an operator. A few kilobytes of
-JSON: accounts (with password hashes), feeds, alerts, pantheons and their
-membership, watched places, and hand-added sources. Not the news, not read
+**It runs by itself, daily, by email.** Fly cannot snapshot part of a volume —
+snapshots are block-level copies of the whole thing — and in any case the
+accounts are not a separate file: they are rows inside the same `news.db` as the
+1.36 million articles, so even a file copy is the whole 6.7 GB. Getting an
+accounts-only backup means reading them out as data, which is what this does.
+
+Once a day the poller builds the copy and mails it to every operator account
+with an email address, using the same SMTP settings as password resets. A few
+kilobytes, so it costs nothing and leaves the machine — which is the point, as a
+copy on the volume is no help when the volume is what was lost. It skips sending
+when nothing has changed since the last copy, so a quiet week is quiet. The date
+of the last one appears in the operator console under Service health, because
+every backup that has ever mattered failed by stopping without saying so.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NEWS_ACCOUNT_BACKUP_EVERY_S` | `86400` | how often to mail a copy; `0` switches it off |
+| `NEWS_ACCOUNT_BACKUP_TO` | *(operators)* | comma-separated addresses instead of the operator accounts |
+
+It needs mail configured. Without `NEWS_SMTP_HOST` there is nowhere to send it,
+and the console will say so rather than pretend.
+
+On demand as well: operator console → Service health → **💾 Download account
+backup**, or `GET /api/admin/backup/accounts` signed in as an operator. A few
+kilobytes of JSON: accounts (with password hashes), feeds, alerts, pantheons and
+their membership, watched places, and hand-added sources. Not the news, not read
 markers, not alert history, not the seeded catalog — all of those come back on
 their own.
 

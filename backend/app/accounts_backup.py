@@ -40,13 +40,16 @@ are its Actions logs.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import mailer
 from .models import (Alert, FavoriteLocation, Feed, Pantheon, PantheonInvite,
                      PantheonMember, Source, User, utcnow)
 
@@ -216,6 +219,120 @@ def to_json(doc: dict) -> bytes:
 
 def filename(doc: dict) -> str:
     return f"delphi-accounts-{doc['taken_at'][:10]}.json"
+
+
+def digest(doc: dict) -> str:
+    """A fingerprint of the *contents*, ignoring when it was taken.
+
+    So a system where nothing changed does not mail an identical file every day.
+    `taken_at` and `counts` are excluded deliberately: the first always differs
+    and the second is derived, so including either would make every backup look
+    new and turn a safety net into a daily notification nobody reads.
+    """
+    payload = {k: v for k, v in doc.items()
+               if k not in ("taken_at", "counts")}
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+
+
+# ---------- sending it somewhere that is not this machine ----------
+
+# How often to mail a copy. Zero switches it off. Daily by default: the file is
+# kilobytes, and the thing it protects against is losing the volume, which does
+# not announce itself in advance.
+EVERY_SECONDS = float(os.environ.get("NEWS_ACCOUNT_BACKUP_EVERY_S",
+                                    str(24 * 3600)))
+# Where to send it. Empty means "every operator account with an email", which is
+# the right default: the people who could restore it.
+TO = os.environ.get("NEWS_ACCOUNT_BACKUP_TO", "").strip()
+
+
+def recipients(db: Session) -> list[str]:
+    """Who gets the copy.
+
+    An explicit address wins. Otherwise every operator account with an email —
+    not every account, because this file is every account's password hash and
+    handing it to all of them would be a breach dressed as a backup.
+    """
+    if TO:
+        return [addr.strip() for addr in TO.split(",") if addr.strip()]
+    return [u.email for u in db.scalars(
+        select(User).where(User.is_admin.is_(True), User.email != "")).all()]
+
+
+# What the scheduled copy has been doing, surfaced through /api/ingest/status
+# so a backup that silently stopped is visible without reading a log — the
+# failure mode of every backup that has ever mattered.
+status: dict = {
+    "last_sent_at": None,
+    "last_sent_to": 0,
+    "last_digest": None,
+    "last_skipped_reason": None,
+    "sent_total": 0,
+}
+
+
+def send_scheduled(db: Session) -> dict:
+    """Build a backup and mail it, unless there is nothing new to say.
+
+    Returns what it did, and records the same in `status`. Never raises: this
+    runs inside the poll loop, and a mail relay having a bad day must not stop
+    the news being collected.
+    """
+    try:
+        doc = build(db)
+        fresh = digest(doc)
+        if fresh == status["last_digest"]:
+            status["last_skipped_reason"] = "nothing changed since the last copy"
+            return {"sent": 0, "reason": status["last_skipped_reason"]}
+
+        to = recipients(db)
+        if not to:
+            status["last_skipped_reason"] = (
+                "no operator account has an email address to send it to")
+            log.warning("account backup not sent: %s", status["last_skipped_reason"])
+            return {"sent": 0, "reason": status["last_skipped_reason"]}
+
+        body = (
+            "Attached is a copy of the D.E.L.P.H.I. account data for "
+            f"{doc['taken_at'][:10]}: {doc['counts']['users']} account(s), "
+            f"{doc['counts']['feeds']} column(s), {doc['counts']['alerts']} "
+            f"alert(s), {doc['counts']['locations']} watched place(s).\n\n"
+            "This is the part of the database the feeds cannot provide again. "
+            "The news itself is not included, which is why this is kilobytes "
+            "rather than gigabytes.\n\n"
+            "It contains password hashes and alert webhook addresses. Keep it "
+            "as you would keep the database.\n\n"
+            "To restore onto a rebuilt machine:\n"
+            "  python -m backend.app.accounts_backup restore <file> --dry-run\n"
+            "  python -m backend.app.accounts_backup restore <file>\n")
+        payload = to_json(doc)
+        sent = 0
+        for address in to:
+            if mailer.send_attachment(
+                    address,
+                    f"D.E.L.P.H.I. account backup — {doc['taken_at'][:10]}",
+                    body, filename=filename(doc), data=payload):
+                sent += 1
+
+        if sent:
+            # Only remember the digest once a copy actually left, or a failed
+            # relay would be recorded as "nothing changed" and never retried.
+            status["last_digest"] = fresh
+            status["last_sent_at"] = doc["taken_at"]
+            status["last_sent_to"] = sent
+            status["last_skipped_reason"] = None
+            status["sent_total"] += 1
+            log.info("account backup mailed to %d recipient(s), %d bytes",
+                     sent, len(payload))
+        else:
+            status["last_skipped_reason"] = "mail could not be delivered"
+        return {"sent": sent, "bytes": len(payload), "counts": doc["counts"]}
+    except Exception as exc:                     # never break the poll loop
+        status["last_skipped_reason"] = f"{type(exc).__name__}: {exc}"[:200]
+        log.exception("account backup failed")
+        return {"sent": 0, "reason": status["last_skipped_reason"]}
 
 
 # ---------- restore ----------

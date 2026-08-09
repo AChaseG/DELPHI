@@ -41,11 +41,17 @@ CHANGELOG: list[dict] = [
             "it. Clean-up now works in bounded batches and comes back for the "
             "rest a minute later.",
             "💾 Because there is no automatic backup any more, there is now a "
-            "deliberate one. The operator console has <b>Download account "
-            "backup</b>: a small file holding the things the feeds cannot give "
-            "back — accounts, columns, alerts, pantheons, watched places and "
-            "outlets added by hand. Not the news, which is why it is kilobytes "
-            "rather than gigabytes. Keep it somewhere other than this server.",
+            "deliberate one — of the small part. Every day D.E.L.P.H.I. now "
+            "emails the operator a file holding the things the feeds cannot "
+            "give back: accounts, columns, alerts, pantheons, watched places "
+            "and outlets added by hand. Not the news, which is why it is "
+            "kilobytes rather than gigabytes, and why it can be sent daily "
+            "when copying the whole archive could not be. It goes by email on "
+            "purpose: a copy kept on this server is no help if this server is "
+            "what goes missing. There is a <b>Download account backup</b> "
+            "button in the operator console for taking one on the spot, and "
+            "the date of the last one is shown beside it — a backup that "
+            "quietly stopped is the only kind that ever matters.",
             "🩹 And a quiet one, found while testing the above: the "
             "what’s-new popup you are reading had stopped appearing entirely a "
             "few days ago. Three of these entries were written in a way the "

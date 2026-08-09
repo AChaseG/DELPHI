@@ -2371,6 +2371,14 @@ def ingest_status(db: Session = Depends(get_db)):
             "mail": {"configured": mailer.enabled(),
                      "host": f"{mailer.HOST}:{mailer.PORT}" if mailer.enabled() else "",
                      **mailer.status},
+            # Fly's nightly volume snapshots are off, so this is the only
+            # backup there is. A backup that silently stopped is the failure
+            # mode of every backup that has ever mattered, so the date of the
+            # last one is reported rather than assumed.
+            "account_backup": {
+                "every_s": accounts_backup.EVERY_SECONDS,
+                "recipients": len(accounts_backup.recipients(db)),
+                **accounts_backup.status},
             # The disk. Delphi filled its volume once and the only symptom was
             # that the app stopped starting: SQLite could not enable WAL, so it
             # never opened a port and there was nothing left running to report

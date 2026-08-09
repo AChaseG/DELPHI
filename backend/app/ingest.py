@@ -21,8 +21,8 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, or_, select
 
-from . import (discovery, home, langdetect, mailer, repair, safefetch, storage,
-               translate, watchdog)
+from . import (accounts_backup, discovery, home, langdetect, mailer, repair,
+               safefetch, storage, translate, watchdog)
 from .clustering import assign_events, live_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -1111,6 +1111,9 @@ _next_prune_at: float = 0.0  # monotonic deadline for the next retention pass
 # pointless if the catalog keeps yesterday's until this time tomorrow, and a
 # deploy is exactly when the rules have just changed.
 _next_audit_at: float = 0.0
+# Not zero: mailing a copy of every account is not what a restart is for, and a
+# deploy loop would send one per deploy. The first copy goes out an hour in.
+_next_account_backup_at: float = 3600.0
 
 
 async def warm_home():
@@ -1200,7 +1203,7 @@ async def ingest_loop():
     (news wires first, then a bounded slice of city feeds), paced per host so
     Google gets a steady drip rather than a burst. Each source refreshes on its
     own interval; nothing starves and no single tick runs long."""
-    global _next_prune_at, _next_audit_at
+    global _next_prune_at, _next_audit_at, _next_account_backup_at
     status["running"] = True
     started_at = time.monotonic()      # the warmup ramp measures from here
     # The one-off conversion to incremental auto-vacuum is NOT done here, and
@@ -1260,6 +1263,19 @@ async def ingest_loop():
                         status["last_audit_disabled"] = audit["disabled"]
                         status["audited_total"] = (
                             status.get("audited_total", 0) + audit["disabled"])
+
+                    if (accounts_backup.EVERY_SECONDS > 0
+                            and time.monotonic() >= _next_account_backup_at):
+                        _next_account_backup_at = (
+                            time.monotonic() + accounts_backup.EVERY_SECONDS)
+                        # Fly's own volume snapshots are off, because copying
+                        # the whole archive nightly took the site off the
+                        # internet for hours. This is the replacement, and it
+                        # only works because it is the small part: a few
+                        # kilobytes of accounts rather than gigabytes of news,
+                        # mailed away from this machine because a copy on the
+                        # volume is no help when the volume is what was lost.
+                        await asyncio.to_thread(accounts_backup.send_scheduled, db)
 
                     due_to_prune = time.monotonic() >= _next_prune_at
                     # When space is short, prune every tick rather than every

@@ -109,6 +109,50 @@ def send(to: str, subject: str, body: str) -> bool:
         return False
 
 
+def send_attachment(to: str, subject: str, body: str, *, filename: str,
+                    data: bytes, mime: str = "application/json") -> bool:
+    """Send a plain-text email carrying one file. Returns True on success.
+
+    Separate from send() rather than an optional argument to it, because the
+    reason to attach something is different from the reason to write something:
+    everything send() carries is a link the reader is meant to click, and this
+    carries a file they are meant to keep.
+    """
+    if not enabled():
+        log.info("mail disabled — would send %s (%d bytes) to %s: %s",
+                 filename, len(data), to, subject)
+        return False
+    msg = EmailMessage()
+    msg["From"] = FROM
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg.set_content(body)
+    maintype, _, subtype = mime.partition("/")
+    msg.add_attachment(data, maintype=maintype, subtype=subtype or "octet-stream",
+                       filename=filename)
+    try:
+        if TLS == "ssl":
+            server = smtplib.SMTP_SSL(HOST, PORT, timeout=30)
+        else:
+            server = smtplib.SMTP(HOST, PORT, timeout=30)
+        with server:
+            if TLS == "starttls":
+                server.starttls()
+            if USER:
+                server.login(USER, PASSWORD)
+            server.send_message(msg)
+        status["sent"] += 1
+        status["last_sent_at"] = _now()
+        return True
+    except Exception as exc:
+        why = _explain(exc)
+        status["failures"] += 1
+        status["last_error"] = why
+        status["last_error_at"] = _now()
+        log.error("mail send failed — %s", why)
+        return False
+
+
 def _now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
