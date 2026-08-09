@@ -54,9 +54,28 @@ jobs:
           auth="Authorization: Bearer $FLY_API_TOKEN"
           app='app="delphi-2vir0g"'
 
+          # Fly's Prometheus endpoint answers with an HTML error page, not JSON,
+          # when the token cannot read the org — so show what actually came back
+          # rather than letting jq fail on it and reporting nothing.
+          show() {
+            if jq -e . >/dev/null 2>&1 <<<"$1"; then
+              return 1
+            fi
+            echo "--- response was not JSON ---"
+            printf '%s\n' "$1" | head -c 1200
+            echo
+            return 0
+          }
+
           if [ "$METRIC" = "names" ]; then
-            curl -sS -H "$auth" "$base/api/v1/label/__name__/values" \
-              | jq -r '.data[]? // empty' | grep -i "fly_" || echo "(no names returned)"
+            body=$(curl -sS -w '\n[http %{http_code}]' -H "$auth" \
+              "$base/api/v1/label/__name__/values")
+            code=$(printf '%s' "$body" | tail -n1)
+            json=$(printf '%s' "$body" | sed '$d')
+            echo "$code"
+            show "$json" && exit 1
+            printf '%s' "$json" | jq -r '.data[]? // empty' | grep -i "fly_" \
+              || echo "(no fly_ metric names in the response)"
             exit 0
           fi
 
@@ -75,12 +94,16 @@ jobs:
 
           # One line per sample: UTC timestamp, series labels, value. Plain text
           # so it reads in the log without a dashboard.
-          curl -sS -G -H "$auth" "$base/api/v1/query_range" \
+          body=$(curl -sS -G -w '\n[http %{http_code}]' -H "$auth" \
+            "$base/api/v1/query_range" \
             --data-urlencode "query=$query" \
             --data-urlencode "start=$start" \
             --data-urlencode "end=$end" \
-            --data-urlencode "step=$STEP" \
-            | jq -r '
+            --data-urlencode "step=$STEP")
+          echo "$(printf '%s' "$body" | tail -n1)"
+          json=$(printf '%s' "$body" | sed '$d')
+          show "$json" && exit 1
+          printf '%s' "$json" | jq -r '
                 if .status != "success" then
                   "ERROR: \(.error // .errorType // "unknown")"
                 elif (.data.result | length) == 0 then
