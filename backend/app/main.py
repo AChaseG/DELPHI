@@ -28,9 +28,9 @@ from starlette.concurrency import run_in_threadpool
 
 import re as _username_re
 
-from . import (auth, devices, discovery, export, geocode, home, ingest, langdetect,
-               mailer, passwords, ratelimit, repair, safefetch, storage, translate,
-               watchdog)
+from . import (accounts_backup, auth, devices, discovery, export, geocode, home,
+               ingest, langdetect, mailer, passwords, ratelimit, repair,
+               safefetch, storage, translate, watchdog)
 from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -3412,6 +3412,37 @@ def admin_set_device_limit(uid: int, body: dict, admin: User = Depends(require_a
     return {"ok": True, "limit": user.device_limit,
             "effective_limit": devices.limit_for(user),
             "active": devices.active_count(db, user.id)}
+
+
+@app.get("/api/admin/backup/accounts")
+def admin_backup_accounts(admin: User = Depends(require_admin),
+                          db: Session = Depends(get_db)):
+    """Download the part of the database the feeds cannot hand back.
+
+    Automatic volume snapshots are off because copying six gigabytes of news
+    every night took the site down (DEPLOY.md). The news survives that decision
+    by being re-fetchable; accounts, feeds, alerts, pantheons, watched places
+    and hand-added sources do not, and they are a few megabytes. This is them.
+
+    Served through the app, signed in, rather than by any route that writes to
+    a log: the file holds password hashes, email addresses and alert webhook
+    URLs, and this repository — including its Actions logs — is public.
+    """
+    doc = accounts_backup.build(db)
+    body = accounts_backup.to_json(doc)
+    logging.getLogger("admin").info(
+        "accounts backup downloaded by %s: %d bytes, %s",
+        admin.username, len(body), doc["counts"])
+    return Response(
+        content=body, media_type="application/json",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{accounts_backup.filename(doc)}"',
+            # Never a shared cache's business, and not this browser's either.
+            "Cache-Control": "no-store",
+            "X-Backup-Accounts": str(doc["counts"]["users"]),
+            "Access-Control-Expose-Headers":
+                "Content-Disposition, X-Backup-Accounts"})
 
 
 @app.post("/api/admin/users/{uid}/devices/release")

@@ -2733,6 +2733,18 @@ function wireAdmin() {
     renderServiceHealth();
   };
   feedback(el("btn-reclaim-space"), "Rewriting…");
+  el("btn-backup-accounts").onclick = async () => {
+    // Through downloadExport because the endpoint needs the Authorization
+    // header: a plain link would arrive unauthenticated and be refused, which
+    // is the right answer to a link and the wrong experience for a button.
+    const r = await downloadExport("/api/admin/backup/accounts", {}, "json");
+    toast("Account backup saved",
+          `${r.name} — ${r.accounts} account${r.accounts === 1 ? "" : "s"} `
+          + "with their columns, alerts, pantheons and watched places. Keep it "
+          + "off this machine: a copy on the same volume is no help when the "
+          + "volume is what was lost.", true);
+  };
+  feedback(el("btn-backup-accounts"), "Preparing…");
   let t;
   el("admin-search").addEventListener("input", () => {
     clearTimeout(t);
@@ -3772,7 +3784,11 @@ async function downloadExport(path, options, fmt) {
   a.remove();
   // Revoking immediately can cancel the download in Safari; a tick is enough.
   setTimeout(() => URL.revokeObjectURL(url), 10000);
-  return { rows: Number(resp.headers.get("X-Export-Rows") || 0), name: a.download };
+  return { rows: Number(resp.headers.get("X-Export-Rows") || 0),
+           // The account backup counts accounts, not article rows; same
+           // mechanism, different thing to say afterwards.
+           accounts: Number(resp.headers.get("X-Backup-Accounts") || 0),
+           name: a.download };
 }
 
 /* Save a Focus: the report on screen and every outlet carrying it.

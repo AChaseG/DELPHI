@@ -40,6 +40,19 @@ CHANGELOG: list[dict] = [
             "same hours-long freeze, caused by the setting meant to prevent "
             "it. Clean-up now works in bounded batches and comes back for the "
             "rest a minute later.",
+            "💾 Because there is no automatic backup any more, there is now a "
+            "deliberate one. The operator console has <b>Download account "
+            "backup</b>: a small file holding the things the feeds cannot give "
+            "back — accounts, columns, alerts, pantheons, watched places and "
+            "outlets added by hand. Not the news, which is why it is kilobytes "
+            "rather than gigabytes. Keep it somewhere other than this server.",
+            "🩹 And a quiet one, found while testing the above: the "
+            "what’s-new popup you are reading had stopped appearing entirely a "
+            "few days ago. Three of these entries were written in a way the "
+            "server could not process, so the request that decides what to show "
+            "you failed every time the app loaded. Nothing else was affected, "
+            "and nothing was lost — it simply went silent. Fixed, and now "
+            "tested so it cannot go silent again.",
         ],
     },
     {

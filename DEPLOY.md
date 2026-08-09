@@ -179,8 +179,46 @@ fly volumes update <vol-id> --scheduled-snapshots=false
 rebuilding the archive from the feeds, which only reaches back as far as the
 feeds themselves do — days, not weeks. The news is re-fetchable; **accounts,
 feeds, alerts, pantheons and watched places are not**, and they are a few
-megabytes of the six gigabytes. If you take one thing from this section, take a
-copy of those.
+megabytes of the six gigabytes. So take those separately — see below.
+
+#### The account backup (the part worth keeping)
+
+Operator console → Service health → **💾 Download account backup**, or
+`GET /api/admin/backup/accounts` signed in as an operator. A few kilobytes of
+JSON: accounts (with password hashes), feeds, alerts, pantheons and their
+membership, watched places, and hand-added sources. Not the news, not read
+markers, not alert history, not the seeded catalog — all of those come back on
+their own.
+
+**Do not fetch it through the "Run a Fly command" workflow.** This repository is
+public, and so are its Actions logs. The file holds password hashes, email
+addresses and alert webhook URLs. The signed-in download is the channel.
+
+Restoring needs no account to sign in with, which matters because the moment you
+need it is the moment the database is empty and there is no operator to
+authorise anything:
+
+```bash
+# put the file on the machine, then
+fly ssh console -C "python -m backend.app.accounts_backup restore /data/accounts.json --dry-run"
+fly ssh console -C "python -m backend.app.accounts_backup restore /data/accounts.json"
+```
+
+It refuses if the database already has accounts, rather than merging — two
+databases that both have a user id 3 cannot be reconciled without deciding whose
+feeds those are. `--replace` clears the existing accounts first, which is what
+you want after signing in once to a rebuilt machine. `export` works the same way
+if you would rather take the copy from the command line than the browser.
+
+Ids are preserved deliberately: a feed names its owner as the string
+`acct:<id>`, so regenerating ids would import cleanly and attach the wrong
+columns to the wrong people. Sources are the exception — the catalog re-seeds
+itself and takes the low ids, so sources are matched on `rss_url` and the
+references to them rewritten.
+
+One thing this does not cover: `/data/secret.key`, which signs login tokens.
+Lose it and accounts are fine but everyone is signed out. Copy it alongside if
+you want sessions to survive too.
 
 To turn snapshots back on, first get the database under about 4.5 GB — the
 level the nights that stayed up were at — by lowering `NEWS_DB_MAX_MB` (an

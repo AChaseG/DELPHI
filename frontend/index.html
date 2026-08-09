@@ -1497,6 +1497,19 @@
               a large archive — so pick a quiet moment.</span>
         <button class="btn small" id="btn-reclaim-space">♻ Reclaim disk space</button>
       </div>
+      <!-- Nightly volume snapshots are off, because copying the whole archive
+           every night took the site down for hours. The news survives that
+           because the feeds hand it back; accounts do not, and they are a few
+           megabytes. So there has to be a way to take those few megabytes. -->
+      <div class="set-row">
+        <span>Download the part of the database that cannot be collected again:
+              accounts, columns, alerts, pantheons, watched places and
+              hand-added outlets. The news itself is not included — the feeds
+              provide that. <b>The file contains password hashes and alert
+              webhook addresses</b>, so keep it somewhere you would keep the
+              database.</span>
+        <button class="btn small" id="btn-backup-accounts">💾 Download account backup</button>
+      </div>
 
       <h3 class="set-h">Accounts</h3>
       <div class="source-tools">
