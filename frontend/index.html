@@ -863,14 +863,20 @@
           <summary>📊 How importance scoring works</summary>
           <p>Every article gets a transparent 0–100 score — no black box. It adds up:</p>
           <ul>
-            <li><b>Source reach</b> — base score by scope: international 42, national 38,
-                local 34; major wires (tier 1) +4, niche/local outlets (tier 3) −3. So
-                the outlet decides 15 points across the whole catalog, and everything
-                below decides up to 60. That is deliberate, and it changed: reach used
-                to run 25–53, which settled the ranking before anything was known about
-                the story — a wire's most routine item outscored a local paper's report
-                of two people dead, and Home's headline columns were reserved for the
-                thirty-odd wires whatever else was in the catalog.</li>
+            <li><b>Source reach</b> — base score by scope: international 45, national 35,
+                local 25; major wires (tier 1) +8, niche/local outlets (tier 3) −4. So
+                the outlet decides 32 points across the whole catalog, and everything
+                below decides up to 60. That is deliberate, and it has been both ways:
+                reach was narrowed to a 15-point spread for a while, so that a local
+                paper's report of two people dead could outrank a wire's council
+                meeting. It is back to 32 because the narrow version made the
+                minimum-importance slider — the filter every feed and alert uses — much
+                worse at its job: with every outlet scoring within a few points of every
+                other, a floor could no longer tell "an outlet worth reading has this"
+                from "something on the internet has this". The cost is the old one:
+                routine wire copy sits just under Home's <b>Top stories</b> threshold,
+                and a single local report has to earn its way up there through breaking
+                signals or corroboration.</li>
             <li><b>Breaking signals</b> — weighted terms in the headline/summary
                 ("breaking", "earthquake", "state of emergency", "assassination"…,
                 recognized in English and a multilingual core so foreign coverage

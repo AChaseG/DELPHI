@@ -13,6 +13,36 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-13",
+        "title": "The outlet counts for as much as it used to again",
+        "items": [
+            "📊 Importance scoring gives the source's reach its old weight back: "
+            "<b>international 45, national 35, local 25</b>, plus 8 for a major "
+            "wire and minus 4 for a niche or local feed. That is 32 points "
+            "decided by who is carrying a story, where it had been narrowed to "
+            "15.",
+            "🎚️ The narrowing was done to stop the wires owning Home's headline "
+            "columns, and it did — but it also flattened the thing every feed "
+            "and alert filters on. With every outlet scoring within a few points "
+            "of every other, a minimum-importance floor could no longer tell "
+            "“an outlet worth reading has this” from “something on the internet "
+            "has this”, and feeds let through material you did not ask for. A "
+            "filter that discriminates is worth more than an evenly-spread front "
+            "page.",
+            "⚖️ The cost, stated plainly, because it is the same one as before: "
+            "routine wire copy now sits two points under <b>Top stories</b>, so "
+            "that column will lean towards the big outlets again, and a single "
+            "local report of something serious has to earn its way up through "
+            "breaking signals or corroboration — <b>+8 for every other outlet "
+            "carrying the same story</b>, which is what lifts a local scoop onto "
+            "the front page.",
+            "🔧 If a feed is now too quiet or too loud, its "
+            "<b>minimum importance</b> slider is the dial that changed meaning: "
+            "the same number admits noticeably less from small and newly "
+            "discovered outlets than it did yesterday.",
+        ],
+    },
+    {
         "date": "2026-09-12",
         "title": "A deleted Pantheon that kept coming back",
         "items": [

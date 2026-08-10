@@ -16,23 +16,34 @@ from .intl_terms import BREAKING_INTL, CATEGORY_INTL, TAG_SYNONYMS
 
 # Where an article starts before anything is known about the story itself.
 #
-# This used to run 45/35/25, with tier adding +8 or −4 on top: 32 points of
-# spread decided by the source alone, against 30 for the entire breaking-signal
-# range. The arithmetic then settled Home's board on its own. "Top stories"
-# asks for 55, and a wire's most routine item — a scope of "international" and
-# tier 1, nothing else — already scored 53, while a city outlet's report of two
-# people dead in an explosion scored 40. So the two headline columns were
-# reserved for the thirty-odd catalog wires no matter how many outlets were
-# added underneath them, which is why a catalog past a thousand sources looked
-# exactly like a catalog of thirty.
+# 32 points of the score are decided by the outlet: 45/35/25 by scope, plus 8
+# for a major wire or minus 4 for a niche or local feed. That is more than the
+# entire breaking-signal range (30), and it is meant to be — who is carrying
+# something is the strongest single thing Delphi knows about an article before
+# reading it, and a catalog that grows by itself fills up with outlets nobody
+# chose.
 #
-# Reach still counts, because who is carrying something is real evidence about
-# how much it matters. It is just no longer worth more than what happened: the
-# source's share of the score is now 15 points across the whole catalog, so
-# corroboration and breaking signals — which are evidence about the story
-# rather than a standing guess about the outlet — decide the order.
-_SCOPE_BASE = {"international": 42, "national": 38, "local": 34}
-_TIER_ADJUST = {1: 4, 3: -3}
+# This has been both ways, and the history is worth keeping because both
+# failures are real. It was narrowed to 42/38/34 with +4/−3 — 15 points — to
+# stop the wires owning Home: "Top stories" asks for 55, a wire's most routine
+# item scored 53, and a city outlet's report of two people dead in an explosion
+# scored 40, so the headline columns showed the same thirty mastheads however
+# many sources were added underneath them.
+#
+# Narrowing it fixed that and cost something else. With reach worth 15 points a
+# discovered blog's routine post lands within a few points of a wire's, so an
+# importance floor — the thing every feed and alert filters on — stopped being
+# able to tell "an outlet worth reading has this" from "something on the
+# internet has this", and feeds admitted material their owner did not want.
+# Restored at the operator's request: a filter that discriminates is worth more
+# here than an evenly-spread front page.
+#
+# What to watch, since it is the same trade as before: routine wire copy sits
+# 2 points under Home's "Top stories" threshold and any breaking word closes
+# that gap, while a city feed's solo breaking story tops out at 47 and cannot
+# reach it. Corroboration (+8 each, to +24) is what carries a local story up.
+_SCOPE_BASE = {"international": 45, "national": 35, "local": 25}
+_TIER_ADJUST = {1: 8, 3: -4}
 
 # CJK/Thai have no ASCII word boundaries, so \b matching fails on them —
 # those terms are matched as substrings instead.
@@ -240,7 +251,7 @@ def score_importance(
     places: list[dict],
     corroborating_sources: int = 0,
 ) -> int:
-    score = _SCOPE_BASE.get(scope, 36) + _TIER_ADJUST.get(tier, 0)
+    score = _SCOPE_BASE.get(scope, 30) + _TIER_ADJUST.get(tier, 0)
     score += breaking_signal(text)
     countries = {p.get("country") for p in places if p.get("country")}
     if len(countries) >= 2:

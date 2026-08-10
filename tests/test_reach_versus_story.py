@@ -1,16 +1,27 @@
 """What decides importance: the outlet, or what happened.
 
-Home's two headline columns filter on importance — "Top stories" wants 55,
-"Breaking now" 40 — so the floor a source starts from decides whether its
-reporting can appear there at all. That floor used to run from 53 for an
-international tier-1 wire down to 21 for a city feed: 32 points settled before
-anything is known about the story, against 30 for the entire breaking-signal
-range. The result was that a wire's most routine item outscored a local
-outlet's report of people killed, and the board looked the same whether the
-catalog held thirty sources or a thousand.
+Both, and the balance between them has been set both ways, so this file records
+the arithmetic either version produces rather than only the one in force.
 
-Reach still counts — who is carrying something is evidence about how much it
-matters — it is just no longer worth more than the event.
+The outlet is worth 32 points — 45/35/25 by scope, +8 for a major wire, −4 for a
+niche or local feed — which is more than the whole 30-point breaking-signal
+range. Home's headline columns filter on importance ("Top stories" 55, "Breaking
+now" 40), so that floor decides which outlets can appear there at all.
+
+It was narrowed to 15 points (42/38/34, +4/−3) for exactly that reason: a wire's
+most routine item scored 53 against a threshold of 55 while a city outlet's
+report of two people dead in an explosion scored 40, and the front page showed
+the same thirty mastheads however many sources were added underneath them.
+
+It is back to 32 because narrowing it broke the other side. Every feed and alert
+filters on a minimum importance, and with reach worth 15 points a newly
+discovered blog's routine post scores within a few points of a wire's — so a
+floor stopped separating outlets worth reading from anything that publishes an
+RSS feed, and feeds admitted material their owner did not want. A filter that
+discriminates was judged worth more than an evenly-spread board.
+
+The trade is the one it always was, and the tests below state it as numbers so
+whoever revisits this can see both costs at once.
 """
 import pytest
 
@@ -34,47 +45,71 @@ def score(text, source, places=(), corroborating=0):
     return score_importance(text, scope, tier, list(places), corroborating)
 
 
-def test_a_local_outlets_serious_story_outranks_a_wires_routine_one():
-    """The case that was backwards. Two people dead is a bigger story than a
-    council meeting whoever reports it."""
-    assert score(SERIOUS, LOCAL, [{"country": "GB"}]) > score(ROUTINE, WIRE)
+# ---------- what the wide spread is for ----------
+
+def test_reach_separates_outlets_far_enough_for_a_floor_to_use():
+    """The reason it is wide. A minimum-importance filter is the only tool a
+    feed has for "reported by somebody worth reading", and it can only be that
+    if the same story from different outlets lands in different bands."""
+    assert score(ROUTINE, WIRE) - score(ROUTINE, LOCAL) >= 30
 
 
-def test_a_local_outlet_can_reach_the_top_stories_column():
-    """It could not before: a city feed's ceiling on a solo breaking story was
-    47, and the column asks for 55."""
-    assert score(BREAKING_STORY, LOCAL, [{"country": "GR"}]) >= TOP
+def test_a_discovered_blogs_routine_post_is_far_below_any_floor():
+    """Auto-discovery and watched places add sources nobody chose. Their
+    everyday output has to sit well under the floors people actually set, or
+    setting one achieves nothing."""
+    assert score(ROUTINE, DISCOVERED) < BREAKING - 5
+    assert score(ROUTINE, LOCAL) < BREAKING - 15
 
 
-def test_a_wires_routine_item_no_longer_walks_into_top_stories():
-    """It scored 53 against a threshold of 55 — two points, closed by any
-    breaking word at all. That is what filled the column with wire copy."""
-    assert score(ROUTINE, WIRE) < TOP
-
-
-def test_reach_still_counts_for_something():
-    """Narrowing the gap is not removing it. The same story from a wire still
-    ranks above the same story from a newly discovered blog."""
+def test_the_same_story_ranks_by_who_carried_it():
     for text in (ROUTINE, SERIOUS, BREAKING_STORY):
         assert score(text, WIRE) > score(text, DISCOVERED) > score(text, LOCAL), text
 
 
-def test_the_story_can_outweigh_the_whole_spread_of_reach():
-    """The point of the change, stated as a number: what happened is worth more
-    than every difference between outlets put together."""
+# ---------- and what it costs ----------
+
+def test_routine_wire_copy_sits_just_under_the_top_stories_threshold():
+    """The known cost, stated exactly: two points, closed by any breaking word
+    at all. This is the number to look at first if the front page fills up with
+    wire copy again."""
+    assert score(ROUTINE, WIRE) == 53
+    assert score(ROUTINE, WIRE) < TOP
+
+
+def test_a_solo_local_breaking_story_cannot_reach_top_stories():
+    """The other side of the same coin. A city feed's ceiling on a breaking
+    story nobody else has yet is 47 against a threshold of 55 — it gets there by
+    being corroborated, not by being serious."""
+    assert score(BREAKING_STORY, LOCAL, [{"country": "GR"}]) < TOP
+    assert score(BREAKING_STORY, LOCAL, [{"country": "GR"}], corroborating=2) >= TOP
+
+
+def test_corroboration_is_how_a_local_story_climbs():
+    """+8 an outlet, to +24. Several independent outlets carrying it is evidence
+    about the story, and it is worth more than the whole tier adjustment."""
+    alone = score(SERIOUS, LOCAL, [{"country": "GB"}])
+    carried = score(SERIOUS, LOCAL, [{"country": "GB"}], corroborating=2)
+    assert carried - alone == 16
+    assert carried >= BREAKING
+
+
+def test_the_story_can_still_outweigh_the_whole_spread_of_reach():
+    """Reach is 32 points and it is not the largest thing in the score: what
+    happened, corroborated, is worth more."""
     reach_spread = score(ROUTINE, WIRE) - score(ROUTINE, LOCAL)
     story_range = score(BREAKING_STORY, LOCAL, [{"country": "GR"}, {"country": "TR"}], 3) \
         - score(ROUTINE, LOCAL)
     assert story_range > reach_spread, \
-        f"reach spread {reach_spread} still rivals the {story_range} a story can earn"
+        f"reach spread {reach_spread} now rivals the {story_range} a story can earn"
 
 
 def test_routine_local_copy_does_not_flood_the_headline_columns():
-    """The other failure mode. Lifting the floor must not put a council meeting
-    on the front page."""
     assert score(ROUTINE, LOCAL) < BREAKING
     assert score(ROUTINE, DISCOVERED) < BREAKING
 
+
+# ---------- invariants, whichever way the balance is set ----------
 
 @pytest.mark.parametrize("source", [WIRE, DISCOVERED, LOCAL])
 def test_a_widely_carried_disaster_is_top_news_from_anywhere(source):
@@ -98,7 +133,8 @@ def test_an_unknown_scope_still_scores_sensibly():
 def test_the_help_quotes_the_numbers_the_code_actually_uses():
     """The help spells out the scoring weights, and stale numbers there are
     worse than none: they are the only place a reader can check what the board
-    is doing. This one caught them already reading 45/35/25 after the change.
+    is doing. This one has caught them twice now — once after the narrowing and
+    once after it was undone.
     """
     import re
     from pathlib import Path

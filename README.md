@@ -372,14 +372,16 @@ GET  /api/stream                   SSE: live article batches + alert hits
   (UK, UAE, Kiev/Kyiv…), and major cities, but has the usual ambiguities
   (e.g. Georgia country vs. US state). Swappable for a proper NER geocoder later.
 - Importance is a transparent heuristic, not a black box — see `scoring.py`
-  and tune the weights to taste. The source's reach deliberately contributes
-  less than the story does: it starts an article between 31 and 46 depending on
-  scope and tier, against up to 60 from breaking signals, geographic breadth
-  and cross-source corroboration. It was 21–53, which is a spread wide enough
-  to settle the ranking on its own — Home's "Top stories" asks for 55, and an
-  international tier-1 wire's most routine item already scored 53 while a city
-  outlet's report of a fatal explosion scored 40. That made the two headline
-  columns a view of the ~30 catalog wires whatever else was in the catalog.
+  and tune the weights to taste. The source's reach starts an article between
+  21 and 53 depending on scope and tier, against up to 60 from breaking
+  signals, geographic breadth and cross-source corroboration. That 32-point
+  spread has been narrowed to 15 once (31–46) and put back, and the comment on
+  `_SCOPE_BASE` records both failures: wide, routine wire copy sits two points
+  under Home's "Top stories" threshold and the headline columns skew to the
+  ~30 catalog wires; narrow, every outlet scores within a few points of every
+  other and a feed's minimum-importance filter can no longer tell an outlet
+  worth reading from anything with an RSS feed. It is wide, because that filter
+  is the control readers actually use.
 - **Sources that stop answering leave.** Five consecutive failed polls
   (`NEWS_REMOVE_AFTER`) ends a source: deleted outright if it never produced a
   single article, retired — disabled, kept, re-enablable — if it published, and
