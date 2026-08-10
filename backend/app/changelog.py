@@ -13,6 +13,35 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-08",
+        "title": "A third of every hour was spent counting the same headlines",
+        "items": [
+            "🧊 The freezes were not the network and not the host this time. "
+            "To work out how many outlets are carrying a story, D.E.L.P.H.I. "
+            "builds an index of every recent headline — and it was rebuilding "
+            "that index from scratch before every single collection round, on "
+            "the one thread that also answers pages. Measured: 1,188 seconds of "
+            "every hour, which is a third of the time, doing nothing else.",
+            "📐 It was designed for a window of about two thousand headlines. "
+            "Nothing capped the window, so as the catalogue grew the window grew "
+            "with it — to roughly 350,000, a hundred and seventy times what it "
+            "was built for. The index is now capped, looks back twelve hours "
+            "instead of forty-eight, is kept between rounds rather than thrown "
+            "away, and is built off to one side so a slow moment is no longer a "
+            "site that will not load. Same work, 0.4 seconds an hour.",
+            "📡 The cause behind the cause: the catalogue had doubled in a day, "
+            "from 4,655 outlets to 9,421, because nothing ever said how many was "
+            "enough. It now stops adopting new outlets at 12,000 — the number it "
+            "can read through inside an hour, which is what makes a feed worth "
+            "watching. Nothing is switched off or removed to fit, and outlets "
+            "you added yourself are never counted against the limit.",
+            "⚖️ One deliberate trade: corroboration now looks back twelve hours "
+            "rather than two days, so a story being carried by many outlets over "
+            "a longer stretch may score slightly lower than before. Twelve hours "
+            "is what “others are covering this now” actually means.",
+        ],
+    },
+    {
         "date": "2026-09-07",
         "title": "Found it: the nightly outage was the backup",
         "items": [

@@ -21,7 +21,7 @@ from datetime import timedelta
 from urllib.parse import urlparse
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from . import safefetch
 from .models import DiscoveredDomain, Source, utcnow
@@ -105,6 +105,31 @@ def skipped(domain: str) -> bool:
 # costs a cycle and needs no list of every kind of website that is not a
 # newspaper.
 MIN_SIGHTINGS = int(os.environ.get("NEWS_DISCOVER_MIN_SIGHTINGS", "2"))
+
+# How large the catalog may grow before auto-discovery stops adding to it.
+#
+# It had no ceiling, and in one day it went from 4,655 enabled sources to 9,421.
+# Nothing was wrong with any individual adoption; there was simply no answer to
+# "how many is too many", so the answer was "more".
+#
+# The number comes from how long a full sweep takes. The poller reaches
+# POLL_BATCH + CITY_PER_TICK sources per tick -- 52 every fifteen seconds, about
+# 12,500 an hour -- so 12,000 sources are all polled inside an hour, which is
+# fresh enough for news. Twice that and a feed waits over an hour and a half to
+# be read, which is a worse product than a smaller catalog polled promptly.
+#
+# Only auto-discovery is bounded by this. A source added by hand is a decision
+# somebody made, and no ceiling should silently overrule it.
+MAX_SOURCES = int(os.environ.get("NEWS_MAX_SOURCES", "12000"))
+
+
+def at_capacity(db) -> int:
+    """Enabled sources beyond the ceiling, or 0 while there is room."""
+    if MAX_SOURCES <= 0:
+        return 0
+    enabled = db.scalar(
+        select(func.count(Source.id)).where(Source.enabled.is_(True))) or 0
+    return max(0, enabled - MAX_SOURCES)
 
 
 def domain_of(url: str) -> str:
@@ -214,6 +239,14 @@ async def discover_new_sources(db, publishers: dict[str, tuple[str, str]]
     working feed. Returns (source, entries) pairs — sources are flushed (ids
     assigned) but not committed; the caller ingests the entries and commits."""
     if not AUTO_DISCOVER or not publishers:
+        return []
+    over = at_capacity(db)
+    if over:
+        # Sightings are still not recorded here: a domain seen while the catalog
+        # is full should be considered fresh if room appears later, not silently
+        # aged out of eligibility.
+        log.info("discovery: catalog is full (%d over %d enabled sources) — "
+                 "not adopting anything new", over, MAX_SOURCES)
         return []
     known = _known_domains(db)
     candidates = {dom: v for dom, v in publishers.items()

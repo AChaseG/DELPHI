@@ -265,6 +265,11 @@ class RecentClusters:
         for source_id, tokens in rows:
             self.add(source_id, tokens)
 
+    def __len__(self) -> int:
+        """How many headlines are indexed — the number that decides whether
+        building this is milliseconds or a minute, so it is worth reporting."""
+        return len(self._entries)
+
     def add(self, source_id: int, tokens: str) -> None:
         words = frozenset(tokens.split())
         if not words:
@@ -298,14 +303,70 @@ class RecentClusters:
         return len(others)
 
 
-def _recent_clusters(db, hours: int = 48) -> RecentClusters:
-    since = utcnow() - timedelta(hours=hours)
+# How far back corroboration looks, and the most headlines it will ever hold.
+#
+# Both are bounds this had none of, and it was measured on "a window of 2,016
+# headlines" (see RecentClusters). At 9,400 sources the 48-hour window is about
+# 350,000, which is 173 times its design input: building the index takes 6.6s on
+# a fast laptop and tens of seconds on one shared core, and it was being rebuilt
+# from scratch at the top of every batch, on the event loop. That is what the
+# stall recorder kept reporting as 20-to-60-second freezes during "fetch".
+#
+# The cap is the important half. Hours alone is not a bound, because how many
+# articles two days holds depends entirely on how many sources are enabled --
+# the same mistake the article ceiling exists to correct.
+CLUSTER_WINDOW_HOURS = float(os.environ.get("NEWS_CLUSTER_WINDOW_HOURS", "12"))
+CLUSTER_WINDOW_MAX = int(os.environ.get("NEWS_CLUSTER_WINDOW_MAX", "40000"))
+
+# How long an index is reused before being rebuilt from the database. Rebuilding
+# is what costs; the batch already adds its own new articles as it goes, so
+# between rebuilds the index stays current for everything that arrived. All a
+# rebuild buys is dropping what has aged out of the window.
+CLUSTER_REBUILD_EVERY_S = float(
+    os.environ.get("NEWS_CLUSTER_REBUILD_EVERY_S", "1800"))
+
+_clusters: RecentClusters | None = None
+_clusters_built_at: float = 0.0
+
+
+def _recent_clusters(db, hours: float | None = None) -> RecentClusters:
+    """The corroboration index, newest first and bounded on both sides."""
+    since = utcnow() - timedelta(
+        hours=CLUSTER_WINDOW_HOURS if hours is None else hours)
     rows = db.execute(
-        select(Article.source_id, Article.cluster_tokens).where(
-            Article.published_at >= since, Article.cluster_tokens != ""
-        )
+        select(Article.source_id, Article.cluster_tokens)
+        .where(Article.published_at >= since, Article.cluster_tokens != "")
+        # Newest first, so a cap drops the least useful end of the window: an
+        # unlimited query would be bounded by whatever the disk holds.
+        .order_by(Article.published_at.desc())
+        .limit(CLUSTER_WINDOW_MAX)
     ).all()
     return RecentClusters([(r[0], r[1]) for r in rows])
+
+
+def cluster_index(db) -> RecentClusters:
+    """The shared index, rebuilt only when it has gone stale.
+
+    Kept between batches deliberately. `process_entries` adds each new article
+    to it, so reuse costs nothing in accuracy for anything that has arrived
+    since — only entries that have aged out of the window linger, and they
+    corroborate a story that is genuinely a day old, which is the small end of
+    a wrong answer.
+    """
+    global _clusters, _clusters_built_at
+    if (_clusters is None
+            or time.monotonic() - _clusters_built_at >= CLUSTER_REBUILD_EVERY_S):
+        _clusters = _recent_clusters(db)
+        _clusters_built_at = time.monotonic()
+        log.info("corroboration index rebuilt: %d headlines", len(_clusters))
+    return _clusters
+
+
+def reset_cluster_index() -> None:
+    """Forget it — for tests, and after a prune has removed most of the window."""
+    global _clusters, _clusters_built_at
+    _clusters = None
+    _clusters_built_at = 0.0
 
 
 def process_entries(db, source: Source, entries: list, recent_clusters: RecentClusters,
@@ -747,7 +808,12 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
         watchdog.doing(f"ingest:{name}")
 
     start("fetch")
-    recent = _recent_clusters(db)
+    # Off the loop: a rebuild reads tens of thousands of rows and builds an
+    # index out of them, which is pure Python and used to run right here, where
+    # nothing else could be answered while it did. A thread does not make it
+    # cheaper, only interruptible — which is the difference between a slow tick
+    # and a health check Fly abandons after ten seconds.
+    recent = await asyncio.to_thread(cluster_index, db)
     results = await _fetch_batch(sources)
     mark("fetch")
     start("store")

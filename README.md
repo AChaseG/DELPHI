@@ -267,6 +267,10 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_WATCHDOG_STALL_S` | `3` | how late the event loop must be before it is recorded as a stall |
 | `NEWS_AUDIT_EVERY_S` | `86400` | how often the catalog is re-checked against the current adoption rules |
 | `NEWS_DISCOVER_MIN_SIGHTINGS` | `2` | times a publisher must be seen before auto-discovery probes it |
+| `NEWS_MAX_SOURCES` | `12000` | enabled sources before auto-discovery stops adopting (`0` = no ceiling); never disables or deletes |
+| `NEWS_CLUSTER_WINDOW_HOURS` | `12` | how far back corroboration looks for other outlets carrying a story |
+| `NEWS_CLUSTER_WINDOW_MAX` | `40000` | most headlines the corroboration index will hold, whatever the hours contain |
+| `NEWS_CLUSTER_REBUILD_EVERY_S` | `1800` | how long that index is reused before being rebuilt from the database |
 | `NEWS_ACCOUNT_BACKUP_EVERY_S` | `86400` | how often the accounts-only backup is mailed to operators (`0` = off) |
 | `NEWS_ACCOUNT_BACKUP_TO` | *(operators)* | comma-separated addresses for that backup, instead of the operator accounts |
 | `NEWS_DEVICE_LIMIT` | `0` | devices an account may be *in use on* at once (`0` = no limit); per-account overrides in the console |
