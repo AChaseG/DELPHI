@@ -13,6 +13,35 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-11",
+        "title": "One number was taking 78 seconds to count",
+        "items": [
+            "⏱️ The sign-in page was timing out again — and this time it was a "
+            "single number. Of the five figures across the top of the "
+            "dashboard, four are counted in under a third of a second each. The "
+            "fifth, how many countries the news came from today, was taking "
+            "<b>78 seconds</b>. The browser gives up at thirty.",
+            "🗂️ The cause was an index that stopped just short. Finding "
+            "today’s articles was quick, but the country was not stored "
+            "alongside the date, so working out which countries they were meant "
+            "opening 170,000 articles one at a time inside a seven-gigabyte "
+            "file. The two are now filed together, which is the whole fix: "
+            "twenty-five times faster, and the answer comes from the index "
+            "without touching the articles at all.",
+            "🔢 And the numbers are no longer counted while you wait. They are "
+            "recounted on a timer in the background, so opening the dashboard "
+            "reads a figure that is already there. Before, they were cached for "
+            "a minute and whoever arrived the moment the minute was up paid the "
+            "entire cost — which is why this struck at random. Loading the "
+            "dashboard now takes about a hundredth of a second where it was "
+            "taking over a minute.",
+            "🧯 The trade, stated plainly: for a few seconds after a restart "
+            "the five figures read zero until the first count finishes. A "
+            "dashboard briefly showing zeros is worse than one showing the "
+            "truth, and far better than one that will not load.",
+        ],
+    },
+    {
         "date": "2026-09-10",
         "title": "Half a logo on the sign-in page",
         "items": [

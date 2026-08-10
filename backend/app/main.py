@@ -77,6 +77,43 @@ STORY_TIMELINE_MAX = 100  # reports shown for one story, newest first
 
 
 
+# Indexes that exist to make one specific query cheap, created in the background
+# after the app is serving. Kept apart from _ensure_schema because adding a
+# column is instant and building an index is a table scan.
+#
+# ix_articles_fetched_country is the fix for a 78-second query: counting the
+# distinct countries seen in the last day. The index on fetched_at alone
+# narrowed it to ~170,000 rows and then read all 170,000 full rows out of a
+# 6.9 GB file to get one short column. With country in the index it is covering
+# — measured 25x faster at 1.36M rows, and more than that on the live file,
+# where the table reads are what hurt.
+_WANTED_INDEXES = {
+    "ix_articles_fetched_country": "articles(fetched_at, country)",
+}
+
+
+async def _ensure_indexes() -> None:
+    def build():
+        made = []
+        with engine.begin() as conn:
+            for name, target in _WANTED_INDEXES.items():
+                t0 = time.monotonic()
+                conn.exec_driver_sql(
+                    f"CREATE INDEX IF NOT EXISTS {name} ON {target}")
+                made.append((name, time.monotonic() - t0))
+        return made
+
+    try:
+        for name, secs in await asyncio.to_thread(build):
+            # Logged with its cost, because "why was the first minute slow"
+            # deserves an answer that is not a guess.
+            logging.getLogger("catalog").info(
+                "index %s ready in %.1fs", name, secs)
+    except Exception:
+        # A missing index is slow, not broken. Never take the app down for it.
+        logging.getLogger("catalog").exception("could not build an index")
+
+
 def _ensure_schema():
     """Additive migrations for databases created by earlier versions."""
     wanted = {
@@ -218,6 +255,16 @@ async def lifespan(app: FastAPI):
     # — a slow request, a background job, this machine's single core — and a
     # watchdog that only runs when the poller does cannot say so.
     tasks.append(asyncio.create_task(watchdog.watch()))
+    # The headline numbers, counted on a timer instead of on a page load. Also
+    # outside the ingest check: they must keep working when ingestion is off.
+    tasks.append(asyncio.create_task(stats_loop()))
+    # And the index that makes counting them cheap. Deliberately after the port
+    # is bound rather than in the migrations above: building it scans the whole
+    # articles table, which on a 6.9 GB file and one shared core is tens of
+    # seconds, and the health check's grace period is sixty. An index is an
+    # optimisation, so it can arrive a minute late; a startup that misses its
+    # grace period is a restart loop.
+    tasks.append(asyncio.create_task(_ensure_indexes()))
     yield
     for task in tasks:
         task.cancel()
@@ -634,10 +681,27 @@ def _invalidate_stats_cache() -> None:
     _STATS_CACHE = None
 
 
-def _stats(db) -> dict:
+_EMPTY_STATS = {"total_articles": 0, "articles_24h": 0, "countries_24h": 0,
+                "sources_ok": 0, "sources_total": 0, "ready": False}
+
+
+def refresh_stats(db) -> dict:
+    """Count the dashboard's headline numbers. Never called by a request.
+
+    One of these five used to take 78 seconds on the live database:
+    count(DISTINCT country) over a day of articles. The index on fetched_at
+    narrows it to about 170,000 rows, but `country` was not in that index, so
+    SQLite fetched 170,000 full rows out of a 6.9 GB file to read one short
+    column. A composite (fetched_at, country) index makes it covering — index
+    only, no table reads — and takes it to well under a second.
+
+    That index is the reason this is fast. This function existing separately is
+    the reason it stays available even if something here becomes slow again:
+    the numbers are counted on a timer and a request only ever reads the last
+    result. Whoever loaded the page after the old 60-second cache expired paid
+    the whole cost, which is what put "didn't respond within 30s" on a phone.
+    """
     global _STATS_CACHE
-    if _STATS_CACHE and time.monotonic() - _STATS_CACHE[0] < STATS_CACHE_TTL:
-        return _STATS_CACHE[1]
     from datetime import timedelta
     day_ago = utcnow().replace(microsecond=0) - timedelta(hours=24)
     stats = {
@@ -652,9 +716,39 @@ def _stats(db) -> dict:
                                                 Source.last_status.startswith("ok"))) or 0,
         "sources_total": db.scalar(
             select(func.count(Source.id)).where(Source.enabled.is_(True))) or 0,
+        "ready": True,
     }
     _STATS_CACHE = (time.monotonic(), stats)
     return stats
+
+
+def _stats(db=None) -> dict:
+    """The last counted numbers, or zeros marked not-ready before the first pass.
+
+    Deliberately takes no database work. Zeros for the first few seconds after a
+    restart are a worse dashboard; a thirty-second wait is a broken one.
+    """
+    if _STATS_CACHE:
+        return _STATS_CACHE[1]
+    return dict(_EMPTY_STATS)
+
+
+async def stats_loop():
+    """Recount on a timer, off the event loop, for as long as the app runs.
+
+    Independent of the poller because it has to keep working when ingestion is
+    switched off, and because a number nobody is recomputing is a number that
+    silently ages.
+    """
+    while True:
+        db = SessionLocal()
+        try:
+            await asyncio.to_thread(refresh_stats, db)
+        except Exception:
+            logging.getLogger("stats").exception("could not refresh the headline numbers")
+        finally:
+            db.close()
+        await asyncio.sleep(STATS_CACHE_TTL)
 
 
 @app.get("/api/meta")
