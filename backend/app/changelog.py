@@ -14,6 +14,36 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-09-12",
+        "title": "A deleted Pantheon that kept coming back",
+        "items": [
+            "🏛 Reported as a Pantheon that would not stay deleted. The Pantheon "
+            "itself did go — that was checked end to end, empty and fully in "
+            "use, through the browser and not just the API. What came back was "
+            "a <b>shared location</b>: sharing a pin into a Pantheon makes a "
+            "copy of it, and deleting the Pantheon cleaned up its shared feeds, "
+            "shared alerts, members and invitations while leaving that copy "
+            "behind. It sat on your Locations list on every load, badged as "
+            "shared with something that no longer existed, and there was no way "
+            "to remove it because the thing it belonged to was already gone. "
+            "The copy is now deleted with everything else, and your own pin is "
+            "untouched.",
+            "🧾 Deleting also proves itself now, on both sides. The server "
+            "checks the Pantheon is actually gone before answering, and the "
+            "page re-reads your list before it removes the card — so a delete "
+            "that fails says so, instead of looking like a success that undoes "
+            "itself the next time you load the page.",
+            "🖱️ And the Delete button no longer depends on the panel having "
+            "finished loading. It used to take the Pantheon's name from a "
+            "second request, and if that request was slow or failed the button "
+            "did nothing at all: no error, no request, nothing to see.",
+            "📍 A related fix while in there: a location shared into a Pantheon "
+            "was losing the place's real name and country on the way, so the "
+            "same pin found less news on the Pantheon's board than on yours. "
+            "Both now travel with it.",
+        ],
+    },
+    {
+        "date": "2026-09-12",
         "title": "Filters were matching the page, not the article",
         "items": [
             "🔍 A filter searches three things: the headline, the feed summary, "

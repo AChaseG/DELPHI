@@ -2176,10 +2176,25 @@ def delete_pantheon(pantheon_id: int, user_id: str = Depends(user_id_header),
     for alert in db.scalars(select(Alert).where(Alert.pantheon_id == pantheon_id)):
         db.delete(alert)  # cascades its AlertEvents
     db.execute(sa_delete(Feed).where(Feed.pantheon_id == pantheon_id))
+    # Shared locations are copies of somebody's own pin, and they were the one
+    # thing deletion left behind: the copy stayed on the sharer's list forever,
+    # badged as shared with a Pantheon that no longer existed, and it came back
+    # on every load because it was still in the database. The copy holds no feed
+    # and no source of its own — the original keeps those — so there is nothing
+    # else to unpick.
+    db.execute(sa_delete(FavoriteLocation).where(
+        FavoriteLocation.pantheon_id == pantheon_id))
     db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == pantheon_id))
     db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == pantheon_id))
     db.delete(pantheon)
     db.commit()
+    # Say so if it is still there. A delete that reports success and leaves the
+    # row is the worst version of this: the client removes the card, the next
+    # load brings it back, and nothing anywhere says which of the two is wrong.
+    if db.get(Pantheon, pantheon_id) is not None:
+        log.error("pantheon %s survived its own deletion", pantheon_id)
+        raise HTTPException(500, "The Pantheon could not be deleted. Nothing was "
+                                 "changed — please report this.")
 
 
 @app.post("/api/pantheons/{pantheon_id}/invite")
@@ -3347,6 +3362,12 @@ def share_location(loc_id: int, body: dict, user_id: str = Depends(user_id_heade
     copy = FavoriteLocation(
         user_id=user_id, pantheon_id=pantheon_id,
         shared_by=(me.username if me else ""), name=loc.name,
+        # The real place name and its country travel with the copy. Without them
+        # the shared pin matched only by coordinates, and coordinates exist only
+        # for articles the gazetteer recognised — so a location that worked on
+        # the sharer's own board found much less of the same news on the
+        # Pantheon's, for no reason a reader could see.
+        place_name=loc.place_name, country=loc.country,
         lat=loc.lat, lon=loc.lon, radius_km=loc.radius_km, color=loc.color)
     db.add(copy)
     db.commit()

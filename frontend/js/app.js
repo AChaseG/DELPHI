@@ -3764,14 +3764,32 @@ function wirePantheonModal() {
   feedback(el("btn-pn-invite"), "Inviting…");
 
   el("btn-pn-delete").onclick = async () => {
-    const d = PantheonModal.detail;
-    if (!d || !confirm(`Delete ${d.name} for everyone, including its shared feeds and alerts?`)) return;
+    // The id, not the loaded detail. Detail is fetched after the modal opens and
+    // this button used to read its name out of it, so a slow or failed fetch
+    // made the button do nothing at all — no request, no error, and a Pantheon
+    // that was still there on the next load.
+    const id = PantheonModal.id;
+    if (!id) return;
+    const name = (PantheonModal.detail && PantheonModal.detail.name)
+      || (PANTHEONS.find(p => p.id === id) || {}).name || "this Pantheon";
+    if (!confirm(`Delete ${name} for everyone, including its shared feeds and alerts?`)) return;
     try {
-      await API.deletePantheon(d.id);
-      PantheonModal.close();
+      await API.deletePantheon(id);
       await refreshPantheons();
+      // Prove it before saying so. Everything else here — closing the modal,
+      // redrawing the panel — looks identical whether or not the Pantheon
+      // actually went, which is how a failed delete came to look like a
+      // successful one that undid itself on the next load.
+      if (PANTHEONS.some(p => p.id === id)) {
+        renderPantheonsPanel();
+        PantheonModal.showError(
+          "The server still lists this Pantheon, so it has not been deleted. "
+          + "Reload and try again; if it stays, please report it.");
+        return;
+      }
+      PantheonModal.close();
       renderPantheonsPanel();
-      if (VIEW === "pantheon:" + d.id) setView("home");
+      if (VIEW === "pantheon:" + id) setView("home");
     } catch (e) { PantheonModal.showError(e.message); }
   };
   feedback(el("btn-pn-delete"), "Deleting…");
