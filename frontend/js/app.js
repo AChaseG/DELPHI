@@ -99,6 +99,25 @@ function wireStaticHandlers() {
     const title = document.querySelector(".gate-title");
     if (title) title.hidden = false;
   });
+  /* A PNG paints top-down while it is still downloading, so on a slow phone the
+     sign-in logo arrived as half a face above an empty box. Hold it back until
+     the file is whole: the box is already reserved, so nothing moves when it
+     appears, and half a logo is worse than a moment of none.
+
+     Marked here rather than in the markup on purpose — if this function never
+     runs, the image is simply visible as before, instead of hidden forever. */
+  const revealWhenWhole = (id) => {
+    const img = el(id);
+    if (!img || (img.complete && img.naturalWidth > 0)) return;
+    img.classList.add("pending");
+    const show = () => img.classList.remove("pending");
+    img.addEventListener("load", show);
+    // On failure the handler above replaces the image with text; clearing the
+    // class as well means a half-arrived-then-failed load cannot leave an
+    // invisible element behind.
+    img.addEventListener("error", show);
+  };
+  revealWhenWhole("gate-logo");
   const reload = el("btn-stream-reload");
   if (reload) reload.onclick = () => location.reload();
 }

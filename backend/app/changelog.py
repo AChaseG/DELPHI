@@ -13,6 +13,27 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-10",
+        "title": "Half a logo on the sign-in page",
+        "items": [
+            "🖼️ On a phone with a weak signal the sign-in page showed the top "
+            "of the crest and nothing else — no name, no tagline, just an empty "
+            "space where the rest should be. Nothing was broken: the artwork is "
+            "drawn from the top down as it downloads, it was a 372 KB file, and "
+            "what you were looking at was however much of it had arrived.",
+            "⏳ It is now held back until the whole picture is there, so you "
+            "either see the crest or you see nothing — never half of it. The "
+            "space it occupies is reserved either way, so the form no longer "
+            "shifts when it appears.",
+            "🪶 And it is less than half the weight it was, which is the part "
+            "that matters on a bad connection: on a slow link it now completes "
+            "in around seven seconds instead of twenty-five. The picture itself "
+            "is unchanged — a smaller version was tried and rejected because it "
+            "flattened the soft edges the crest needs to sit on the card in "
+            "either light or dark mode.",
+        ],
+    },
+    {
         "date": "2026-09-09",
         "title": "Seven papers, one newsroom, one vote",
         "items": [

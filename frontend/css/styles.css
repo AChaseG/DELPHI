@@ -1077,7 +1077,17 @@ button.working::after {
   margin: 0 auto 2px;
   object-fit: contain;
   display: block;
+  transition: opacity 160ms ease-in;
 }
+/* Shown only once the whole file has arrived.
+   A non-interlaced PNG paints top-down as it downloads, and this artwork is
+   372 KB, so on a weak connection it appeared as a head sliced in half with the
+   rest of its box empty — reported from a phone on two bars of signal. The box
+   is reserved at 190px either way, so revealing it late moves nothing.
+   The class is added by JavaScript rather than sitting in the markup, so a
+   browser that never runs it falls back to the old behaviour rather than to a
+   logo that is permanently invisible. */
+.gate-logo.pending { opacity: 0; }
 .gate-title {
   margin: 4px 0 0; color: var(--gold);
   font-family: Georgia, "Times New Roman", serif;
