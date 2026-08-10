@@ -24,7 +24,7 @@ from sqlalchemy import delete as sa_delete, exists, or_, select
 from . import (accounts_backup, discovery, home, langdetect, mailer, repair,
                safefetch, storage, syndication, translate, watchdog)
 from .clustering import assign_events, live_events
-from .content import fetch_article_text
+from .content import clean_summary, fetch_article_text
 from .database import SessionLocal
 from .events import broadcaster
 from .matching import CriteriaMatcher, article_text
@@ -418,7 +418,10 @@ def process_entries(db, source: Source, entries: list, recent_clusters: RecentCl
             continue
         seen_urls.add(url)
 
-        summary = _strip_html(entry.get("summary", ""))[:2000]
+        # Trailers first, then the length cap: a generator's "appeared first on
+        # <Site>" is searched exactly as the headline is, and it ends every item
+        # with the publication's own name.
+        summary = clean_summary(_strip_html(entry.get("summary", "")))[:2000]
         text = f"{title}\n{summary}"
         entry_tags = [t.get("term", "") for t in (entry.get("tags") or []) if t.get("term")]
         places = extract_places(text)

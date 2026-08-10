@@ -13,6 +13,42 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-12",
+        "title": "Filters were matching the page, not the article",
+        "items": [
+            "🔍 A filter searches three things: the headline, the feed summary, "
+            "and the article's text. That was checked end to end — nothing else "
+            "on an article is searchable, not the web address, not the section "
+            "it was filed under, and not the outlet's name. The words putting "
+            "unrelated stories in your feeds were in those three fields; they "
+            "just were not the article.",
+            "🧹 Most of it was the page around the story. A newsletter promo, a "
+            "“most read” box, a related-stories rail — all of them are words on "
+            "the page, and enough of them were being stored as article text "
+            "that a basketball report could satisfy a data-centre search. Three "
+            "ways in are now closed: a block whose entire text is a link is a "
+            "pointer to another page rather than prose, whichever tag it uses; "
+            "an unclosed paragraph no longer means everything below it counts "
+            "as the story, which is what let one omitted tag hand over an "
+            "entire footer; and a page that gives no readable prose at all now "
+            "yields nothing instead of its own navigation menu.",
+            "📰 The other way in was the feed itself. Many publishers end every "
+            "item with “The post … appeared first on <i>Their Name</i>”, so the "
+            "publication's own name sat in every article's searchable text — a "
+            "feed watching <b>energy</b> quietly collected everything Energy "
+            "Voice published, on any subject. Those trailers, and the “Share "
+            "this:” and “Filed under:” tails, are now removed before anything "
+            "is stored or searched.",
+            "🗺️ Also fixed: searching with two watched areas on the map "
+            "returned an error rather than news.",
+            "🕰️ One honest caveat — this cleans articles as they arrive. "
+            "Stories already collected keep the text they were stored with, and "
+            "the original pages are not kept, so there is nothing to re-read "
+            "them from. The archive turns over in about a week, so the last of "
+            "it clears on its own.",
+        ],
+    },
+    {
         "date": "2026-09-11",
         "title": "One number was taking 78 seconds to count",
         "items": [

@@ -116,6 +116,20 @@ def test_criteria_are_recognized_whatever_order_they_arrive_in(db):
     assert got is not None    # the client may serialize a list in any order
 
 
+def test_two_watched_areas_do_not_break_the_way_in(db, register, client):
+    """Recognizing a column means canonicalizing the criteria, which meant
+    sorting their lists — and two map areas are dicts, which raise TypeError
+    when compared. Every search goes through here, so a feed with two areas on
+    the map answered 500 instead of returning news."""
+    area = {"type": "Circle", "name": "Reading", "lat": 51.45, "lon": -0.97,
+            "radius_km": 25}
+    criteria = {"geos": [area, dict(area, name="Slough", lon=-0.6)]}
+    assert home.take(db, criteria, "newest", home.PLAIN_LIMIT, grouped=False) is None
+    res = client.post("/api/articles/search?limit=5", json={"criteria": criteria},
+                      headers=register("twoareas"))
+    assert res.status_code == 200, res.text
+
+
 def test_a_stale_warm_list_is_refused(db, monkeypatch):
     _seed(db)
     home.refresh(db)

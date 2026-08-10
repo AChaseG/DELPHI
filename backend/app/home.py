@@ -78,8 +78,23 @@ def _normalize(criteria: dict) -> tuple:
     for field, value in sorted((criteria or {}).items()):
         if value in (None, "", [], {}, False):
             continue
-        out.append((field, tuple(sorted(value)) if isinstance(value, list) else value))
+        out.append((field, _stable(value) if isinstance(value, list) else value))
     return tuple(out)
+
+
+def _stable(items: list) -> tuple:
+    """A list in a canonical order, whatever it holds.
+
+    `sorted` on the criteria's lists is fine until a list holds dicts: two
+    watched areas (`geos`) raise TypeError comparing them, and this is called on
+    the way into every search, so a feed with two areas on the map answered 500
+    instead of returning news. Nothing here needs a *meaningful* order — only
+    the same order every time, so that a column is recognized however the
+    client happened to arrange it."""
+    try:
+        return tuple(sorted(items))
+    except TypeError:
+        return tuple(sorted((repr(i) for i in items)))
 
 
 def _key(criteria: dict, sort: str, limit: int, grouped: bool) -> str:
