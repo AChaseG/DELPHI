@@ -95,6 +95,26 @@ class Source(Base):
     # body — which is what makes polling more often reasonable rather than rude.
     etag: Mapped[str] = mapped_column(String(200), default="")
     last_modified: Mapped[str] = mapped_column(String(80), default="")
+    # Which newsroom's copy this masthead runs, when it is not its own.
+    #
+    # Publishing groups syndicate one newsroom across many local titles: seven
+    # Vocento papers in Spain, four Glacier Media titles in British Columbia,
+    # four Mediahuis mastheads in the Netherlands. Each has its own domain and
+    # its own URL, so URL dedup does not see them, and each one counted as an
+    # independent outlet corroborating the story — which made one newsroom look
+    # like a consensus. Sources sharing a group corroborate once between them.
+    #
+    # Empty means "its own newsroom", which is the honest default: a group is
+    # only recorded once the same copy has been seen under both mastheads
+    # several times. Learned by syndication.detect, not configured.
+    #
+    # Deliberately not indexed. The additive migration that adds this column to
+    # an existing database uses ALTER TABLE, which cannot also create an index,
+    # so `index=True` would be true of a fresh database and quietly false of the
+    # one actually running — a declaration describing only some of its
+    # deployments. It buys nothing here either: the one query over it reads
+    # every source row, and there are thousands of those, not millions.
+    syndicate: Mapped[str] = mapped_column(String(40), default="")
 
     articles = relationship("Article", back_populates="source", cascade="all, delete-orphan")
 

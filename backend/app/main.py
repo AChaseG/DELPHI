@@ -31,7 +31,7 @@ import re as _username_re
 
 from . import (accounts_backup, auth, devices, discovery, export, geocode, home,
                ingest, langdetect, mailer, passwords, ratelimit, repair,
-               safefetch, storage, translate, watchdog)
+               safefetch, storage, syndication, translate, watchdog)
 from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -96,7 +96,8 @@ def _ensure_schema():
                     "idle_polls": "INTEGER DEFAULT 0",
                     "paywall": "BOOLEAN DEFAULT 0",
                     "etag": "VARCHAR(200) DEFAULT ''",
-                    "last_modified": "VARCHAR(80) DEFAULT ''"},
+                    "last_modified": "VARCHAR(80) DEFAULT ''",
+                    "syndicate": "VARCHAR(40) DEFAULT ''"},
         "users": {"email": "VARCHAR(200) DEFAULT ''",
                   "email_verified": "BOOLEAN DEFAULT 0",
                   "last_seen_at": "DATETIME",
@@ -3455,6 +3456,25 @@ def admin_set_device_limit(uid: int, body: dict, admin: User = Depends(require_a
     return {"ok": True, "limit": user.device_limit,
             "effective_limit": devices.limit_for(user),
             "active": devices.active_count(db, user.id)}
+
+
+@app.get("/api/admin/syndication")
+def admin_syndication(admin: User = Depends(require_admin),
+                      db: Session = Depends(get_db)):
+    """The newsroom families, so a learned grouping can be argued with.
+
+    Corroboration counts newsrooms rather than mastheads, which means something
+    decided this masthead does not vote separately. That decision has to be
+    visible: it is inferred from published copy, and an inference nobody can
+    inspect is indistinguishable from a bug.
+    """
+    fams = syndication.families(db)
+    return {"families": fams,
+            "groups": len(fams),
+            "sources": sum(len(f["members"]) for f in fams),
+            "min_shared_headlines": syndication.MIN_SHARED,
+            "window_hours": syndication.WINDOW_HOURS,
+            "last_run": ingest.status.get("syndication")}
 
 
 @app.get("/api/admin/backup/accounts")

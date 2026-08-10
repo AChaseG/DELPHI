@@ -271,6 +271,9 @@ backups, and every tuning knob are in **[DEPLOY.md](DEPLOY.md)**.
 | `NEWS_CLUSTER_WINDOW_HOURS` | `12` | how far back corroboration looks for other outlets carrying a story |
 | `NEWS_CLUSTER_WINDOW_MAX` | `40000` | most headlines the corroboration index will hold, whatever the hours contain |
 | `NEWS_CLUSTER_REBUILD_EVERY_S` | `1800` | how long that index is reused before being rebuilt from the database |
+| `NEWS_SYNDICATE_MIN_SHARED` | `4` | identical headlines two outlets must share before they count as one newsroom |
+| `NEWS_SYNDICATE_WINDOW_HOURS` | `48` | how much history that inference learns from |
+| `NEWS_SYNDICATE_WINDOW_MAX` | `120000` | most headlines it will read while learning |
 | `NEWS_ACCOUNT_BACKUP_EVERY_S` | `86400` | how often the accounts-only backup is mailed to operators (`0` = off) |
 | `NEWS_ACCOUNT_BACKUP_TO` | *(operators)* | comma-separated addresses for that backup, instead of the operator accounts |
 | `NEWS_DEVICE_LIMIT` | `0` | devices an account may be *in use on* at once (`0` = no limit); per-account overrides in the console |

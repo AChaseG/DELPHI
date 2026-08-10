@@ -2846,6 +2846,20 @@ async function renderServiceHealth() {
                + "places; the news itself is not backed up and does not need to be.");
   }
 
+  // Shared newsrooms. Worth stating because it changes what a story's
+  // importance means: something decided these mastheads do not vote separately,
+  // and an inference nobody can see is indistinguishable from a bug.
+  const syn = s.syndication;
+  if (syn && syn.groups) {
+    lines.push(`📰 ${syn.groups} publishing group${plural(syn.groups)} detected `
+               + `across ${syn.sources} outlets — mastheads sharing one `
+               + `newsroom's copy now corroborate a story once between them, `
+               + `not once each. Full list at /api/admin/syndication.`);
+  } else if (syn) {
+    lines.push("📰 No shared newsrooms detected: every outlet is counted as an "
+               + "independent voice when scoring how widely a story is covered.");
+  }
+
   const geo = s.geocoder || {};
   if (geo.provider === "off") {
     lines.push("📍 Address lookup is off; only Delphi's own list of cities and "

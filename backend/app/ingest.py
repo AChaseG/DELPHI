@@ -22,7 +22,7 @@ import httpx
 from sqlalchemy import delete as sa_delete, exists, or_, select
 
 from . import (accounts_backup, discovery, home, langdetect, mailer, repair,
-               safefetch, storage, translate, watchdog)
+               safefetch, storage, syndication, translate, watchdog)
 from .clustering import assign_events, live_events
 from .content import fetch_article_text
 from .database import SessionLocal
@@ -259,11 +259,25 @@ class RecentClusters:
     corroborate each other.
     """
 
-    def __init__(self, rows: list[tuple[int, str]] = ()):
+    def __init__(self, rows: list[tuple[int, str]] = (),
+                 newsroom: dict[int, int] | None = None):
+        """`newsroom` maps a source to the id that counts as its publisher.
+
+        Without it every feed is its own outlet, which is what made a publishing
+        group look like a consensus: seven Vocento mastheads running one
+        newsroom's copy corroborated each other seven times over. Sources
+        sharing a newsroom now corroborate once between them. See
+        syndication.py, which learns the mapping.
+        """
         self._entries: list[tuple[int, frozenset[str]]] = []
         self._by_token: dict[str, list[int]] = {}
+        self._newsroom = newsroom or {}
         for source_id, tokens in rows:
             self.add(source_id, tokens)
+
+    def publisher(self, source_id: int) -> int:
+        """The identity that corroborates: a newsroom, not a masthead."""
+        return self._newsroom.get(source_id, source_id)
 
     def __len__(self) -> int:
         """How many headlines are indexed — the number that decides whether
@@ -275,15 +289,18 @@ class RecentClusters:
         if not words:
             return
         at = len(self._entries)
-        self._entries.append((source_id, words))
+        # Stored as the publisher, so every comparison below is already between
+        # newsrooms and the hot loop does no extra lookups.
+        self._entries.append((self.publisher(source_id), words))
         for word in words:
             self._by_token.setdefault(word, []).append(at)
 
     def corroboration(self, source_id: int, tokens: str) -> int:
-        """How many other outlets ran a headline this one matches."""
+        """How many other newsrooms ran a headline this one matches."""
         words = set(tokens.split())
         if not words:
             return 0
+        mine = self.publisher(source_id)
         others: set[int] = set()
         checked: set[int] = set()
         for word in words:
@@ -292,9 +309,11 @@ class RecentClusters:
                     continue
                 checked.add(at)
                 other_source, other_words = self._entries[at]
-                # One outlet corroborates once, so a source already counted
-                # needs no further comparison.
-                if other_source == source_id or other_source in others:
+                # One newsroom corroborates once, so a publisher already
+                # counted needs no further comparison — and a sister masthead
+                # running the same copy is the same publisher, not a second
+                # opinion.
+                if other_source == mine or other_source in others:
                     continue
                 shared = len(words & other_words)
                 if (max(shared / len(words | other_words),
@@ -341,7 +360,8 @@ def _recent_clusters(db, hours: float | None = None) -> RecentClusters:
         .order_by(Article.published_at.desc())
         .limit(CLUSTER_WINDOW_MAX)
     ).all()
-    return RecentClusters([(r[0], r[1]) for r in rows])
+    return RecentClusters([(r[0], r[1]) for r in rows],
+                          newsroom=syndication.group_map(db))
 
 
 def cluster_index(db) -> RecentClusters:
@@ -1329,6 +1349,15 @@ async def ingest_loop():
                         status["last_audit_disabled"] = audit["disabled"]
                         status["audited_total"] = (
                             status.get("audited_total", 0) + audit["disabled"])
+                        # Which mastheads share a newsroom, relearned on the
+                        # same schedule: a publishing group acquires and drops
+                        # titles, and a mapping nobody revisits becomes a claim
+                        # about last month. Same thread, same reason.
+                        status["syndication"] = await asyncio.to_thread(
+                            syndication.detect, db)
+                        # The corroboration index holds the old grouping, so it
+                        # has to be rebuilt against the new one.
+                        reset_cluster_index()
 
                     if (accounts_backup.EVERY_SECONDS > 0
                             and time.monotonic() >= _next_account_backup_at):

@@ -13,6 +13,33 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-09",
+        "title": "Seven papers, one newsroom, one vote",
+        "items": [
+            "🔎 The question was whether the catalogue is full of outlets that "
+            "just repost other people’s work. Measured over twelve hours and "
+            "105,118 stories: not really. Only 0.4% of what arrives comes from "
+            "outlets that are mostly reposting, because identical links are "
+            "already thrown away as they come in.",
+            "📰 But the ones that do repost turned out not to be random. They "
+            "come in families — four Glacier Media titles in British Columbia, "
+            "seven Spanish papers, four Dutch ones — one newsroom writing under "
+            "many local mastheads. Each has its own website, so nothing "
+            "recognised them as the same story, and each was counted as a "
+            "separate outlet confirming it. One newsroom looked like a "
+            "consensus, and stories were scored as more important than they "
+            "were.",
+            "⚖️ Mastheads sharing a newsroom now corroborate a story once "
+            "between them rather than once each, so “widely covered” means what "
+            "it says. The families are worked out from what outlets actually "
+            "publish — the same copy under two names, several times over — and "
+            "relearned daily, because publishing groups buy and sell titles.",
+            "🏘️ Nothing has been switched off. These papers still break their "
+            "own local news: one of them was first with 58% of what it ran. "
+            "This changes how an outlet is counted, never whether it is read.",
+        ],
+    },
+    {
         "date": "2026-09-08",
         "title": "A third of every hour was spent counting the same headlines",
         "items": [
