@@ -259,6 +259,88 @@ function showDeviceLimit(message) {
   };
 }
 
+/* The paywall, raised by the first 402 that comes back.
+
+   Every panel on the board makes its own request, so without this a reader
+   whose access ran out would get twenty copies of the same message as twenty
+   separate errors, and no way to act on any of them. Same shape as the
+   device-limit screen above and for the same reason: one thing on screen, with
+   the two ways forward on it.
+
+   The screen is the whole answer, so it does not offer to dismiss itself.
+   Signing out is there because being stuck on a paywall with no way back to
+   the sign-in card is how somebody ends up locked out of an account they have
+   another way to pay for. */
+let paywallShown = false;
+
+function showPaywall(status) {
+  if (paywallShown) return;
+  paywallShown = true;
+  const s = status || {};
+  const price = s.price_label || "";
+  const trial = s.trial_days
+    ? `New accounts get ${s.trial_days} day${s.trial_days === 1 ? "" : "s"} free.` : "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "modal-backdrop";
+  wrap.innerHTML = `
+    <div class="modal narrow">
+      <div class="modal-head"><h2>🏛 Your access has ended</h2></div>
+      <div class="modal-body">
+        <p id="pay-blurb"></p>
+        <p id="pay-price" class="pay-price"></p>
+        <p id="pay-trial" class="s-meta"></p>
+        <p class="s-meta">Payment is handled by Stripe — Delphi never sees your
+           card. You can cancel at any time from the same place.</p>
+        <details>
+          <summary>I have an invitation code</summary>
+          <label class="field"><span>Code</span>
+            <input id="pay-code" type="text" placeholder="ABCD-EFGH-JKLM"
+                   autocomplete="off" spellcheck="false"></label>
+          <button id="pay-redeem" class="btn">Use this code</button>
+        </details>
+        <p id="pay-status" class="s-meta"></p>
+      </div>
+      <div class="modal-foot">
+        <button id="pay-subscribe" class="btn btn-primary">Subscribe</button>
+        <span class="spacer"></span>
+        <button id="pay-signout" class="btn">Sign out</button>
+      </div>
+    </div>`;
+  // Every one of these is set as text, not markup: the blurb is the operator's
+  // to write and the status line carries the server's words.
+  wrap.querySelector("#pay-blurb").textContent = s.blurb
+    || "Delphi is a paid service on this instance.";
+  wrap.querySelector("#pay-price").textContent = price ? `${price}` : "";
+  wrap.querySelector("#pay-trial").textContent = trial;
+  document.body.appendChild(wrap);
+
+  const line = wrap.querySelector("#pay-status");
+  wrap.querySelector("#pay-signout").onclick = () => { Session.clear(); location.reload(); };
+  wrap.querySelector("#pay-subscribe").onclick = async () => {
+    line.textContent = "Opening Stripe…";
+    try {
+      const r = await api("/api/billing/checkout", { method: "POST" });
+      if (r && r.url) location.assign(r.url);
+      else line.textContent = "Stripe did not return a checkout page. Try again shortly.";
+    } catch (e) {
+      line.textContent = e.message;
+    }
+  };
+  wrap.querySelector("#pay-redeem").onclick = async () => {
+    const code = (wrap.querySelector("#pay-code").value || "").trim();
+    if (!code) { line.textContent = "Enter the code you were given."; return; }
+    line.textContent = "Checking…";
+    try {
+      await api("/api/billing/redeem", { method: "POST", body: JSON.stringify({ code }) });
+      line.textContent = "That worked — reloading.";
+      location.reload();
+    } catch (e) {
+      line.textContent = e.message;
+    }
+  };
+}
+
 /* Set while this browser is swapping its own token for a new one.
 
    Changing a password mints a replacement, and the old token stops being
@@ -354,17 +436,25 @@ async function api(path, options = {}) {
     let detail = null;
     let reference = resp.headers.get("X-Delphi-Error") || "";
     let code = "";
+    let billingStatus = null;
     try {
       const body = await resp.json();
       detail = body.detail ?? null;
       reference = body.reference || reference;
       code = body.code || "";
+      billingStatus = body.billing || null;
     } catch (e) { /* not json — a proxy page, or an empty body */ }
     // The device limit is refused per request, so without this every panel on
     // the board would raise its own copy of the same message and the reader
     // would get a pile of toasts instead of one thing to do about it.
     if (code === "device_limit") {
       showDeviceLimit(errorText(detail, resp.status));
+      return new Promise(() => {});
+    }
+    // Access ran out. Same treatment: one screen, and the requests that were
+    // in flight behind it never resolve rather than each raising its own copy.
+    if (resp.status === 402 || code === "payment_required") {
+      showPaywall(billingStatus);
       return new Promise(() => {});
     }
     let message = `${trying} — ${errorText(detail, resp.status)}`;
@@ -418,6 +508,23 @@ const API = {
   storyByEvent: (id) => api(`/api/story/by-event/${id}?x=1${langQS()}`),
   // Which of a column's words are in one of its articles, and where.
   whyItMatched: (feedId, articleId) => api(`/api/feeds/${feedId}/why/${articleId}`),
+
+  // Access and payment.
+  billingStatus: () => api("/api/billing/status"),
+  checkout: () => api("/api/billing/checkout", { method: "POST" }),
+  billingPortal: () => api("/api/billing/portal", { method: "POST" }),
+  redeemInvite: (code) => api("/api/billing/redeem",
+                              { method: "POST", body: JSON.stringify({ code }) }),
+  adminBilling: () => api("/api/admin/billing"),
+  saveAdminBilling: (settings) => api("/api/admin/billing",
+                                      { method: "PUT", body: JSON.stringify({ settings }) }),
+  adminInvites: () => api("/api/admin/invites"),
+  createInvite: (body) => api("/api/admin/invites",
+                              { method: "POST", body: JSON.stringify(body) }),
+  revokeInvite: (id, undo) => api(`/api/admin/invites/${id}/revoke`,
+                                  { method: "POST", body: JSON.stringify({ undo: !!undo }) }),
+  compUser: (id, comped, note) => api(`/api/admin/users/${id}/comp`,
+                                      { method: "POST", body: JSON.stringify({ comped, note }) }),
   markEventViewed: (id) => api(`/api/events/${id}/viewed`, { method: "POST" }),
   // For an article with no event — nothing else can remember it.
   markArticleViewed: (id) => api(`/api/articles/${id}/viewed`, { method: "POST" }),
@@ -475,8 +582,9 @@ const API = {
   getSettings: () => api("/api/session/settings"),
   changelog: () => api("/api/changelog"),
 
-  register: (username, email, password) =>
-    api("/api/auth/register", { method: "POST", body: JSON.stringify({ username, email, password }) }),
+  register: (username, email, password, invite) =>
+    api("/api/auth/register",
+        { method: "POST", body: JSON.stringify({ username, email, password, invite }) }),
   login: (username, password) =>
     api("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   verifyEmail: (token) => api("/api/auth/verify?token=" + encodeURIComponent(token)),

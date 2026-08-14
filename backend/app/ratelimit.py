@@ -88,6 +88,11 @@ _LIMITS: dict[str, tuple[int, int]] = {
     # service — somebody else's quota, and real CPU on a two-vCPU machine.
     # Nobody exports the same column forty times a minute.
     "export": (12, 300),     # 12 exports / 5 min / IP
+    # Anything that reaches Stripe, plus redeeming an invitation. Tight because
+    # each one is a call to somebody else's API on a worker thread, and because
+    # guessing invitation codes is the one thing here worth brute-forcing —
+    # 20 tries in five minutes against a 32-character alphabet is nowhere.
+    "billing": (20, 300),    # 20 / 5 min / IP
 }
 
 _hits: dict[tuple[str, str], deque] = defaultdict(deque)

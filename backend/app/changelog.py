@@ -13,6 +13,37 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-16",
+        "title": "Subscriptions, and invitations that skip them",
+        "items": [
+            "💳 Delphi can now charge for access. The operator sets the price, "
+            "the currency, monthly or yearly, and how long a free trial runs — "
+            "all from 🛠 <b>Operator console → Access &amp; payment</b>, so "
+            "changing what it costs never needs a deploy. Payment goes through "
+            "Stripe's own hosted checkout: no card details, and no Stripe "
+            "code, ever touch this page.",
+            "🎟️ Invitations are the other half. An operator can mint a code "
+            "that gives whoever redeems it <b>free access, permanently</b> — "
+            "for one person or for many, with an expiry or without. The console "
+            "copies a link that fills the code in; whoever opens it registers "
+            "and never sees a paywall. Codes can be revoked, which stops "
+            "further use without evicting anyone who already used one.",
+            "🕊️ <b>Every account that existed before this shipped keeps free "
+            "access, permanently.</b> Turning payments on must not take Delphi "
+            "away from the people already using it, so it doesn't.",
+            "⏳ New accounts get the trial and a quiet reminder in its last few "
+            "days. Nothing else interrupts: the notice can be dismissed, and it "
+            "never appears again once there is a subscription.",
+            "🧾 What you paid for is what you keep. Access runs against the "
+            "date a period is paid to, not against a status flag — so a card "
+            "that fails on a Tuesday, a webhook that goes missing, or an outage "
+            "at Stripe cannot cut anybody off mid-period. Cancelling works the "
+            "same way: it stops the next payment, and everything keeps working "
+            "until the period ends. Cancelling is done from Stripe's own page, "
+            "reachable from ⚙ Settings.",
+        ],
+    },
+    {
         "date": "2026-09-15",
         "title": "intitle:, intext:, source:, site: — and AROUND(5)",
         "items": [

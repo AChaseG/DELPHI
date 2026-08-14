@@ -745,6 +745,24 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   color: var(--ink-muted); font-style: italic;
 }
 
+/* The trial notice. Fixed to the bottom rather than the top: the top of this
+   app is the board's own header and a bar there pushes every column down, which
+   is a layout shift on every page load for the sake of a sentence. */
+.trial-bar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px;
+  z-index: 900;
+  display: flex; align-items: center; gap: 12px;
+  max-width: min(680px, calc(100vw - 32px));
+  padding: 10px 12px 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--gold-soft);
+  border-radius: 10px;
+  box-shadow: 0 8px 26px rgba(0,0,0,0.4);
+  font-size: 13.5px;
+}
+.pay-price { font-size: 20px; font-weight: 600; margin: 6px 0; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
 .geo-tools { display: flex; align-items: center; gap: 10px; }
 .geo-summary { font-size: 12.5px; color: var(--ink-muted); }
 .builder-map { height: 340px; border-radius: 10px; border: 1px solid var(--border); }

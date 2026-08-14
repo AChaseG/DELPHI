@@ -79,6 +79,53 @@ Terminate TLS with the platform's built-in HTTPS, or put Caddy/nginx in front.
 | `NEWS_HSTS_MAX_AGE` | `86400` (1 day) | How long browsers are told to reach this site over https only. Deliberately short to begin with: HSTS cannot be withdrawn faster than the max-age already handed out, so a bad certificate with a long max-age locks visitors out. Raise it (e.g. `31536000`) once the certificate is settled. `0` disables it. Add `includeSubDomains`/preload by hand only when every subdomain is ready to be https-only permanently. |
 | `NEWS_CORS_ORIGINS` | Off | Comma-separated origins allowed to call the API cross-origin. Off by default because Delphi serves its own frontend from the same origin and nothing needs it. Set it only if you're building a separate browser client. |
 | `NEWS_DB_PATH` | Preset in Docker | Database file path (`/data/news.db` in the image). |
+| `STRIPE_SECRET_KEY` | Only if you charge | Your Stripe **secret** key (`sk_live_…` / `sk_test_…`). Without it Delphi cannot take a payment, the paywall refuses to switch on, and access stays free for everyone. Set it as a secret, never in a file: `fly secrets set STRIPE_SECRET_KEY=sk_live_…`. |
+| `STRIPE_WEBHOOK_SECRET` | With the above | The signing secret of the webhook endpoint you add in Stripe (`whsec_…`). Without it Delphi rejects every webhook, so nobody's subscription would ever be recorded after they paid. |
+
+The publishable key (`pk_…`) is **not** used and does not need to be set: checkout
+is Stripe's own hosted page, so no card details, and no Stripe JavaScript, ever
+reach a browser looking at Delphi.
+
+### Charging for access
+
+Everything except the two secrets above is set in 🛠 **Operator console →
+Access & payment**: the price, the currency, monthly or yearly, the trial
+length, and whether the paywall is on at all. Those live in the database so
+changing what Delphi costs never needs a deploy.
+
+To switch it on:
+
+1. `fly secrets set STRIPE_SECRET_KEY=sk_live_… STRIPE_WEBHOOK_SECRET=whsec_…`
+   (the app restarts by itself).
+2. In the Stripe dashboard → Developers → Webhooks, add an endpoint at
+   `https://yourdomain.com/api/stripe/webhook` and subscribe it to
+   `checkout.session.completed`, `customer.subscription.created`,
+   `customer.subscription.updated`, `customer.subscription.deleted` and
+   `invoice.payment_failed`. Copy its signing secret into the secret above.
+3. Open the console, set a price, tick **Charge for access**, save. The panel
+   states whether the key is a live or a test one — they look identical
+   otherwise, and a test key charges nobody.
+
+Who is affected, precisely:
+
+* **Accounts that already existed** when the billing columns were first
+  created are comped permanently — the deploy that adds payments must not take
+  access away from people using the instance that morning. They appear in the
+  console as having free access.
+* **New accounts** get the trial you set, then the paywall.
+* **Operators** are never paywalled. The console is the only way to change the
+  price or switch billing off, and an operator locked out of it has no way back.
+* **Invited accounts** never pay: create a code in the console, hand over the
+  link it copies (`https://yourdomain.com/?invite=CODE`), and whoever registers
+  with it has free access permanently. A code can be limited to one person or
+  many, given an expiry, and revoked — revoking stops further use without
+  evicting anyone who already used it.
+
+Tax is yours: Stripe is a payment processor, not a merchant of record, so VAT
+and sales-tax registration where your customers are is on you. Stripe Tax can
+compute it, but you remain the seller. A merchant-of-record service (Paddle,
+Lemon Squeezy) takes a larger cut and takes that on instead — worth knowing
+before the first invoice rather than after.
 
 Ingestion/tuning knobs (sensible defaults; change only if needed):
 

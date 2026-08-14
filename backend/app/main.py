@@ -29,9 +29,10 @@ from starlette.concurrency import run_in_threadpool
 
 import re as _username_re
 
-from . import (accounts_backup, auth, devices, discovery, export, geocode, home,
-               ingest, langdetect, mailer, passwords, ratelimit, repair,
-               safefetch, storage, syndication, translate, watchdog)
+from . import (accounts_backup, auth, billing, devices, discovery, export,
+               geocode, home, ingest, langdetect, mailer, passwords, ratelimit,
+               repair, safefetch, storage, stripe_api, syndication, translate,
+               watchdog)
 from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -41,7 +42,7 @@ from .events import broadcaster
 from .geo import load_gazetteer, search_places
 from .matching import explain_text_match, query_articles
 from .models import (Alert, AlertEvent, Article, Device, DiscoveredDomain, Event,
-                     FavoriteLocation, Feed,
+                     FavoriteLocation, Feed, Invite,
                      Pantheon, PantheonInvite, PantheonMember, Source,
                      Translation, User, ViewedArticle, ViewedEvent, utcnow)
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
@@ -143,7 +144,15 @@ def _ensure_schema():
                   "is_admin": "BOOLEAN DEFAULT 0",
                   "disabled": "BOOLEAN DEFAULT 0",
                   "token_version": "INTEGER DEFAULT 0",
-                  "device_limit": "INTEGER"},
+                  "device_limit": "INTEGER",
+                  "comped": "BOOLEAN DEFAULT 0",
+                  "comped_note": "VARCHAR(200) DEFAULT ''",
+                  "invited_by_code": "VARCHAR(40) DEFAULT ''",
+                  "trial_ends_at": "DATETIME",
+                  "stripe_customer_id": "VARCHAR(64) DEFAULT ''",
+                  "subscription_id": "VARCHAR(64) DEFAULT ''",
+                  "subscription_status": "VARCHAR(24) DEFAULT ''",
+                  "paid_until": "DATETIME"},
         "discovered_domains": {"sightings": "INTEGER DEFAULT 0"},
         "favorite_locations": {"place_name": "VARCHAR(120) DEFAULT ''",
                                "country": "VARCHAR(2) DEFAULT ''",
@@ -152,9 +161,25 @@ def _ensure_schema():
     with engine.begin() as conn:
         for table, columns in wanted.items():
             existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            added = set()
             for name, ddl in columns.items():
                 if name not in existing:
                     conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+                    added.add(name)
+            if table == "users" and "comped" in added:
+                # Billing arriving must never take access away from somebody who
+                # already had it. Every account that exists at this moment is
+                # comped, permanently and for free — the operator's included,
+                # which is also what stops the deploy that switches billing on
+                # from locking the operator out of the console that turns it
+                # off. Runs exactly once: the column only appears once, and
+                # accounts created afterwards default to 0.
+                comped = conn.exec_driver_sql(
+                    "UPDATE users SET comped = 1, "
+                    "comped_note = 'account predates billing'").rowcount
+                if comped:
+                    logging.getLogger("billing").info(
+                        "%d existing account(s) grandfathered into free access", comped)
         # Indexes create_all won't add to pre-existing tables (dashboard stats
         # filter on fetched_at every refresh).
         conn.exec_driver_sql(
@@ -454,6 +479,30 @@ async def time_requests(request: Request, call_next):
     return response
 
 
+# Routes that work without a session at all: signing in, and Stripe telling us
+# somebody paid. The webhook is here rather than behind the token because
+# Stripe has no account — it proves itself with a signature instead, which is
+# checked inside the endpoint before a single byte of the body is trusted.
+_PUBLIC_PREFIXES = ("/api/auth/", "/api/stripe/webhook")
+
+# Routes that keep working when access has run out. Everything else answers 402
+# — including, deliberately, the ones that would let somebody keep reading the
+# news. The list is short and it is a list rather than a decorator so that a new
+# endpoint is behind the paywall by default: forgetting to gate something is a
+# way to give the product away, and forgetting to exempt something is a bug
+# somebody reports in a minute.
+_PAYWALL_EXEMPT = ("/api/billing/", "/api/session/hello", "/api/session/logout",
+                   "/api/session/settings", "/api/changelog")
+
+
+def _is_public_path(path: str) -> bool:
+    return path.startswith(_PUBLIC_PREFIXES)
+
+
+def _paywall_exempt(path: str) -> bool:
+    return path.startswith(_PAYWALL_EXEMPT)
+
+
 @app.middleware("http")
 async def require_account(request: Request, call_next):
     """An account is required to use the system: every API route except
@@ -478,7 +527,7 @@ async def require_account(request: Request, call_next):
     take no user_id dependency too.
     """
     path = request.url.path
-    if path.startswith("/api") and not path.startswith("/api/auth/"):
+    if path.startswith("/api") and not _is_public_path(path):
         if path == "/api/stream":
             uid = auth.parse_stream_ticket(request.query_params.get("ticket", ""))
             claim = auth.Claim(uid, -1) if uid is not None else None
@@ -513,6 +562,28 @@ async def require_account(request: Request, call_next):
             # Named in the failure log, so a crash can be traced to a person
             # who reported it rather than to an anonymous request.
             request.state.user_id = f"acct:{uid}"
+
+            # Paid, invited, or inside a trial — or this is where it stops.
+            # Here for the same reason the suspension check is: a route that
+            # forgets to ask is a route that gives the product away, and there
+            # are two hundred of them.
+            # An operator is never paywalled out of their own instance. The
+            # console is the only way to change the price, hand out an
+            # invitation or switch billing off, so an operator whose trial
+            # lapses — or whose card is declined — would be locked out of the
+            # one page that could fix any of it, with no way back in. Today's
+            # operators are comped by the migration; this covers the one
+            # promoted next year.
+            if not _paywall_exempt(path) and not _is_admin(user):
+                conf = billing.settings(session)
+                if not billing.may_use(user, conf):
+                    return JSONResponse(
+                        {"detail": "Your access to Delphi has ended. Subscribe to "
+                                   "carry on, or enter an invitation code if an "
+                                   "operator gave you one.",
+                         "code": "payment_required",
+                         "billing": billing.status_json(user, conf)},
+                        status_code=402)
 
             # Which device this is, and whether the account may be in use on
             # it. Here rather than in a dependency for the same reason as the
@@ -922,7 +993,12 @@ def register(body: dict, request: Request, background: BackgroundTasks,
                             auth.make_scoped_token("reset", existing.id, 3600))
         background.add_task(mailer.send_duplicate_registration,
                             existing.email, existing.username, link)
-        return {"verification_sent": True, "username": username, "email": email}
+        # Same keys as a real registration, down to the empty invite_error.
+        # This branch exists precisely so the two are indistinguishable, and a
+        # response that is one field short says "that address is taken" as
+        # loudly as a 409 would. tests/test_headers_and_enumeration.py.
+        return {"verification_sent": True, "username": username, "email": email,
+                "invite_error": ""}
 
     user = User(username=username, email=email, password_hash=password_hash,
                 email_verified=not mailer.enabled())  # self-host mode: auto-verify
@@ -936,6 +1012,19 @@ def register(body: dict, request: Request, background: BackgroundTasks,
         # would fix it. This keeps a way in that email delivery cannot break.
         user.email_verified = True
     db.add(user)
+    db.flush()          # the trial and the invitation both need the account id
+    conf = billing.settings(db)
+    invite_error = ""
+    code = (body.get("invite") or "").strip()
+    if code:
+        try:
+            billing.redeem(db, user, code)
+        except billing.BillingError as exc:
+            # The account is still created. Refusing to register somebody
+            # because they mistyped a code would lose them the account *and*
+            # the code, and they can enter it again from inside.
+            invite_error = str(exc)
+    billing.start_trial(user, conf)
     db.commit()
     if mailer.enabled():
         link = _action_link(request, "verify",
@@ -945,9 +1034,11 @@ def register(body: dict, request: Request, background: BackgroundTasks,
         # and blocking the response that long makes the Create-account button
         # look dead. The account already exists, so delivery is independent.
         background.add_task(mailer.send_verification, email, username, link)
-        return {"verification_sent": True, "username": username, "email": email}
+        return {"verification_sent": True, "username": username, "email": email,
+                "invite_error": invite_error}
     return {"token": auth.make_token(user.id, user.token_version), "username": username,
-            "email": email, "user_key": f"acct:{user.id}", "is_admin": _is_admin(user)}
+            "email": email, "user_key": f"acct:{user.id}", "is_admin": _is_admin(user),
+            "invite_error": invite_error}
 
 
 @app.post("/api/auth/login")
@@ -3374,6 +3465,141 @@ def share_location(loc_id: int, body: dict, user_id: str = Depends(user_id_heade
     return _location_json(copy)
 
 
+# ---------- paying for it ----------
+#
+# Everything here runs on a worker thread rather than the event loop: `def`,
+# not `async def`. Stripe is an HTTP call to somebody else's server with a
+# 20-second timeout, and one of those on the loop stops the whole process for
+# whoever else is reading the news.
+
+
+@app.get("/api/billing/status")
+def billing_status(user_id: str = Depends(user_id_header),
+                   db: Session = Depends(get_db)):
+    """What this account's access is, and what carrying on would cost."""
+    user = db.get(User, _acct_id(user_id))
+    if user is None:
+        raise HTTPException(401, "Account no longer exists")
+    return billing.status_json(user, billing.settings(db))
+
+
+@app.post("/api/billing/checkout")
+def billing_checkout(request: Request, user_id: str = Depends(user_id_header),
+                     db: Session = Depends(get_db)):
+    """A Stripe Checkout page for this account, or the reason there isn't one."""
+    ratelimit.check("billing", request)
+    user = db.get(User, _acct_id(user_id))
+    if user is None:
+        raise HTTPException(401, "Account no longer exists")
+    conf = billing.settings(db)
+    if not conf["enabled"]:
+        raise HTTPException(409, "This instance is not charging for access.")
+    if user.comped:
+        raise HTTPException(409, "Your access was given to you by the operator — "
+                                 "there is nothing to pay.")
+    base = _action_base_url(request)
+    try:
+        session = stripe_api.create_checkout_session(
+            price_cents=conf["price_cents"], currency=conf["currency"],
+            interval=conf["interval"], product_name=conf["product_name"],
+            account_id=user.id, email=user.email,
+            customer_id=user.stripe_customer_id,
+            success_url=f"{base}/?paid=1", cancel_url=f"{base}/?paid=0")
+    except stripe_api.StripeError as exc:
+        raise HTTPException(502, f"Stripe could not start a checkout: {exc}")
+    return {"url": session.get("url", "")}
+
+
+@app.post("/api/billing/portal")
+def billing_portal(request: Request, user_id: str = Depends(user_id_header),
+                   db: Session = Depends(get_db)):
+    """Stripe's page for changing a card or cancelling."""
+    ratelimit.check("billing", request)
+    user = db.get(User, _acct_id(user_id))
+    if user is None or not user.stripe_customer_id:
+        raise HTTPException(409, "There is no subscription on this account.")
+    try:
+        session = stripe_api.create_portal_session(
+            customer_id=user.stripe_customer_id,
+            return_url=_action_base_url(request) + "/")
+    except stripe_api.StripeError as exc:
+        raise HTTPException(502, f"Stripe could not open the billing page: {exc}")
+    return {"url": session.get("url", "")}
+
+
+@app.post("/api/billing/redeem")
+def billing_redeem(body: dict, request: Request,
+                   user_id: str = Depends(user_id_header),
+                   db: Session = Depends(get_db)):
+    """Use an operator's invitation on this account."""
+    ratelimit.check("billing", request)
+    user = db.get(User, _acct_id(user_id))
+    if user is None:
+        raise HTTPException(401, "Account no longer exists")
+    try:
+        billing.redeem(db, user, body.get("code") or "")
+    except billing.BillingError as exc:
+        raise HTTPException(422, str(exc))
+    return billing.status_json(user, billing.settings(db))
+
+
+@app.post("/api/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Stripe telling us what happened to a subscription.
+
+    Public, because Stripe has no account here. What stands in for one is the
+    signature on every request, checked before any of the body is read as
+    anything but bytes — an unsigned POST to this URL must not be able to give
+    itself a subscription.
+
+    Answers 200 to anything it has verified, including events it does nothing
+    with. A non-200 makes Stripe retry for days, and retrying an event we
+    understood and ignored is noise that eventually looks like an outage.
+    """
+    payload = await request.body()
+    try:
+        event = stripe_api.verify_webhook(
+            payload, request.headers.get("stripe-signature", ""))
+    except ValueError as exc:
+        logging.getLogger("stripe").warning("rejected a webhook: %s", exc)
+        raise HTTPException(400, f"Signature check failed: {exc}")
+
+    kind = event.get("type", "")
+    obj = (event.get("data") or {}).get("object") or {}
+    with SessionLocal() as db:
+        user = billing.user_for_event(db, obj)
+        if user is None:
+            logging.getLogger("stripe").info(
+                "%s: no account matched (customer=%s)", kind, obj.get("customer"))
+            return {"received": True, "matched": False}
+
+        if kind == "checkout.session.completed":
+            customer = obj.get("customer")
+            if isinstance(customer, str) and customer:
+                user.stripe_customer_id = customer[:64]
+            db.commit()
+            sub_id = obj.get("subscription")
+            if isinstance(sub_id, str) and sub_id:
+                try:
+                    sub = await run_in_threadpool(stripe_api.get_subscription, sub_id)
+                    billing.apply_subscription(db, user, sub)
+                except stripe_api.StripeError as exc:
+                    # The subscription.created event carries the same facts and
+                    # is on its way; this is a shortcut, not the only route.
+                    logging.getLogger("stripe").warning(
+                        "could not read subscription %s: %s", sub_id, exc)
+        elif kind.startswith("customer.subscription."):
+            billing.apply_subscription(db, user, obj)
+        elif kind == "invoice.payment_failed":
+            # Not a cut-off. The subscription keeps its paid-until date, Stripe
+            # retries the card, and access ends when the period does if it never
+            # goes through — which is the difference between a declined card on
+            # a Tuesday and being locked out on a Tuesday.
+            user.subscription_status = "past_due"
+            db.commit()
+        return {"received": True, "matched": True, "type": kind}
+
+
 # ---------- admin / operator console ----------
 
 def _user_admin_json(db: Session, u: User) -> dict:
@@ -3400,6 +3626,15 @@ def _user_admin_json(db: Session, u: User) -> dict:
         # so the console can show what that currently resolves to.
         "device_limit": u.device_limit,
         "effective_device_limit": devices.limit_for(u),
+        # Access, so the console can answer "who is paying, who was invited,
+        # and who is about to lose it" without opening each account.
+        "access": billing.access_of(u, billing.settings(db)),
+        "comped": bool(u.comped),
+        "comped_note": u.comped_note or "",
+        "invited_by_code": u.invited_by_code or "",
+        "subscription_status": u.subscription_status or "",
+        "paid_until": u.paid_until.isoformat() + "Z" if u.paid_until else None,
+        "trial_ends_at": u.trial_ends_at.isoformat() + "Z" if u.trial_ends_at else None,
     }
 
 
@@ -3505,6 +3740,132 @@ def admin_list_users(admin: User = Depends(require_admin), db: Session = Depends
             "admin_count": _admin_count(db), "me": admin.id,
             "device_default_limit": devices.DEFAULT_LIMIT,
             "device_active_window_s": devices.ACTIVE_WINDOW_S}
+
+
+# ---------- operator: what it costs, and who gets it free ----------
+
+def _invite_json(db: Session, inv: Invite) -> dict:
+    maker = db.get(User, inv.created_by)
+    return {
+        "id": inv.id, "code": inv.code, "note": inv.note,
+        "state": billing.invite_state(inv),
+        "max_uses": inv.max_uses, "used_count": inv.used_count,
+        "created_by": maker.username if maker else "?",
+        "created_at": inv.created_at.isoformat() + "Z" if inv.created_at else None,
+        "expires_at": inv.expires_at.isoformat() + "Z" if inv.expires_at else None,
+        "revoked": bool(inv.revoked),
+        # Who actually used it. An operator handing out a code for one person
+        # wants to see it landed on that person, and to be able to undo it.
+        "used_by": [u.username for u in db.scalars(
+            select(User).where(User.invited_by_code == inv.code).limit(50))],
+    }
+
+
+@app.get("/api/admin/billing")
+def admin_billing_settings(admin: User = Depends(require_admin),
+                           db: Session = Depends(get_db)):
+    """Pricing, and the state of the Stripe credentials.
+
+    The keys themselves are never returned — only whether they are present and
+    whether they charge real cards. An operator console is a page in a browser,
+    and a secret that is displayed is a secret that ends up in a screenshot.
+    """
+    conf = billing.settings(db)
+    stored = {**billing.DEFAULTS, **billing._stored(db)}
+    return {
+        "settings": conf,
+        # What the operator asked for, which differs from `settings` when the
+        # Stripe key is missing — otherwise switching billing on with no key
+        # would look like it silently failed to save.
+        "wanted_enabled": bool(stored.get("enabled")),
+        "price_label": billing.price_label(conf),
+        "stripe": {
+            "configured": stripe_api.enabled(),
+            "webhook_configured": bool(stripe_api.webhook_secret()),
+            "live_mode": stripe_api.live_mode(),
+        },
+        "currencies": sorted(billing.CURRENCIES),
+        "intervals": sorted(billing.INTERVALS),
+        "webhook_path": "/api/stripe/webhook",
+        "counts": {
+            "comped": db.scalar(select(func.count(User.id)).where(
+                User.comped.is_(True))) or 0,
+            "paying": db.scalar(select(func.count(User.id)).where(
+                User.paid_until.isnot(None), User.paid_until > utcnow())) or 0,
+            "trialing": db.scalar(select(func.count(User.id)).where(
+                User.comped.is_(False), User.trial_ends_at.isnot(None),
+                User.trial_ends_at > utcnow())) or 0,
+        },
+    }
+
+
+@app.put("/api/admin/billing")
+def admin_save_billing(body: dict, admin: User = Depends(require_admin),
+                       db: Session = Depends(get_db)):
+    try:
+        billing.save_settings(db, body.get("settings") or body)
+    except billing.BillingError as exc:
+        raise HTTPException(422, str(exc))
+    return admin_billing_settings(admin=admin, db=db)
+
+
+@app.get("/api/admin/invites")
+def admin_list_invites(admin: User = Depends(require_admin),
+                       db: Session = Depends(get_db)):
+    rows = db.scalars(select(Invite).order_by(Invite.created_at.desc()).limit(200))
+    return {"invites": [_invite_json(db, inv) for inv in rows]}
+
+
+@app.post("/api/admin/invites", status_code=201)
+def admin_create_invite(body: dict, admin: User = Depends(require_admin),
+                        db: Session = Depends(get_db)):
+    """Mint a code that lets whoever redeems it use Delphi for nothing."""
+    try:
+        invite = billing.create_invite(
+            db, admin, note=body.get("note") or "",
+            max_uses=body.get("max_uses", 1),
+            expires_days=body.get("expires_days"))
+    except billing.BillingError as exc:
+        raise HTTPException(422, str(exc))
+    return _invite_json(db, invite)
+
+
+@app.post("/api/admin/invites/{invite_id}/revoke")
+def admin_revoke_invite(invite_id: int, body: dict | None = None,
+                        admin: User = Depends(require_admin),
+                        db: Session = Depends(get_db)):
+    """Stop a code working. Accounts it already comped keep their access —
+    taking that back is a separate, deliberate act on the account itself."""
+    invite = db.get(Invite, invite_id)
+    if invite is None:
+        raise HTTPException(404, "No such invitation")
+    invite.revoked = not bool((body or {}).get("undo"))
+    db.commit()
+    return _invite_json(db, invite)
+
+
+@app.post("/api/admin/users/{uid}/comp")
+def admin_comp_user(uid: int, body: dict, admin: User = Depends(require_admin),
+                    db: Session = Depends(get_db)):
+    """Give an account free access, or take it back.
+
+    Taking it back does not delete anything: the account falls to whatever it
+    would otherwise have — a live subscription, the rest of a trial, or the
+    paywall.
+    """
+    user = db.get(User, uid)
+    if user is None:
+        raise HTTPException(404, "No such account")
+    user.comped = bool(body.get("comped"))
+    user.comped_note = (str(body.get("note") or "").strip()[:200]
+                        if user.comped else "")
+    if not user.comped:
+        user.invited_by_code = ""
+    db.commit()
+    logging.getLogger("billing").info(
+        "%s %s free access for account %s", admin.username,
+        "granted" if user.comped else "revoked", uid)
+    return _user_admin_json(db, user)
 
 
 @app.get("/api/admin/users/{uid}/devices")

@@ -64,6 +64,30 @@
       <button class="icon-btn" id="btn-close-settings" aria-label="Close settings">✕</button>
     </div>
     <div class="settings-body">
+      <!-- Only rendered when this instance charges for access; on a free one
+           the whole section stays out of the way. -->
+      <div id="set-billing" hidden>
+        <h3 class="set-h">Subscription</h3>
+        <p id="set-billing-state" class="set-note"></p>
+        <div class="set-row">
+          <span id="set-billing-note" class="set-note"></span>
+          <span>
+            <button class="btn small" id="btn-manage-sub" hidden>Manage subscription</button>
+            <button class="btn small btn-primary" id="btn-subscribe" hidden>Subscribe</button>
+          </span>
+        </div>
+        <details id="set-invite-row">
+          <summary>I have an invitation code</summary>
+          <label class="field"><span>Code</span>
+            <input id="set-invite" type="text" autocomplete="off" spellcheck="false"
+                   placeholder="ABCD-EFGH-JKLM"></label>
+          <div class="set-row">
+            <span id="set-invite-status" class="set-note"></span>
+            <button class="btn small" id="btn-redeem-invite">Use this code</button>
+          </div>
+        </details>
+      </div>
+
       <h3 class="set-h">Appearance</h3>
       <label class="set-row"><span>Theme</span>
         <select id="set-theme">
@@ -1373,6 +1397,11 @@
           <input id="reg-email" type="email" autocomplete="email"></label>
         <label class="field"><span>Password <em class="note-muted">(8+ characters; a few unrelated words work well and are easy to remember)</em></span>
           <input id="reg-password" type="password" autocomplete="new-password"></label>
+        <label class="field" id="reg-invite-row"><span>Invitation code
+          <em class="note-muted">(optional — if an operator gave you one, it means
+          you never pay)</em></span>
+          <input id="reg-invite" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="ABCD-EFGH-JKLM"></label>
         <button class="btn btn-primary gate-btn" id="btn-register">Create account</button>
         <p class="gate-switch">Already registered? <a href="#" id="gate-to-signin">Sign in</a></p>
       </div>
@@ -1549,6 +1578,60 @@
               database.</span>
         <button class="btn small" id="btn-backup-accounts">💾 Download account backup</button>
       </div>
+
+      <!-- What Delphi costs, and who is exempt from paying it. The Stripe keys
+           are not here on purpose: they live in the environment, so a console
+           left open on a screen cannot give them away. -->
+      <h3 class="set-h">Access &amp; payment</h3>
+      <p class="set-note" id="billing-stripe-state">…</p>
+      <div class="builder-grid two">
+        <label class="field"><span>Price <em>(in cents — 900 is $9.00)</em></span>
+          <input id="bill-price" type="number" min="50" step="1"></label>
+        <label class="field"><span>Currency</span>
+          <select id="bill-currency"></select></label>
+        <label class="field"><span>Billed</span>
+          <select id="bill-interval">
+            <option value="month">monthly</option>
+            <option value="year">yearly</option>
+          </select></label>
+        <label class="field"><span>Free trial <em>(days; 0 = none)</em></span>
+          <input id="bill-trial" type="number" min="0" max="365" step="1"></label>
+      </div>
+      <label class="field"><span>What the subscription is called <em>(shown on the
+        Stripe checkout page and on the card statement)</em></span>
+        <input id="bill-product" type="text" maxlength="120"></label>
+      <label class="field"><span>Line shown on the paywall <em>(optional)</em></span>
+        <input id="bill-blurb" type="text" maxlength="300"
+               placeholder="e.g. Delphi is run by one person and paid for by its readers."></label>
+      <label class="check-row"><input type="checkbox" id="bill-enabled">
+        💳 Charge for access
+        <em class="note-muted">(off: everyone gets in free, whatever else is set
+        here. Turning it on starts the trial clock for accounts that have never
+        had one — accounts that existed before payments were added keep free
+        access permanently and are listed as invited below.)</em></label>
+      <div class="set-row">
+        <span id="bill-summary" class="set-note"></span>
+        <button class="btn small btn-primary" id="btn-save-billing">Save pricing</button>
+      </div>
+
+      <h3 class="set-h">Invitations</h3>
+      <p class="set-note">A code that lets whoever redeems it use Delphi for nothing,
+         permanently. Hand it over however you like — the link below fills it in
+         for them. Revoking a code stops it being used again; it does not take
+         access away from anyone who already used it (do that on the account).</p>
+      <div class="builder-grid two">
+        <label class="field"><span>Who is it for <em>(a note for you)</em></span>
+          <input id="inv-note" type="text" maxlength="200" placeholder="e.g. Sam at the paper"></label>
+        <label class="field"><span>How many may use it <em>(0 = no limit)</em></span>
+          <input id="inv-uses" type="number" min="0" max="10000" step="1" value="1"></label>
+        <label class="field"><span>Expires in <em>(days; blank = never)</em></span>
+          <input id="inv-days" type="number" min="1" max="3650" step="1"></label>
+      </div>
+      <div class="set-row">
+        <span id="inv-status" class="set-note"></span>
+        <button class="btn small" id="btn-create-invite">✉ Create an invitation</button>
+      </div>
+      <div id="admin-invites"></div>
 
       <h3 class="set-h">Accounts</h3>
       <div class="source-tools">

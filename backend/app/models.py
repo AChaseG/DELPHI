@@ -59,6 +59,78 @@ class User(Base):
     # moves everyone who has not been given a number of their own.
     device_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
 
+    # ---- access: paid, invited, or on trial (see billing.py) ----
+    #
+    # Four facts, not one state. State is derived from them (billing.access_of)
+    # because they change independently and from different places — a webhook
+    # moves the subscription, an operator moves `comped`, the clock moves the
+    # trial — and a single column would have each of those writers guessing
+    # what the others meant.
+    #
+    # Free forever, granted by the operator: an invited account, or one that
+    # predates billing being switched on. Outranks everything else, and is the
+    # only state that never expires.
+    comped: Mapped[bool] = mapped_column(Boolean, default=False)
+    comped_note: Mapped[str] = mapped_column(String(200), default="")
+    # Which invitation let them in, when one did. Kept so an operator can see
+    # what a code actually did, and revoke the people it let in.
+    invited_by_code: Mapped[str] = mapped_column(String(40), default="")
+    # End of the free trial. NULL on an account that never had one — comped, or
+    # created while billing was switched off entirely.
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True,
+                                                           default=None)
+    stripe_customer_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    subscription_id: Mapped[str] = mapped_column(String(64), default="")
+    # Stripe's own word for it: active, trialing, past_due, canceled, unpaid.
+    subscription_status: Mapped[str] = mapped_column(String(24), default="")
+    # Paid up to here — Stripe's current_period_end. Access is granted against
+    # this date rather than against the status, so a webhook that never arrives
+    # cannot cut off somebody who has paid: they keep what they bought until it
+    # runs out, and a card that stops working ends access at the period's end
+    # rather than the moment Stripe first mentions it.
+    paid_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True,
+                                                        default=None)
+
+
+class Invite(Base):
+    """An operator's invitation to use Delphi without paying.
+
+    A code, not an emailed link to one address: the operator hands it out
+    however they like — a link, a message, read aloud — and it comps whoever
+    redeems it. Limits are the operator's: how many may use it, and until when.
+    """
+    __tablename__ = "invites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    note: Mapped[str] = mapped_column(String(200), default="")   # who it is for
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # 0 = as many as anyone likes. A code for one person is max_uses=1.
+    max_uses: Mapped[int] = mapped_column(Integer, default=1)
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True,
+                                                        default=None)
+    # Revoked rather than deleted: the accounts it let in name it, and an
+    # operator asking "where did this person come from" deserves an answer.
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class InstanceSetting(Base):
+    """Operator-wide configuration, as JSON under a name.
+
+    Distinct from `User.settings`, which is one person's preferences. This is
+    the instance's own — what it charges, how long a trial runs — and it lives
+    in the database rather than in the environment so the operator can change
+    it from the console without a deploy.
+    """
+    __tablename__ = "instance_settings"
+
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow,
+                                                  onupdate=utcnow)
+
 
 class Source(Base):
     __tablename__ = "sources"

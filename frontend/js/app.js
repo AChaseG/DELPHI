@@ -509,6 +509,9 @@ function wireTopbar() {
   updateViewButtons();
   wirePantheons();
   wireAdmin();
+  wireBilling();
+  wireMyBilling();
+  refreshBilling();
   wireActionRail();
   wireLocations();
   // Reading-language picker: articles in other languages are translated
@@ -945,6 +948,22 @@ function wireGate() {
     }
   } catch (e) { /* private mode: no note, the gate still works */ }
 
+  /* An invitation arrives as a link — /?invite=CODE — so the code is filled in
+     rather than retyped from a message. Opening that link goes straight to the
+     Create-account form, because somebody following an invitation has no
+     account yet, and the code is kept for the length of the visit in case they
+     wander off to sign in with one they had forgotten about. */
+  const invited = new URLSearchParams(location.search).get("invite") || "";
+  if (invited) {
+    const field = el("reg-invite");
+    if (field) field.value = invited.trim().toUpperCase();
+    try { sessionStorage.setItem("gnd_invite", invited.trim()); } catch (e) { /* ok */ }
+    show("gate-register");
+    focus("reg-username");
+    say("You have been invited — create an account and the code below is applied "
+        + "automatically. It never expires into a bill.", true);
+  }
+
   on("gate-to-register", (e) => { e.preventDefault(); say(""); show("gate-register"); focus("reg-username"); });
   on("gate-to-signin", (e) => { e.preventDefault(); say(""); show("gate-signin"); focus("auth-username"); });
   on("gate-to-forgot", (e) => { e.preventDefault(); say(""); show("gate-forgot"); focus("forgot-email"); });
@@ -990,10 +1009,16 @@ function wireGate() {
   el("btn-register").onclick = () => busy("btn-register", "Creating your account…", async () => {
     try {
       const r = await API.register(
-        el("reg-username").value.trim(), el("reg-email").value.trim(), el("reg-password").value);
+        el("reg-username").value.trim(), el("reg-email").value.trim(),
+        el("reg-password").value, el("reg-invite").value.trim());
+      // An invitation that didn't take must be said out loud. The account is
+      // made either way, so swallowing this would leave somebody who was given
+      // free access wondering, later, why they are being asked to pay.
+      if (r.invite_error) say(`Account created, but the invitation was not used: ${r.invite_error}`);
       if (r.token) return finish(r);            // self-host mode: no mail configured
       show("gate-signin");                      // verification required
-      say(`Almost there — we emailed a verification link to ${r.email}. Click it, then sign in.`, true);
+      if (!r.invite_error)
+        say(`Almost there — we emailed a verification link to ${r.email}. Click it, then sign in.`, true);
     } catch (e) { say(e.message); }
   });
   el("btn-forgot").onclick = () => busy("btn-forgot", "Sending reset link…", async () => {
@@ -2747,6 +2772,8 @@ function wireAdmin() {
     el("admin-panel").hidden = false;
     await renderAdminUsers();
     renderServiceHealth();
+    renderBilling();
+    renderInvites();
   };
   feedback(el("btn-admin"));
   el("btn-close-admin").onclick = () => { el("admin-panel").hidden = true; };
@@ -2967,6 +2994,303 @@ async function renderServiceHealth() {
   }));
 }
 
+/* ---------- this account's own subscription ----------
+
+   Shown in Settings, and as a quiet line across the top while a trial is
+   running out. A trial that ends without warning is a service that stops
+   working for no reason the reader can see, which is the same thing as an
+   outage from where they sit. */
+
+let MY_BILLING = null;
+
+async function refreshBilling() {
+  try { MY_BILLING = await API.billingStatus(); }
+  catch (e) { return; }                 // never worth an error on the board
+  const b = MY_BILLING;
+  const box = el("set-billing");
+  if (!box) return;
+  box.hidden = !b.billing_enabled;
+  if (!b.billing_enabled) { renderTrialBar(null); return; }
+
+  const state = el("set-billing-state");
+  const until = b.until ? new Date(b.until).toLocaleDateString() : "";
+  state.textContent = {
+    comped: `You have free access${b.comped_note ? ` — ${b.comped_note}` : ""}. `
+            + "There is nothing to pay.",
+    paid: b.cancelling
+      ? `Subscribed, ending ${until}. You keep full access until then.`
+      : `Subscribed — ${b.price_label}. Next payment ${until}.`,
+    trial: `Free trial: ${b.days_left} day${b.days_left === 1 ? "" : "s"} left `
+           + `(until ${until}). After that, ${b.price_label}.`,
+    expired: `Your access has ended. ${b.price_label} to carry on.`,
+  }[b.state] || "";
+  el("set-billing-note").textContent =
+    b.state === "comped" ? "" : "Payment is handled by Stripe; Delphi never sees your card.";
+  el("btn-manage-sub").hidden = !b.can_manage;
+  el("btn-subscribe").hidden = !(b.state === "trial" || b.state === "expired");
+  el("set-invite-row").hidden = b.state === "comped";
+  renderTrialBar(b);
+}
+
+/* The one place this interrupts anybody: the last few days of a trial. Quiet,
+   dismissible for the session, and gone the moment it stops being true. */
+const TRIAL_WARN_DAYS = 5;
+
+function renderTrialBar(b) {
+  let bar = el("trial-bar");
+  const wanted = b && b.state === "trial" && b.days_left <= TRIAL_WARN_DAYS;
+  let dismissed = false;
+  try { dismissed = sessionStorage.getItem("gnd_trial_dismissed") === "1"; }
+  catch (e) { /* private mode */ }
+  if (!wanted || dismissed) { if (bar) bar.remove(); return; }
+  if (bar) bar.remove();
+  bar = document.createElement("div");
+  bar.id = "trial-bar";
+  bar.className = "trial-bar";
+  const text = document.createElement("span");
+  text.textContent = b.days_left <= 1
+    ? "Your free trial ends today."
+    : `Your free trial ends in ${b.days_left} days.`;
+  const sub = document.createElement("button");
+  sub.className = "btn small btn-primary";
+  sub.textContent = `Subscribe — ${b.price_label}`;
+  sub.onclick = () => startCheckout();
+  const close = document.createElement("button");
+  close.className = "icon-btn";
+  close.setAttribute("aria-label", "Dismiss");
+  close.textContent = "✕";
+  close.onclick = () => {
+    try { sessionStorage.setItem("gnd_trial_dismissed", "1"); } catch (e) { /* ok */ }
+    bar.remove();
+  };
+  bar.append(text, sub, close);
+  document.body.appendChild(bar);
+}
+
+async function startCheckout() {
+  try {
+    const r = await API.checkout();
+    if (r && r.url) location.assign(r.url);
+    else toast("Stripe didn't answer", "No checkout page came back. Try again shortly.");
+  } catch (e) { toast("Couldn't start the checkout", e.message); }
+}
+
+function wireMyBilling() {
+  const sub = el("btn-subscribe");
+  if (sub) { sub.onclick = startCheckout; feedback(sub, "Opening Stripe…"); }
+  const manage = el("btn-manage-sub");
+  if (manage) {
+    manage.onclick = async () => {
+      try {
+        const r = await API.billingPortal();
+        if (r && r.url) location.assign(r.url);
+      } catch (e) { toast("Couldn't open the billing page", e.message); }
+    };
+    feedback(manage, "Opening Stripe…");
+  }
+  const redeem = el("btn-redeem-invite");
+  if (redeem) {
+    redeem.onclick = async () => {
+      const code = (el("set-invite").value || "").trim();
+      const line = el("set-invite-status");
+      if (!code) { line.textContent = "Enter the code you were given."; return; }
+      line.textContent = "Checking…";
+      try {
+        await API.redeemInvite(code);
+        line.textContent = "That worked — you have free access.";
+        el("set-invite").value = "";
+        await refreshBilling();
+      } catch (e) { line.textContent = e.message; }
+    };
+    feedback(redeem, "Checking…");
+  }
+  // An invitation followed while already signed in: use it rather than making
+  // somebody find Settings for a code they have already handed over.
+  let pending = "";
+  try { pending = sessionStorage.getItem("gnd_invite") || ""; } catch (e) { /* ok */ }
+  const fromUrl = new URLSearchParams(location.search).get("invite") || pending;
+  if (fromUrl && Session.token()) {
+    API.redeemInvite(fromUrl.trim())
+      .then(() => {
+        try { sessionStorage.removeItem("gnd_invite"); } catch (e) { /* ok */ }
+        toast("Invitation applied", "You have free access to Delphi.", true);
+        refreshBilling();
+      })
+      .catch(() => { /* already comped, or not a code — Settings says why */ });
+  }
+}
+
+/* ---------- operator: pricing and invitations ----------
+
+   Two panels that are really one decision: what Delphi costs, and who is
+   exempt. Both are the operator's, both live in the database rather than the
+   environment so they can be changed without a deploy — and the Stripe keys
+   deliberately do not, so a console left open on a screen gives away a price
+   list and nothing else. */
+
+let BILLING_CONF = null;
+
+async function renderBilling() {
+  let data;
+  try { data = await API.adminBilling(); }
+  catch (e) { el("billing-stripe-state").textContent = e.message; return; }
+  BILLING_CONF = data;
+  const s = data.settings;
+
+  const currency = el("bill-currency");
+  if (!currency.options.length)
+    currency.replaceChildren(...data.currencies.map((c) => {
+      const o = document.createElement("option");
+      o.value = c; o.textContent = c.toUpperCase();
+      return o;
+    }));
+  currency.value = s.currency;
+  el("bill-price").value = s.price_cents;
+  el("bill-interval").value = s.interval;
+  el("bill-trial").value = s.trial_days;
+  el("bill-product").value = s.product_name;
+  el("bill-blurb").value = s.blurb || "";
+  el("bill-enabled").checked = !!s.enabled;
+
+  // The one thing an operator most needs to know before switching this on, and
+  // the one thing easiest to get wrong: a test key looks exactly like a live
+  // one and charges nobody.
+  const st = data.stripe;
+  const line = el("billing-stripe-state");
+  line.className = "set-note" + (st.configured ? "" : " warn");
+  line.textContent = !st.configured
+    ? "No Stripe key on this instance, so nothing can be charged and the paywall "
+      + "cannot be switched on. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET "
+      + "as secrets on the server, then reload."
+    : `Stripe connected in ${st.live_mode ? "LIVE mode — real cards" : "TEST mode — no real money"}`
+      + `. Webhook secret ${st.webhook_configured ? "set" : "MISSING — subscriptions "
+        + "will not update after payment"}. Point the Stripe webhook at `
+      + `${location.origin}${data.webhook_path}`;
+
+  const c = data.counts;
+  el("bill-summary").textContent =
+    `${c.paying} paying · ${c.trialing} in a trial · ${c.comped} with free access`
+    + (data.wanted_enabled && !s.enabled ? " · saved as ON but inactive without a Stripe key" : "");
+}
+
+function wireBilling() {
+  el("btn-save-billing").onclick = async () => {
+    const settings = {
+      price_cents: Number(el("bill-price").value || 0),
+      currency: el("bill-currency").value,
+      interval: el("bill-interval").value,
+      trial_days: Number(el("bill-trial").value || 0),
+      product_name: el("bill-product").value.trim(),
+      blurb: el("bill-blurb").value.trim(),
+      enabled: el("bill-enabled").checked,
+    };
+    if (settings.enabled && !(BILLING_CONF && BILLING_CONF.settings.enabled)
+        && !confirm("Start charging for access?\n\nAccounts that already exist keep "
+                    + "free access. New accounts get the trial, then the paywall.")) return;
+    try {
+      BILLING_CONF = await API.saveAdminBilling(settings);
+      await renderBilling();
+      toast("Pricing saved", BILLING_CONF.settings.enabled
+        ? `Delphi charges ${BILLING_CONF.price_label}.`
+        : "Access is free for everyone on this instance.", true);
+    } catch (e) { toast("Pricing not saved", e.message); }
+  };
+  feedback(el("btn-save-billing"), "Saving…");
+
+  el("btn-create-invite").onclick = async () => {
+    try {
+      const inv = await API.createInvite({
+        note: el("inv-note").value.trim(),
+        max_uses: Number(el("inv-uses").value || 1),
+        expires_days: el("inv-days").value ? Number(el("inv-days").value) : null,
+      });
+      el("inv-note").value = "";
+      await renderInvites();
+      el("inv-status").textContent = `Created ${inv.code}.`;
+      copyInviteLink(inv.code);
+    } catch (e) { el("inv-status").textContent = e.message; }
+  };
+  feedback(el("btn-create-invite"), "Creating…");
+}
+
+function inviteLink(code) {
+  return `${location.origin}/?invite=${encodeURIComponent(code)}`;
+}
+
+async function copyInviteLink(code) {
+  try {
+    await navigator.clipboard.writeText(inviteLink(code));
+    toast("Invitation link copied", `${code} — anyone opening that link gets the `
+          + "code filled in, and free access when they use it.", true);
+  } catch (e) {
+    // Clipboard access is refused in plenty of ordinary situations. The link
+    // is no use if it cannot be got at, so show it to be copied by hand.
+    toast("Invitation created", inviteLink(code), true);
+  }
+}
+
+async function renderInvites() {
+  const box = el("admin-invites");
+  let data;
+  try { data = await API.adminInvites(); }
+  catch (e) { box.textContent = e.message; return; }
+  box.innerHTML = "";
+  if (!data.invites.length) {
+    box.textContent = "No invitations yet.";
+    box.className = "set-note";
+    return;
+  }
+  box.className = "";
+  for (const inv of data.invites) {
+    const row = document.createElement("div");
+    row.className = "admin-row" + (inv.state === "open" ? "" : " disabled");
+
+    const head = document.createElement("div");
+    head.className = "admin-row-head";
+    const code = document.createElement("span");
+    code.className = "admin-name mono";
+    code.textContent = inv.code;
+    head.appendChild(code);
+    const state = document.createElement("span");
+    state.className = "admin-badge " + (inv.state === "open" ? "op" : "warn");
+    state.textContent = inv.state;
+    head.appendChild(state);
+    row.appendChild(head);
+
+    const meta = document.createElement("div");
+    meta.className = "admin-meta";
+    const uses = inv.max_uses
+      ? `${inv.used_count} of ${inv.max_uses} use${plural(inv.max_uses)}`
+      : `${inv.used_count} use${plural(inv.used_count)} · no limit`;
+    meta.textContent = [inv.note || "no note", uses,
+                        inv.expires_at ? "expires " + timeAgo(inv.expires_at) : "never expires",
+                        inv.used_by.length ? "used by " + inv.used_by.join(", ") : ""]
+      .filter(Boolean).join(" · ");
+    row.appendChild(meta);
+
+    const acts = document.createElement("div");
+    acts.className = "admin-acts";
+    const copy = document.createElement("button");
+    copy.className = "btn small";
+    copy.textContent = "Copy link";
+    copy.onclick = () => copyInviteLink(inv.code);
+    acts.appendChild(copy);
+    const rev = document.createElement("button");
+    rev.className = "btn small";
+    rev.textContent = inv.revoked ? "Restore" : "Revoke";
+    rev.title = inv.revoked
+      ? "Let this code be used again"
+      : "Stop this code working. Accounts it already let in keep their access.";
+    rev.onclick = async () => {
+      try { await API.revokeInvite(inv.id, inv.revoked); await renderInvites(); }
+      catch (e) { toast("Couldn't change that invitation", e.message); }
+    };
+    acts.appendChild(rev);
+    row.appendChild(acts);
+    box.appendChild(row);
+  }
+}
+
 async function renderAdminUsers(q = "") {
   const box = el("admin-users");
   box.textContent = "Loading…";
@@ -3092,6 +3416,19 @@ function adminUserRow(u) {
   if (u.is_admin) badge(u.config_admin ? "operator · built-in" : "operator", "op");
   if (u.disabled) badge("suspended", "warn");
   if (!u.email_verified) badge("unverified", "warn");
+  // What this account's access rests on. Only shown when the instance charges
+  // for access — on a free instance every row would say the same thing.
+  const access = u.access || {};
+  if (access.state && access.state !== "open") {
+    const label = {
+      comped: "invited · free",
+      paid: `paid${access.days_left != null ? ` · ${access.days_left}d left` : ""}`,
+      trial: `trial · ${access.days_left}d left`,
+      expired: "expired",
+    }[access.state] || access.state;
+    badge(label, access.state === "expired" ? "warn"
+                 : access.state === "comped" ? "op" : "");
+  }
   row.appendChild(head);
 
   const meta = document.createElement("div");
@@ -3137,6 +3474,26 @@ function adminUserRow(u) {
   if (!u.email_verified)
     btn("Verify", "Mark this email verified", () =>
       guard(() => API.adminVerify(u.id), `${u.username} verified.`));
+
+  /* Free access, given or taken back. Taking it back deletes nothing: the
+     account falls to whatever it would otherwise have had — a live
+     subscription, the rest of a trial, or the paywall. */
+  if (u.comped)
+    btn("Charge them", u.comped_note
+        ? `Free access, noted: ${u.comped_note}` : "End this account's free access", () => {
+      if (!confirm(`End free access for ${u.username}?\n\n`
+                   + `They keep everything they have made. If they have no `
+                   + `subscription and no trial left, they will see the paywall.`)) return;
+      guard(() => API.compUser(u.id, false), `${u.username} is no longer comped.`);
+    });
+  else
+    btn("Give free access", "Let this account use Delphi without paying", () => {
+      const note = prompt(`Give ${u.username} free access, permanently?\n\n`
+                          + `Optionally note why — it shows on their account and `
+                          + `in this list.`, "");
+      if (note === null) return;
+      guard(() => API.compUser(u.id, true, note), `${u.username} now has free access.`);
+    });
 
   btn("Devices", "What this account is being used on right now", async () => {
     try { showDevices(await API.adminDevices(u.id), u.username); }
