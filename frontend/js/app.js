@@ -2055,14 +2055,25 @@ async function showWhyItMatched(articleId) {
                   body: "the article body" };
   const first = why.hits[0];
   const more = why.hits.length - 1;
+  const times = first.count > 1 ? `, ${first.count} times` : ", once";
   box.textContent =
     `In “${feed.name}”: matched “${first.term}” in ${WHERE[first.where] || first.where}`
+    + (first.where === "body" ? times : "")
     + (more > 0 ? ` (and ${more} other term${plural(more)})` : "")
     + (why.body_only
        ? " — nothing in the headline or summary put it here, so this may be the "
          + "page's own menu or a promo rather than the story."
        : ".");
-  box.title = first.snippet || "";
+  // The quote used to be the tooltip, which is nothing at all on a phone — and
+  // a phone is where this question gets asked. It is the whole answer: seeing
+  // the sentence the word sits in settles in one glance whether the search is
+  // wrong or the word is simply being used in another sense.
+  if (first.snippet) {
+    const quote = document.createElement("q");
+    quote.className = "ar-why-quote";
+    quote.textContent = first.snippet;
+    box.append(document.createElement("br"), quote);
+  }
   box.className = "ar-why" + (why.body_only ? " ar-why-odd" : "");
   box.hidden = false;
 }

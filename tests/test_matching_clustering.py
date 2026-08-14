@@ -15,7 +15,12 @@ def _seed(db):
     db.add(src); db.flush()
     now = utcnow()
     a1 = Article(source_id=src.id, url="http://w/1", title="Major earthquake strikes Tokyo",
-                 summary="tsunami warning", content="A powerful quake hit BODYWORD.",
+                 summary="tsunami warning",
+                 # BODYWORD twice: a word said once, only in the body, and alone
+                 # is a passing mention and is dropped by default (see
+                 # tests/test_passing_mentions.py). What is under test here is
+                 # that the body is loaded and searched at all.
+                 content="A powerful quake hit BODYWORD. BODYWORD was cut off.",
                  language="en", importance=70, published_at=now,
                  cluster_tokens=cluster_tokens("Major earthquake strikes Tokyo"))
     a2 = Article(source_id=src.id, url="http://w/2", title="Local council approves budget",

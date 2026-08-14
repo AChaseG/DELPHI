@@ -97,7 +97,9 @@ def test_index_syncs_on_content_update_and_delete(seeded):
     db.add(art)
     db.commit()
     assert query_articles(db, {"keywords": ["zebra"]}, limit=10) == []
-    art.content = "a wild zebra appeared downtown"
+    # Twice: one mention, only in the body, is a passing mention and is dropped
+    # by default. The trigger is what is under test here, not that rule.
+    art.content = "a wild zebra appeared downtown; the zebra was caught by dusk"
     db.commit()
     hits = query_articles(db, {"keywords": ["zebra"]}, limit=10)
     assert len(hits) == 1 and hits[0].id == art.id

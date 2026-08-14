@@ -94,6 +94,24 @@ def article_text(article: Article) -> str:
     return f"{article.title}\n{article.summary}\n{article.content or ''}"
 
 
+# How many times a lone word has to appear in the body before it counts as what
+# the article is about. Twice, because once is what a passing mention looks
+# like: a colour called "Solar Yellow" in a kit review, a song called "Innocent
+# Wind" in a concert listing, "coal" in the name of a road. A story that is
+# actually about the thing says the word again.
+_PROMINENT_REPEATS = 2
+
+
+def _count_upto(pattern: re.Pattern, text: str, limit: int) -> int:
+    """Occurrences, stopping as soon as `limit` is reached."""
+    seen = 0
+    for _ in pattern.finditer(text):
+        seen += 1
+        if seen >= limit:
+            break
+    return seen
+
+
 def explain_text_match(criteria: dict, article: Article) -> list[dict]:
     """Which words put this article in this feed, and where they are.
 
@@ -135,6 +153,11 @@ def explain_text_match(criteria: dict, article: Article) -> list[dict]:
                 "term": term,
                 "where": field,
                 "snippet": ("…" if start else "") + snippet + ("…" if end < len(value) else ""),
+                # How often it is said at all. One mention deep in a 20 KB page
+                # is what an incidental match looks like, and the reader asking
+                # "why is this here" is owed that number rather than left to
+                # infer it from a single quoted line.
+                "count": _count_upto(pattern, article_text(article), 9),
             })
             break        # the first place it appears is the one worth showing
     return out
@@ -196,6 +219,27 @@ class CriteriaMatcher:
                 self.query_preds.append(compile_query(q))
             except QueryError:
                 self.query_preds.append(lambda text: False)  # invalid saved query matches nothing
+
+        # Every literal word or phrase the reader asked for, across keywords and
+        # every boolean query, with the pattern that finds it. Used to judge
+        # whether the words that matched are what the article is about — see
+        # `_is_about_it`. NEAR pairs have no single literal to point at and are
+        # left out, exactly as they are when explaining a match.
+        # De-duplicated, because the same word often arrives twice — once as a
+        # keyword and once inside a query — and two entries for one word would
+        # let it count as "two of the words agree" with itself.
+        self.terms: list[tuple[str, re.Pattern]] = []
+        seen_terms: set[str] = set()
+        for term, pattern in (list(zip(self.keywords, self.keyword_res))
+                              + [t for q in query_strings for t in query_terms(q)]):
+            key = " ".join(term.lower().split())
+            if key and key not in seen_terms:
+                seen_terms.add(key)
+                self.terms.append((term, pattern))
+        # Opt out per feed: keep articles where a term appears once, in the
+        # body, and nowhere else. Off by default, because that is the shape of
+        # a false match rather than a story.
+        self.passing_mentions = bool(self.criteria.get("passing_mentions"))
 
         hours = self.criteria.get("hours")
         self.since: datetime | None = None
@@ -261,8 +305,65 @@ class CriteriaMatcher:
             return False
         if self.query_preds and not any(pred(text) for pred in self.query_preds):
             return False
+        if not self.passing_mentions and self.terms and not self._is_about_it(article, text):
+            return False
         if self.geos and not any(self._in_area(article, g) for g in self.geos):
             return False
+        return True
+
+    def _is_about_it(self, article: Article, text: str) -> bool:
+        """Is one of the words that matched what this article is about?
+
+        The boolean has already said yes. This asks a second, narrower question,
+        and it exists because of a class of result that is correct and useless:
+        a football-kit review in an energy feed, because a colourway is called
+        "Solar Yellow"; a concert listing in the same feed, because a song is
+        called "Innocent Wind". The word really is there. Nothing about the
+        article is.
+
+        No dictionary of senses could settle those — "solar" means what the
+        sentence around it means — so the test is about *prominence* instead,
+        and it is the same judgement a person makes skimming a page:
+
+          · a phrase passes on its own. "Power plant" is not said in passing.
+          · a word in the headline or the summary passes. That is where a story
+            announces what it is about.
+          · two of the query's words agreeing passes. An energy story says
+            "solar" and "grid"; a kit review says one energy word, once.
+          · otherwise a lone word has to be used more than once in the body.
+
+        Everything a reader wants keeps arriving: a story about a solar farm
+        says "solar" in its headline, and if it somehow doesn't, it says it
+        again in the second paragraph. What stops arriving is the single
+        incidental mention — which is the whole of the complaint.
+        """
+        # Headline and summary first, and not only because that is the strongest
+        # signal: it is a few hundred characters against a body of up to 20,000,
+        # and nearly every article a reader wants is answered here. Measured on
+        # 20 KB bodies, going to the body first doubled the cost of matching an
+        # article; this way the common case is microseconds and only the
+        # articles about to be dropped pay for a second pass.
+        head = headline_text(article)
+        for _term, pattern in self.terms:
+            if pattern.search(head):
+                return True                      # named where it is announced
+
+        body = article.content or ""
+        for i, (term, pattern) in enumerate(self.terms):
+            if not pattern.search(body):
+                continue
+            if " " in term.strip():
+                return True                      # a phrase is specific already
+            # Cheapest question next: is it said again? The second occurrence of
+            # a word a story is about is usually a line or two away, so this
+            # normally stops early, where looking for a *different* word means
+            # reading the whole body once per remaining term.
+            if _count_upto(pattern, body, _PROMINENT_REPEATS) >= _PROMINENT_REPEATS:
+                return True
+            return any(p.search(body) for _t, p in self.terms[i + 1:])
+        # Nothing literal matched: the article is here on a NEAR pair, or on a
+        # NOT branch. Neither is a passing mention, and neither is this test's
+        # business.
         return True
 
     def _in_area(self, article: Article, area: dict) -> bool:

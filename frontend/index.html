@@ -949,10 +949,21 @@
           <p><b>Searches read the whole article</b>, not just what you can see on the
              card — a term buried in the body counts. So a story opened from one of
              your own feeds says <b>why it is there</b>: which of that feed's words
-             are in it and where, with the surrounding sentence on hover. When
+             are in it, where, how many times, and the sentence it sits in. When
              nothing in the headline or summary put it there the line turns amber,
              which usually means the words are in the page's own furniture rather
              than the reporting.</p>
+          <p><b>Passing mentions are dropped.</b> A bare word can be in an article
+             without the article being about it — a football kit colour called
+             "Solar Yellow", a song called "Innocent Wind", a road called Coal
+             Heritage Trail. The boolean is right and the result is useless, and no
+             list of word senses can settle it, because the meaning is in the
+             sentence. So a single word has to be <em>prominent</em> to count: named
+             in the headline or summary, or said at least twice, or turning up
+             alongside another of your terms. Quoted phrases are exempt — somebody
+             who wrote <code>"shale gas"</code> has already been specific. Tick
+             <b>🪶 Keep passing mentions</b> in the builder to switch it off for a
+             feed that is deliberately hunting for rare single mentions.</p>
           <p>A feed can hold <b>several searches</b> — each runs separately, all fill the
              same feed. Each row validates as you type, so a stray bracket is caught
              before you save rather than after.</p>
@@ -1576,6 +1587,17 @@
               <input type="checkbox" id="b-coverage" checked>
               🔍 Automatically ingest worldwide coverage of these queries/keywords
               <em class="note-muted">(recommended — adds a Google News source per query so matches aren't limited to the catalog)</em>
+            </label>
+            <label class="check-row gap-sm">
+              <input type="checkbox" id="b-passing">
+              🪶 Keep passing mentions
+              <em class="note-muted">(off by default. A single word said once, deep in
+              the article and nowhere near the headline, is usually the word in another
+              sense — a kit colour called “Solar Yellow” in a football report, a song
+              called “Innocent Wind” in a concert listing. With this off, a bare word has
+              to appear in the headline or summary, or be said twice, or turn up
+              alongside another of your terms. Quoted phrases are always kept, however
+              rarely they appear.)</em>
             </label>
           </div>
         </section>

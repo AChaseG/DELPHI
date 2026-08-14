@@ -198,6 +198,8 @@ const Builder = {
     if (c.date_from || c.date_to)
       lines.push(["Date range", `${c.date_from || "…"} → ${c.date_to || "…"}`]);
     if (c.hide_stale) lines.push(["Staleness", "hide events with no recent updates (threshold in Settings)"]);
+    if (c.passing_mentions)
+      lines.push(["Passing mentions", "kept — a term said once, deep in the article, still matches"]);
     if (c.source_ids.length) {
       const byId = new Map(this.sources.map(s => [s.id, s.name]));
       const named = c.source_ids.map(id => byId.get(id) || `source ${id}`);
@@ -366,6 +368,7 @@ const Builder = {
     if (!queries.length) queries.push("");
     for (const q of queries) this._addQueryRow(q);
     el("b-coverage").checked = item ? !!c.auto_coverage : true;
+    el("b-passing").checked = !!c.passing_mentions;
     el("b-importance").value = c.min_importance || 0;
     el("b-importance").dispatchEvent(new Event("input"));
     el("b-hours").value = c.hours || "";
@@ -443,6 +446,7 @@ const Builder = {
       geos: this.geos,
       geo: null,   // superseded by geos; cleared so it can't double-count
       auto_coverage: el("b-coverage").checked,
+      passing_mentions: el("b-passing").checked,
     };
     const sort = document.querySelector('input[name="b-sort"]:checked').value;
     // No "Untitled" fallback: a silently auto-named alert is one the user

@@ -13,6 +13,37 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-14",
+        "title": "A word said once is not what an article is about",
+        "items": [
+            "🪶 Reported with a link and a query: an energy search — solar OR "
+            "wind OR coal OR nuclear… — kept collecting a vote on the worst "
+            "football kit of the month. Nothing was broken. A kit colourway is "
+            "called <b>Solar Yellow</b>, so the page really does contain the "
+            "word, and the search was right to say so. The same thing turned up "
+            "before as a concert listing, because one of the songs is called "
+            "“Innocent Wind”.",
+            "🔍 No dictionary of word senses can fix that — “solar” means "
+            "whatever the sentence around it means. So Delphi now asks how "
+            "<b>prominent</b> a word is, which is the judgement you make "
+            "skimming a page: a bare word counts if it is in the headline or "
+            "summary, or if it is said at least twice, or if another of your "
+            "terms turns up too. One mention, buried in the body, on its own, is "
+            "a passing mention and no longer matches.",
+            "💬 Quoted phrases are exempt. Somebody who wrote “shale gas” has "
+            "already been specific, and holding a phrase to the same bar would "
+            "punish the very thing the query advice asks for.",
+            "🎚️ There is a switch, per feed: <b>🪶 Keep passing mentions</b> in "
+            "the builder restores the old behaviour for a search that is "
+            "deliberately hunting rare one-line mentions.",
+            "❓ And “why is this here” now answers in full. Open a story from "
+            "one of your own feeds and the line under it names the term, says "
+            "where it was found and how many times, and <b>quotes the sentence "
+            "it sits in</b> — which used to be a hover tooltip, and so was "
+            "invisible on a phone, which is where the question gets asked.",
+        ],
+    },
+    {
         "date": "2026-09-13",
         "title": "The outlet counts for as much as it used to again",
         "items": [
