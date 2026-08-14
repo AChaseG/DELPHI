@@ -13,6 +13,41 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-15",
+        "title": "intitle:, intext:, source:, site: — and AROUND(5)",
+        "items": [
+            "🎯 The operators every research guide lists are implemented, and "
+            "they are the sharpest tool for a search that keeps collecting the "
+            "wrong thing: <code>intitle:solar</code> matches only the headline, "
+            "<code>intext:solar</code> only the summary and body, "
+            "<code>source:Reuters</code> the publication, and "
+            "<code>site:bbc.co.uk</code> the site it was published on — with "
+            "<code>-site:example.com</code> to exclude one. Phrases work too: "
+            "<code>intitle:\"solar farm\"</code>.",
+            "🔭 An energy search that keeps finding football can now say "
+            "<b>intitle:solar OR intitle:wind OR intitle:\"natural gas\"</b>. A "
+            "story that is <i>about</i> something says so in its headline, so "
+            "this is the strictest filter available short of naming the "
+            "outlets.",
+            "📏 <code>AROUND(5)</code> is Google's spelling of "
+            "<code>NEAR/5</code>, and both work now. It used to parse as “this "
+            "AND the number 5 AND that”, so it quietly demanded the digit 5 be "
+            "in the article.",
+            "🚫 Here is the part worth knowing: those four operators were "
+            "already <i>accepted</i>. They just did nothing — "
+            "<code>intitle:sleep</code> became a single literal word that no "
+            "article contains, so the feed sat empty and nothing said why. "
+            "Every operator now either works or refuses. "
+            "<code>~synonyms</code> refuses, and says to write "
+            "<code>(academic OR scholarly)</code> instead, because there is no "
+            "thesaurus here to expand it.",
+            "🔒 Ordinary terms still read the article and nothing else — never "
+            "the outlet's name, the web address or the section it was filed "
+            "under. <code>source:</code> and <code>site:</code> are the only "
+            "way to reach those, and they are, because you typed them.",
+        ],
+    },
+    {
         "date": "2026-09-14",
         "title": "A word said once is not what an article is about",
         "items": [

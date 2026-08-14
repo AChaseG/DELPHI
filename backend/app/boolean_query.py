@@ -6,7 +6,7 @@ Grammar (case-insensitive keywords):
     and_expr := not_expr ( [AND] not_expr )*     # adjacency = implicit AND
     not_expr := NOT not_expr | near_expr
     near_expr:= atom ( NEAR[/n] atom )*          # operands: words/phrases only
-    atom     := '(' expr ')' | "quoted phrase" | word
+    atom     := '(' expr ')' | [field:] ( "quoted phrase" | word )
 
 Words and phrases match on word boundaries, case-insensitively.
 Example:  ("supply chain" OR semiconductor) AND (china OR taiwan) NOT rumor
@@ -18,15 +18,28 @@ Additional operator types:
   - Proximity: `a NEAR/5 b` matches when the two terms occur with at most
     5 words between them, in either order; bare NEAR defaults to NEAR/10.
     Chains (`a NEAR/3 b NEAR/3 c`) require each adjacent pair to be close.
+    `a AROUND(5) b` is Google's spelling of the same thing.
+  - Field scoping: `intitle:`, `intext:`, `source:` and `site:` restrict a word
+    or phrase to one part of the article instead of all of it.
 
 Google-style input is accepted too, since users paste queries they first
 tried in a search engine: curly “smart quotes” are normalized, a leading
 minus negates a term (-sports == NOT sports), and | / || mean OR (&& = AND).
+
+**Everything in this grammar either works or says it doesn't.** That is a rule
+rather than an aspiration, and it is here because the alternative shipped: every
+operator on Google's own cheat-sheet used to parse and then quietly do nothing.
+`intitle:sleep` became a literal word "intitle:sleep", which no article contains,
+so the feed was empty and nothing said why. `sleep AROUND (5) anxiety` parsed as
+`sleep AND 5 AND anxiety` and demanded the digit 5 in the text. `~academic`
+matched nothing at all. A query language that accepts a line and silently means
+something else is worse than one that refuses it.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 
 class QueryError(ValueError):
@@ -35,9 +48,62 @@ class QueryError(ValueError):
 
 @dataclass
 class Token:
-    kind: str  # AND OR NOT NEAR LPAREN RPAREN TERM
+    kind: str  # AND OR NOT NEAR LPAREN RPAREN TERM FIELD
     value: str
     pos: int
+
+
+# What a scoped term is matched against. Written out as its own type because
+# "the text" stopped being one string the moment `intitle:` existed, and passing
+# a bare string around would have made every field operator silently match the
+# whole article — the exact failure this grammar is meant to stop making.
+@dataclass(frozen=True)
+class Text:
+    all: str = ""          # headline + summary + body, what an unscoped term reads
+    headline: str = ""     # intitle:
+    text: str = ""         # intext: — summary and body, the article's own words
+    source: str = ""       # source: — the publication's name
+    site: str = ""         # site: — the host the article was published on
+
+    @classmethod
+    def plain(cls, text: str) -> "Text":
+        """A bare string, for callers with nothing but the article's text.
+
+        The scoped fields stay empty rather than falling back to the whole
+        article: a caller that cannot say what the headline is must not have
+        `intitle:` quietly answer as though everything were the headline."""
+        return cls(all=text, text=text)
+
+    def field(self, name: str) -> str:
+        return {"title": self.headline, "text": self.text,
+                "source": self.source, "site": self.site}.get(name, self.all)
+
+
+def host_of(url: str) -> str:
+    """The bare host of an article URL, for `site:`. www. is dropped so
+    `site:bbc.co.uk` matches www.bbc.co.uk, which is what anyone means."""
+    try:
+        host = (urlparse(url or "").hostname or "").lower()
+    except ValueError:
+        return ""
+    return host[4:] if host.startswith("www.") else host
+
+
+# The field prefixes, and the aliases people actually type. Google's names are
+# the canonical ones because that is where the habit comes from.
+_FIELDS = {
+    "intitle": "title", "title": "title", "headline": "title",
+    "intext": "text", "text": "text", "body": "text",
+    "source": "source", "publication": "source", "outlet": "source",
+    "site": "site", "host": "site", "domain": "site",
+}
+_FIELD_PREFIX_RE = re.compile(r"^(" + "|".join(sorted(_FIELDS)) + r"):(.*)$", re.I)
+
+# Google writes proximity as AROUND(5); this grammar writes NEAR/5. Rewritten
+# before tokenizing, because "(" is a grouping token here and `AROUND (5) x`
+# would otherwise parse as an AND of the number 5.
+_AROUND_RE = re.compile(r"\bAROUND\s*(?:\(\s*(\d+)\s*\)|/\s*(\d+))", re.I)
+_BARE_AROUND_RE = re.compile(r"\bAROUND\b(?!\s*/)", re.I)
 
 
 _TOKEN_RE = re.compile(
@@ -57,6 +123,8 @@ def normalize_quotes(text: str) -> str:
 
 def tokenize(query: str) -> list[Token]:
     query = normalize_quotes(query)
+    query = _AROUND_RE.sub(lambda m: "NEAR/" + (m.group(1) or m.group(2)), query)
+    query = _BARE_AROUND_RE.sub("NEAR", query)
     tokens: list[Token] = []
     i = 0
     while i < len(query):
@@ -97,12 +165,35 @@ def tokenize(query: str) -> list[Token]:
                         raise QueryError("NEAR distance must be between 1 and 100")
                 tokens.append(Token("NEAR", str(n), m.start()))
             elif word.startswith("-") and len(word) > 1:
-                # Google-style negation: -sports == NOT sports
+                # Google-style negation: -sports == NOT sports, and -site:x too.
                 tokens.append(Token("NOT", "NOT", m.start()))
-                tokens.append(Token("TERM", word[1:], m.start() + 1))
+                tokens.extend(_word_tokens(word[1:], m.start() + 1))
+            elif word.startswith("~"):
+                # Google's synonym operator. Delphi has no thesaurus, and the
+                # honest answer is the one that says so: this used to compile to
+                # \b~academic\b and match nothing, forever, in silence.
+                raise QueryError(
+                    f"~ (synonyms) isn't supported at position {m.start()} — there "
+                    f"is no thesaurus here to expand it. Write the alternatives "
+                    f"yourself: ({word[1:]} OR …).")
             else:
-                tokens.append(Token("TERM", word, m.start()))
+                tokens.extend(_word_tokens(word, m.start()))
     return tokens
+
+
+def _word_tokens(word: str, pos: int) -> list[Token]:
+    """One bare word, which may carry a `field:` prefix.
+
+    A prefix with nothing after it (`intitle:"sleep deprivation"`) scopes
+    whatever comes next; the parser picks that up from the FIELD token.
+    """
+    m = _FIELD_PREFIX_RE.match(word)
+    if not m:
+        return [Token("TERM", word, pos)]
+    field, rest = _FIELDS[m.group(1).lower()], m.group(2)
+    if not rest:
+        return [Token("FIELD", field, pos)]
+    return [Token("FIELD", field, pos), Token("TERM", rest, pos + len(m.group(1)) + 1)]
 
 
 def _word_pattern(word: str) -> str:
@@ -213,6 +304,14 @@ class _Parser:
                 raise QueryError(f"Missing ')' for '(' at position {tok.pos}")
             self.next()
             return node
+        if tok.kind == "FIELD":
+            operand = self.peek()
+            if operand is None or operand.kind != "TERM":
+                raise QueryError(
+                    f"{tok.value}: at position {tok.pos} needs a word or a "
+                    f'"quoted phrase" straight after it')
+            self.next()
+            return ("scoped", tok.value, _term_regex(operand.value), operand.value)
         if tok.kind == "TERM":
             return ("term", _term_regex(tok.value), tok.value)
         if tok.kind == "NEAR":
@@ -221,7 +320,10 @@ class _Parser:
 
 
 def compile_query(query: str):
-    """Compile a boolean query string into predicate(text) -> bool.
+    """Compile a boolean query string into predicate(Text | str) -> bool.
+
+    A bare string is accepted and read as `Text.plain` — the whole article with
+    no fields, so scoped operators see only what that leaves them.
 
     Raises QueryError on invalid syntax.
     """
@@ -230,10 +332,12 @@ def compile_query(query: str):
         raise QueryError("Empty query")
     tree = _Parser(tokens).parse()
 
-    def evaluate(node, text: str) -> bool:
+    def evaluate(node, text: Text) -> bool:
         kind = node[0]
         if kind == "term":
-            return bool(node[1].search(text))
+            return bool(node[1].search(text.all))
+        if kind == "scoped":
+            return bool(node[2].search(text.field(node[1])))
         if kind == "not":
             return not evaluate(node[1], text)
         if kind == "and":
@@ -242,7 +346,8 @@ def compile_query(query: str):
             return evaluate(node[1], text) or evaluate(node[2], text)
         raise AssertionError(kind)
 
-    return lambda text: evaluate(tree, text)
+    return lambda text: evaluate(
+        tree, text if isinstance(text, Text) else Text.plain(text))
 
 
 # Terms FTS5 cannot be trusted to tokenize the way the Python matcher does:
@@ -275,6 +380,15 @@ def fts_expression(query: str) -> str | None:
 
 def _fts_node(node) -> str | None:
     kind = node[0]
+    if kind == "scoped":
+        # The index holds title, summary and content, so a term scoped to any of
+        # those is still findable through it — unscoped, which is a superset and
+        # therefore safe. A term scoped to the publication or the host is not in
+        # the index at all, and pretending otherwise would drop real matches, so
+        # that branch gives up on narrowing instead.
+        if node[1] not in ("title", "text"):
+            return None
+        return _fts_node(("term", node[2], node[3]))
     if kind == "term":
         # NEAR pairs are ("term", regex) with no original text to search for.
         if len(node) <= 2:
@@ -325,6 +439,42 @@ def query_terms(query: str) -> list[tuple[str, re.Pattern]]:
     seen: set[str] = set()
 
     def walk(node):
+        if node[0] == "scoped":
+            if node[3].lower() not in seen:
+                seen.add(node[3].lower())
+                out.append((node[3], node[2]))
+            return
+        if node[0] == "term":
+            if len(node) > 2 and node[2].lower() not in seen:
+                seen.add(node[2].lower())
+                out.append((node[2], node[1]))
+            return
+        for child in node[1:]:
+            walk(child)
+
+    walk(tree)
+    return out
+
+
+def plain_terms(query: str) -> list[tuple[str, re.Pattern]]:
+    """Only the terms that search the whole article — no field-scoped ones.
+
+    Used by the passing-mention rule, which asks whether a word is prominent
+    enough to be what an article is about. A word the reader already pinned to
+    the headline, the publication or the host is not that question: they have
+    said where they want it, and where they want it is the answer.
+    """
+    try:
+        tree = _Parser(tokenize(query)).parse()
+    except QueryError:
+        return []
+
+    out: list[tuple[str, re.Pattern]] = []
+    seen: set[str] = set()
+
+    def walk(node):
+        if node[0] == "scoped":
+            return
         if node[0] == "term":
             if len(node) > 2 and node[2].lower() not in seen:
                 seen.add(node[2].lower())
@@ -388,8 +538,17 @@ def ambiguous_terms(query: str) -> list[str]:
     except QueryError:
         return []
     seen: list[str] = []
+    scoped_next = False
     for tok in tokens:
+        if tok.kind == "FIELD":
+            scoped_next = True
+            continue
         if tok.kind != "TERM":
+            continue
+        if scoped_next:
+            # `intitle:wind` is not the bare word this warns about: the reader
+            # has already said where they want it, which is most of the advice.
+            scoped_next = False
             continue
         word = tok.value.strip().lower()
         if " " in word or "*" in word or "?" in word:

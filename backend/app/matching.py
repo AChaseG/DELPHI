@@ -26,7 +26,8 @@ from sqlalchemy.orm import Session, defer, joinedload
 
 from sqlalchemy import text
 
-from .boolean_query import QueryError, compile_query, fts_expression, query_terms
+from .boolean_query import (QueryError, Text, compile_query, fts_expression,
+                            host_of, plain_terms, query_terms)
 from .geo import places_match_geo
 from .models import Article, Source, utcnow
 
@@ -90,8 +91,28 @@ def _kw_regex(kw: str) -> re.Pattern:
 
 
 def article_text(article: Article) -> str:
-    """Everything a text predicate searches: headline, summary, and body."""
+    """Everything an unscoped text predicate searches: headline, summary, body."""
     return f"{article.title}\n{article.summary}\n{article.content or ''}"
+
+
+def match_fields(article: Article, source: Source | None = None) -> Text:
+    """The article split into the parts a scoped term can name.
+
+    `source:` and `site:` are the two places a query may deliberately look
+    outside the article, and they are deliberate: a reader who writes
+    `source:Reuters` has asked for the masthead. Nothing reaches them without
+    being asked for by name, which is what separates this from the accidental
+    matching that put an outlet's own name in every one of its summaries.
+    """
+    source = source or article.source
+    summary_and_body = f"{article.summary}\n{article.content or ''}"
+    return Text(
+        all=f"{article.title}\n{summary_and_body}",
+        headline=article.title or "",
+        text=summary_and_body,
+        source=(source.name if source else "") or "",
+        site=host_of(article.url or ""),
+    )
 
 
 # How many times a lone word has to appear in the body before it counts as what
@@ -231,7 +252,7 @@ class CriteriaMatcher:
         self.terms: list[tuple[str, re.Pattern]] = []
         seen_terms: set[str] = set()
         for term, pattern in (list(zip(self.keywords, self.keyword_res))
-                              + [t for q in query_strings for t in query_terms(q)]):
+                              + [t for q in query_strings for t in plain_terms(q)]):
             key = " ".join(term.lower().split())
             if key and key not in seen_terms:
                 seen_terms.add(key)
@@ -263,18 +284,26 @@ class CriteriaMatcher:
             pass  # malformed dates: ignore the bound rather than match nothing
 
     def matches(self, article: Article, source: Source | None = None,
-                text: str | None = None) -> bool:
+                text: Text | str | None = None) -> bool:
         """Does this article satisfy the criteria?
 
-        `text` is what the text predicates search. Pass it when testing one
-        article against many criteria — it runs to 20 KB, and assembling it
-        once per matcher is the bulk of evaluating a board's worth of alerts."""
+        `text` is what the text predicates search — a `Text`, which is the
+        article split into the parts `intitle:`, `intext:`, `source:` and
+        `site:` can name. Pass it when testing one article against many
+        criteria: it runs to 20 KB, and assembling it once per matcher is the
+        bulk of evaluating a board's worth of alerts. A plain string is accepted
+        and read as an article with no fields."""
         source = source or article.source
         # Full recall: criteria see the fetched article body, not just the
         # headline and feed summary. Assembled only when a predicate needs it —
         # touching .content would otherwise force-load a deferred column.
         if text is None:
-            text = article_text(article) if self.needs_text else ""
+            fields = match_fields(article, source) if self.needs_text else Text()
+        elif isinstance(text, Text):
+            fields = text
+        else:
+            fields = Text.plain(text)
+        text = fields.all
 
         if self.since and article.published_at and article.published_at < self.since:
             return False
@@ -303,7 +332,7 @@ class CriteriaMatcher:
             return False
         if any(r.search(text) for r in self.exclude_res):
             return False
-        if self.query_preds and not any(pred(text) for pred in self.query_preds):
+        if self.query_preds and not any(pred(fields) for pred in self.query_preds):
             return False
         if not self.passing_mentions and self.terms and not self._is_about_it(article, text):
             return False

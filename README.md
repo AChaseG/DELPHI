@@ -73,6 +73,19 @@ feeds**.
     usually not what was meant and occasionally exactly what was. The engine is
     checked against ordinary boolean logic over randomly generated expressions
     in `tests/test_boolean_query.py`.
+  - **field operators** — `intitle:`, `intext:`, `source:`, `site:` (and
+    `-site:` to exclude a publisher), plus `NEAR/5` proximity in Google's
+    `AROUND(5)` spelling. `~synonyms` is refused with a message rather than
+    accepted, because there is no thesaurus to expand it. The rule the grammar
+    is held to is in `boolean_query.py`: every operator either works or says it
+    doesn't — the four above used to parse and silently mean something else, so
+    a feed written with them was empty and nothing explained why.
+  - **passing mentions are dropped** — a bare word that appears once, only in
+    the body, and alone among the query's terms is an incidental use of the
+    word rather than the subject of the article (a kit colour called "Solar
+    Yellow" in an energy feed). A word in the headline or summary, said twice,
+    or accompanied by another of the query's terms counts; quoted phrases are
+    exempt. `passing_mentions: true` in a feed's criteria turns it off.
   - **story focus** — clicking a headline never navigates away: it opens the
     story in the dashboard. One view whether one outlet has it or forty: the
     report you picked (summary in full, an extract of the body, outlet,

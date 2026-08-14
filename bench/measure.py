@@ -51,7 +51,7 @@ from sqlalchemy import func, select, text  # noqa: E402
 from backend.app import clustering, matching  # noqa: E402
 from backend.app.database import SessionLocal  # noqa: E402
 from backend.app.ingest import RecentClusters, evaluate_alerts  # noqa: E402
-from backend.app.matching import CriteriaMatcher, article_text  # noqa: E402
+from backend.app.matching import CriteriaMatcher, match_fields  # noqa: E402
 from backend.app.models import Article, Event, utcnow  # noqa: E402
 
 
@@ -152,7 +152,7 @@ def measure_ingest(db) -> dict:
 
     def alerts():
         for a in arriving:
-            body = article_text(a)
+            body = match_fields(a)
             for m in matchers:
                 m.matches(a, a.source, text=body)
 

@@ -27,7 +27,7 @@ from .clustering import assign_events, live_events
 from .content import clean_summary, fetch_article_text
 from .database import SessionLocal
 from .events import broadcaster
-from .matching import CriteriaMatcher, article_text
+from .matching import CriteriaMatcher, match_fields
 from .models import (Alert, AlertEvent, Article, Event, FavoriteLocation, Source,
                      Translation, User, ViewedArticle, ViewedEvent, utcnow)
 from .geo import extract_places
@@ -591,7 +591,7 @@ def evaluate_alerts(db, new_articles: list[Article]) -> list[dict]:
     matchers = [(alert, CriteriaMatcher(alert.criteria)) for alert in alerts]
     reads_text = any(matcher.needs_text for _, matcher in matchers)
     for article in new_articles:
-        text = article_text(article) if reads_text else ""
+        text = match_fields(article) if reads_text else None
         for alert, matcher in matchers:
             if matcher.matches(article, article.source, text=text):
                 db.add(AlertEvent(alert_id=alert.id, article_id=article.id))

@@ -937,7 +937,29 @@
              <b>proximity</b>: <code>earthquake NEAR/5 tokyo</code> matches when the
              terms sit at most 5 words apart in either order (<code>NEAR</code> alone
              means NEAR/10; chains like <code>a NEAR/3 b NEAR/3 c</code> check each
-             adjacent pair).</p>
+             adjacent pair). Google writes proximity as
+             <code>earthquake AROUND(5) tokyo</code>; both spellings work.</p>
+          <p><b>Field operators</b> point a term at one part of the article instead of
+             all of it, which is the sharpest tool here for a query that keeps
+             collecting the wrong thing:</p>
+          <ul>
+            <li><code>intitle:solar</code> — only the headline. A story that is
+                <em>about</em> something says so there, so this is the strongest filter
+                available; <code>intitle:"solar farm"</code> takes a phrase.</li>
+            <li><code>intext:solar</code> — only the summary and the fetched body,
+                never the headline.</li>
+            <li><code>source:Reuters</code> — the publication's name.</li>
+            <li><code>site:bbc.co.uk</code> — the site it was published on, and
+                <code>-site:example.com</code> excludes one. <code>www.</code> is
+                ignored.</li>
+          </ul>
+          <p>Everything else in a search reads the article and nothing but the article
+             — never the outlet's name, the web address, or the section it was filed
+             under. <code>source:</code> and <code>site:</code> are the two exceptions,
+             and they are exceptions because you typed them.</p>
+          <p><code>~word</code> (synonyms) is <b>not</b> supported and says so rather
+             than matching nothing: there is no thesaurus here, so write the
+             alternatives yourself — <code>(academic OR scholarly)</code>.</p>
           <p><b>AND binds tighter than OR</b>, as it does everywhere else. So
              <code>"data center" OR datacenter NOT sports</code> reads as
              <code>"data center" OR (datacenter AND NOT sports)</code> — the exclusion
@@ -1578,9 +1600,10 @@
           </div>
           <div class="field">
             <span>Boolean searches <em>(optional — AND or spaces narrow, OR broadens, NOT or -term
-              excludes, "quotes" match exact phrases, parentheses group; plus strik* wildcards and
-              NEAR/5 proximity. Each search runs separately; matches from all of them populate this
-              one feed)</em></span>
+              excludes, "quotes" match exact phrases, parentheses group; plus strik* wildcards,
+              NEAR/5 (or AROUND(5)) proximity, and intitle: / intext: / source: / site: to aim a
+              term at one part of the article. Each search runs separately; matches from all of them
+              populate this one feed)</em></span>
             <div id="b-queries"></div>
             <div><button class="btn small" id="btn-add-query">+ Add another Boolean search</button></div>
             <label class="check-row gap-sm">
