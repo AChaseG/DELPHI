@@ -121,6 +121,17 @@ Who is affected, precisely:
   many, given an expiry, and revoked — revoking stops further use without
   evicting anyone who already used it.
 
+Stripe's **Branding settings** (Settings → Business → Branding) decide how the
+checkout page, receipts and invoices look. The files to upload are in
+`frontend/img/brand/`, cut from the same artwork the app uses:
+
+| Field | Use | Why |
+|-------|-----|-----|
+| Icon | `frontend/img/brand/delphi-icon.png` (512×512) | The crest alone, squared, with a margin so a circular crop keeps its rim. |
+| Logo | `frontend/img/brand/delphi-logo.png` (431×512) | The full lockup — crest, wordmark, tagline. |
+| Brand color | `#151815` | Delphi's own surface. It fills the invoice/receipt header, where gold artwork on near-black is the app's actual look. |
+| Accent color | `#866d1d` | Delphi's gold, darkened until white text on it reaches 4.98:1. The UI gold `#d4af37` is the same hue but only 2.10:1 against white, which is unreadable on a button. |
+
 Tax is yours: Stripe is a payment processor, not a merchant of record, so VAT
 and sales-tax registration where your customers are is on you. Stripe Tax can
 compute it, but you remain the seller. A merchant-of-record service (Paddle,
