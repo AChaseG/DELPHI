@@ -129,8 +129,12 @@ checkout page, receipts and invoices look. The files to upload are in
 |-------|-----|-----|
 | Icon | `frontend/img/brand/delphi-icon.png` (512×512) | The crest alone, squared, with a margin so a circular crop keeps its rim. |
 | Logo | `frontend/img/brand/delphi-logo.png` (431×512) | The full lockup — crest, wordmark, tagline. |
-| Brand color | `#151815` | Delphi's own surface. It fills the invoice/receipt header, where gold artwork on near-black is the app's actual look. |
-| Accent color | `#866d1d` | Delphi's gold, darkened until white text on it reaches 4.98:1. The UI gold `#d4af37` is the same hue but only 2.10:1 against white, which is unreadable on a button. |
+| Brand color | `#1b5e20` | Green, per Delphi's own accent, dark enough that the gold crest still reads on it and white type is 7.9:1. The UI greens are too light for the header: the logo washes out on `#4caf50` (white type 2.8:1) and is muddy on `#2e7d32` (5.1:1). |
+| Accent color | `#866d1d` | Delphi's gold, darkened until white text on it reaches 4.98:1 — Stripe paints the Pay button *and* receipt links with this, and the UI gold `#d4af37` is the same hue at 2.10:1, which is an unreadable label and an unreadable link. |
+
+`frontend/img/brand/stripe-branding-preview.png` is a mock of the invoice card in
+those colours; the greens either side of the recommendation are in the same
+image, because "the logo washes out" is easier to see than to describe.
 
 Tax is yours: Stripe is a payment processor, not a merchant of record, so VAT
 and sales-tax registration where your customers are is on you. Stripe Tax can
