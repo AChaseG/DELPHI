@@ -3658,6 +3658,7 @@ const LocationsPanel = {
     if (name && !el("loc-name").value.trim()) el("loc-name").value = name;
     el("loc-coords").textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
     el("btn-loc-save").disabled = false;
+    el("loc-create").hidden = false;      // there is somewhere to put now
     this._drawPending();
     // A place can be picked from the search box before the map has finished
     // loading, or when it failed to load at all.
@@ -3710,13 +3711,23 @@ const LocationsPanel = {
     }
   },
 
+  /* Two lists: the places the map is currently showing, and the rest.
+     Split rather than filtered — this board's premise is that the map is the
+     filter, but a saved place you cannot find because you panned away from it
+     is a place you cannot delete either. */
   renderList() {
     const box = el("loc-list");
+    const rest = el("loc-elsewhere");
     box.innerHTML = "";
+    rest.innerHTML = "";
     if (!LOCATIONS.length) {
-      box.appendChild(feedEmpty("None yet — search for a place or click the map."));
+      el("loc-elsewhere-head").hidden = true;
+      box.appendChild(feedEmpty("None yet — press ＋ New location, or click the map."));
       return;
     }
+    const bounds = MapBoard.map ? MapBoard.map.getBounds() : null;
+    const seen = (loc) => !bounds || bounds.contains(L.latLng(loc.lat, loc.lon));
+    let inView = 0;
     for (const loc of LOCATIONS) {
       const row = document.createElement("div");
       row.className = "pn-row";
@@ -3765,8 +3776,11 @@ const LocationsPanel = {
         });
         row.appendChild(del);
       }
-      box.appendChild(row);
+      if (seen(loc)) { inView += 1; box.appendChild(row); }
+      else rest.appendChild(row);
     }
+    if (!inView) box.appendChild(feedEmpty("None on this part of the map."));
+    el("loc-elsewhere-head").hidden = !rest.children.length;
   },
 
   startEdit(loc) {
@@ -3787,6 +3801,7 @@ const LocationsPanel = {
     el("btn-loc-save").textContent = "Save location";
     el("btn-loc-save").disabled = true;
     el("btn-loc-cancel").hidden = true;
+    el("loc-create").hidden = true;
     this.clearError();
     this._drawPending();
   },
@@ -3830,6 +3845,17 @@ function wireMapBoard() {
   el("btn-view-map").onclick = () => setView("map");
   for (const b of el("map-tabs").querySelectorAll("button"))
     b.onclick = () => MapBoard.showPane(b.dataset.pane);
+
+  // One way to make each of the two things this board is about, on the tab
+  // that is about it. The alert builder is the same one the rail opens; a
+  // location is made on the map, so this reveals the form and the search box
+  // rather than opening a dialogue over the thing you are pointing at.
+  el("btn-new-alert").onclick = () => openBuilder("alert");
+  el("btn-new-location").onclick = () => {
+    MapBoard.showPane("locations");
+    el("loc-create").hidden = false;
+    el("loc-search").focus();
+  };
 }
 
 function wireLocations() {
@@ -4619,7 +4645,7 @@ const MapBoard = {
   map: null,
   locations: null,        // watched places: rings and stars
   alerts: null,           // alert hits and alert geofences
-  pane: "inview",
+  pane: "alerts",
   _wanted: null,
 
   async open() {
@@ -4662,10 +4688,14 @@ const MapBoard = {
     this.map.on("click", (e) => {
       LocationsPanel.setPoint(e.latlng.lat, e.latlng.lng);
       this.showPane("locations");
+      el("loc-name").focus();
     });
     // The pane follows the map. `moveend` covers pan, zoom and a programmatic
     // setView alike, so there is one place this is kept in step.
-    this.map.on("moveend", () => this.renderInView());
+    this.map.on("moveend", () => {
+      this.renderInView();
+      LocationsPanel.renderList();
+    });
     LocationsPanel.map = this.map;
     LocationsPanel.saved = this.locations;
     return this._wanted;
@@ -4677,8 +4707,10 @@ const MapBoard = {
       b.classList.toggle("active", b.dataset.pane === which);
     for (const p of document.querySelectorAll("#map-side .map-pane"))
       p.hidden = p.dataset.pane !== which;
-    if (which === "alerts") renderAlertsPanel();
-    if (which === "inview") this.renderInView();
+    // The alerts pane carries the in-view groups above the alert list, so
+    // both are refreshed when it is the one being shown.
+    if (which === "alerts") { renderAlertsPanel(); this.renderInView(); }
+    if (which === "locations") LocationsPanel.renderList();
   },
 
   /* Alert hits and geofences, on the same map as the watched places. */

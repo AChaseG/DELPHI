@@ -30,6 +30,12 @@ CHANGELOG: list[dict] = [
             "different pieces of news. Anything inside the view but outside "
             "every watched place is still listed, under <i>Elsewhere in "
             "view</i> — the pane narrows what you see, it never hides it.",
+            "🔔📍 The pane has two tabs, one per thing: <b>Alerts</b> and "
+            "<b>Locations</b>. Each carries its whole subject — what is inside "
+            "the view, everything else, and the button that makes another one. "
+            "Creating an alert is on the Alerts tab; creating a watched place "
+            "is on the Locations tab, where the form appears when you pick a "
+            "point and puts itself away once it is saved.",
             "🔭 There used to be two maps and neither could show the other's "
             "layer: one inside Locations for picking a place, one inside Alerts "
             "that was off by default. So the obvious question — <i>did that "

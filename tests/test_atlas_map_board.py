@@ -107,9 +107,13 @@ def test_watched_places_and_hits_are_separate_layers():
 
 # ---------- the pane is tied to the map ----------
 
-def test_moving_the_map_rerenders_the_pane():
+def test_moving_the_map_rerenders_both_panes():
+    """Each pane is a reading of the viewport, so both follow it — the alerts
+    tab's in-view groups and the locations tab's in-view/elsewhere split."""
     init = _block("  async _init()")
-    assert re.search(r'this\.map\.on\("moveend",\s*\(\)\s*=>\s*this\.renderInView\(\)\)', init)
+    assert 'this.map.on("moveend"' in init
+    assert "this.renderInView()" in init
+    assert "LocationsPanel.renderList()" in init
 
 
 def test_only_what_is_inside_the_viewport_is_listed():
@@ -149,6 +153,64 @@ def test_each_row_says_which_alert_found_it():
 def test_the_pane_says_what_it_is_showing():
     view = _block("  renderInView()")
     assert "watched place" in view and "alert hit" in view
+
+
+# ---------- two tabs, and each carries its own subject whole ----------
+
+def test_there_are_two_tabs_one_per_thing():
+    tabs = re.findall(r'<button data-pane="(\w+)"', HTML)
+    assert tabs == ["alerts", "locations"]
+
+
+def test_the_alerts_tab_opens_first():
+    assert 'data-pane="alerts" class="active"' in HTML
+    assert 'pane: "alerts"' in APP
+
+
+def test_an_alert_is_created_from_the_alerts_tab():
+    assert 'id="btn-new-alert"' in HTML
+    assert 'el("btn-new-alert").onclick = () => openBuilder("alert")' in APP
+
+
+def test_a_location_is_created_from_the_locations_tab():
+    assert 'id="btn-new-location"' in HTML
+    wire = _block("function wireMapBoard", "\n}\n")
+    assert 'el("btn-new-location").onclick' in wire
+    assert 'el("loc-create").hidden = false' in wire
+    assert 'el("loc-search").focus()' in wire
+
+
+def test_the_location_form_is_put_away_until_it_is_wanted():
+    """A half-filled form for a place nobody has picked is furniture."""
+    assert 'id="loc-create" hidden' in HTML
+    assert 'el("loc-create").hidden = false' in _block("  setPoint(lat, lon, name, country)")
+    assert 'el("loc-create").hidden = true' in _block("  cancelEdit()")
+
+
+def test_clicking_the_map_still_opens_the_form_on_the_right_tab():
+    init = _block("  async _init()")
+    assert 'this.showPane("locations")' in init
+    assert 'el("loc-name").focus()' in init
+
+
+def test_the_alerts_tab_carries_the_hits_and_the_alerts():
+    """In-view groups above, the alert list with its controls below — one tab
+    is the whole subject, or the reader has to hunt for the half of it."""
+    pane = HTML[HTML.index('data-pane="alerts">'):HTML.index('data-pane="locations" hidden')]
+    assert 'id="inview-list"' in pane
+    assert 'id="alerts-list"' in pane
+    assert 'id="btn-new-alert"' in pane
+
+
+def test_the_locations_tab_lists_in_view_and_elsewhere():
+    """Split rather than filtered: a saved place you cannot find because you
+    panned away from it is a place you cannot delete either."""
+    pane = HTML[HTML.index('data-pane="locations" hidden'):]
+    assert 'id="loc-list"' in pane and 'id="loc-elsewhere"' in pane
+    listing = _block("  renderList()")
+    assert "MapBoard.map.getBounds()" in listing
+    assert "bounds.contains" in listing
+    assert 'el("loc-elsewhere-head").hidden' in listing
 
 
 # ---------- and it stays usable ----------

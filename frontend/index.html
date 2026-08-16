@@ -1448,49 +1448,63 @@
   <section id="map-view" class="map-view" hidden>
     <div id="world-map" class="world-map"></div>
     <aside id="map-side" class="map-side" aria-label="What is on the map right now">
+      <!-- Two tabs, and each one is the whole of its subject: what is on the
+           map right now, what else there is, and the way to make another. Both
+           are tied to the viewport — the map is the filter on this board, and a
+           pane that ignored it would be a list you could have read anywhere. -->
       <nav class="wiz-nav map-side-tabs" id="map-tabs" role="tablist">
-        <button data-pane="inview" class="active" title="Alerts inside the places you can see">🎯 In view</button>
-        <button data-pane="alerts" title="Every alert, and its recent hits">🔔 Alerts</button>
+        <button data-pane="alerts" class="active" title="Alerts, and what they have found inside the view">🔔 Alerts</button>
         <button data-pane="locations" title="The places you watch">📍 Locations</button>
       </nav>
 
-      <div class="map-pane" data-pane="inview">
-        <p class="set-note" id="inview-summary">Move the map to see what is inside it.</p>
+      <div class="map-pane" data-pane="alerts">
+        <div class="map-pane-head">
+          <span class="set-note" id="inview-summary">Move the map to see what is inside it.</span>
+          <button class="btn small btn-primary" id="btn-new-alert"
+                  title="Create an alert — it fires the moment a matching article arrives">＋ New alert</button>
+        </div>
         <div id="inview-list"></div>
-      </div>
-
-      <div class="map-pane" data-pane="alerts" hidden>
+        <h3 class="set-h">Your alerts</h3>
         <div id="alerts-list"></div>
       </div>
 
       <div class="map-pane" data-pane="locations" hidden>
-        <p class="set-note">Places you want to keep an eye on. Anything reported inside
-           the radius is flagged 📍 wherever it appears, and they share a single
-           📍 Favourite Locations feed.</p>
-
-        <div class="loc-search">
-          <input id="loc-search" type="search" autocomplete="off"
-                 placeholder="Find a place — city, country, or an address…"
-                 aria-label="Find a place — city, country, or an address">
-          <span class="s-meta">…or click the map</span>
+        <div class="map-pane-head">
+          <span class="set-note">Anything reported inside the radius is flagged 📍
+             wherever it appears, and they share one 📍 Favourite Locations feed.</span>
+          <button class="btn small btn-primary" id="btn-new-location"
+                  title="Pick a point on the map, or search for a place">＋ New location</button>
         </div>
-        <div id="loc-results" class="loc-results" hidden></div>
 
-        <div class="loc-form">
-          <input id="loc-name" type="text" maxlength="120" placeholder="Name this location">
-          <label class="loc-radius">
-            <span>Radius <strong id="loc-radius-val">25 km</strong></span>
-            <input type="range" id="loc-radius" min="1" max="500" step="1" value="25">
-          </label>
-          <span id="loc-coords" class="s-meta"></span>
-          <span class="spacer"></span>
-          <button class="btn" id="btn-loc-cancel" hidden>Cancel</button>
-          <button class="btn btn-primary" id="btn-loc-save" disabled>Save location</button>
+        <!-- The creation form. Hidden until there is somewhere to put — a
+             half-filled form for a place nobody has picked yet is furniture. -->
+        <div id="loc-create" hidden>
+          <div class="loc-search">
+            <input id="loc-search" type="search" autocomplete="off"
+                   placeholder="Find a place — city, country, or an address…"
+                   aria-label="Find a place — city, country, or an address">
+            <span class="s-meta">…or click the map</span>
+          </div>
+          <div id="loc-results" class="loc-results" hidden></div>
+
+          <div class="loc-form">
+            <input id="loc-name" type="text" maxlength="120" placeholder="Name this location">
+            <label class="loc-radius">
+              <span>Radius <strong id="loc-radius-val">25 km</strong></span>
+              <input type="range" id="loc-radius" min="1" max="500" step="1" value="25">
+            </label>
+            <span id="loc-coords" class="s-meta"></span>
+            <span class="spacer"></span>
+            <button class="btn" id="btn-loc-cancel" hidden>Cancel</button>
+            <button class="btn btn-primary" id="btn-loc-save" disabled>Save location</button>
+          </div>
+          <p id="loc-error" class="builder-error" role="alert" hidden></p>
         </div>
-        <p id="loc-error" class="builder-error" role="alert" hidden></p>
 
-        <h3 class="set-h">Saved locations</h3>
+        <h3 class="set-h">In view</h3>
         <div id="loc-list"></div>
+        <h3 class="set-h" id="loc-elsewhere-head" hidden>Elsewhere</h3>
+        <div id="loc-elsewhere"></div>
       </div>
     </aside>
   </section>
