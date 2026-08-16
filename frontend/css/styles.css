@@ -745,6 +745,15 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   color: var(--ink-muted); font-style: italic;
 }
 
+/* A saved location's star. Leaflet's default div icon is a white box with a
+   border; a marker that is its own artwork wants neither. The shadow lifts it
+   off a busy tile without needing a second colour. */
+.loc-star {
+  background: none;
+  border: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
 /* The trial notice. Fixed to the bottom rather than the top: the top of this
    app is the board's own header and a bar there pushes every column down, which
    is a layout shift on every page load for the sake of a sentence. */

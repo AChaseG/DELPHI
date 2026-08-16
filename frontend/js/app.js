@@ -1438,6 +1438,47 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return 2 * EARTH_KM * Math.asin(Math.sqrt(a));
 }
 
+/* The mark on the map for a place somebody chose to watch.
+
+   A star rather than a pin, and it is not decoration: a pin is what the map
+   drops for a point being picked, so the two states — "this is where you are
+   pointing" and "this is a place you keep" — need to look different at a
+   glance. The star is centred on the coordinate rather than balanced on a tip,
+   because a saved location *is* that point; a pin's tip marks a spot, and a
+   pin's body sits above it.
+
+   The colour is the location's own (`FavoriteLocation.color`, gold by default),
+   so the star, the ring and the badge on a flagged article can agree. Drawn as
+   an SVG in a div icon rather than an image file: it inherits no download, and
+   the dark outline underneath the fill is what keeps a gold star legible on the
+   pale end of a map tile. */
+const LOC_COLOURS = {
+  gold: "#d4af37", green: "#4caf50", red: "#d03b3b", orange: "#ec835a",
+  blue: "#4a90d9", purple: "#9b6dd6", white: "#f2f2ee",
+};
+const _STAR_ICONS = new Map();
+
+function locationStar(colour) {
+  const named = LOC_COLOURS[String(colour || "").toLowerCase()];
+  const fill = named
+    || (/^#[0-9a-f]{6}$/i.test(colour || "") ? colour : LOC_COLOURS.gold);
+  if (_STAR_ICONS.has(fill)) return _STAR_ICONS.get(fill);
+  // paint-order puts the stroke behind the fill, so the outline reads as a
+  // rim around the star instead of eating into its points.
+  const svg =
+    '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">'
+    + '<path d="M12 2.4l2.94 5.96 6.58.96-4.76 4.64 1.12 6.55L12 17.4'
+    + 'l-5.88 3.11 1.12-6.55L2.48 9.32l6.58-.96z" '
+    + `fill="${fill}" stroke="#12140f" stroke-width="1.4" `
+    + 'stroke-linejoin="round" paint-order="stroke"/></svg>';
+  const icon = L.divIcon({
+    className: "loc-star", html: svg, iconSize: [24, 24], iconAnchor: [12, 12],
+    tooltipAnchor: [0, 0],
+  });
+  _STAR_ICONS.set(fill, icon);
+  return icon;
+}
+
 /* Favourite locations are always a point and a radius, so this is the circle
    case only — the wizard's drawn polygons stay server-side, where the SQL that
    selects the candidates lives. */
@@ -3653,6 +3694,20 @@ const LocationsPanel = {
         radius: loc.radius_km * 1000, color: "#4caf50", weight: 1.5,
         fillOpacity: 0.06, interactive: false,
       }).addTo(this.saved);
+      /* The point itself, which the ring never showed. A 500 km circle has no
+         visible centre, two overlapping rings had no way to say which was
+         which, and a place saved at a wide radius left nothing on the map at
+         the spot that was actually chosen. */
+      L.marker([loc.lat, loc.lon], {
+        icon: locationStar(loc.color),
+        title: loc.name,
+        riseOnHover: true,
+        keyboard: false,
+      }).bindTooltip(
+        `${loc.name} · ${loc.radius_km} km`
+        + (loc.pantheon_id ? ` · shared by ${loc.shared_by || "a member"}` : ""),
+        { direction: "top", offset: [0, -12] },
+      ).addTo(this.saved);
     }
   },
 
