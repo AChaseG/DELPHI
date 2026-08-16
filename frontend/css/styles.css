@@ -106,16 +106,18 @@ button { font: inherit; }
   display: block;
 }
 
-.stat-row { display: flex; gap: 8px; }
+/* Four numbers in a 400px panel rather than across a header: they wrap into a
+   grid instead of squeezing until "1187/5120" reads as "11875/12". */
+.stat-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .stat-tile {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 5px;
-  padding: 4px 12px;
-  min-width: 86px;
+  padding: 6px 10px;
+  min-width: 0;
   text-align: center;
 }
-.stat-value { font-size: 18px; font-weight: 700; }
+.stat-value { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
 .stat-label { font-size: 10.5px; color: var(--ink-muted); }
 
 .view-switch {
@@ -144,10 +146,65 @@ button { font: inherit; }
 .topbar-actions #btn-settings,
 .topbar-actions #btn-profile { font-size: 16px; line-height: 1; padding: 6px 10px; }
 
-/* The Pantheons board: a page of lists rather than a row of columns. */
+/* The Pantheons board.
+   Two columns with a hairline between them: on the left the two ways in — make
+   one, or join one somebody else made — and on the right the ones you are
+   already in. */
 .pantheons-view { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 12px; }
-.pantheons-body { max-width: 900px; margin: 0 auto; padding: 0 16px 30px; }
+.pantheons-body {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  max-width: 1400px;
+  margin: 0 auto;
+  /* Clear the decorative columns, which are fixed and would sit over this. */
+  padding: 0 calc(var(--pillar-w) + 16px) 30px;
+  min-height: 100%;
+}
+.pn-side {
+  flex: 0 0 320px;
+  max-width: 42vw;
+  padding: 4px 20px 20px 0;
+  border-right: 1px solid var(--hairline);
+}
+.pn-main { flex: 1 1 auto; min-width: 0; padding: 4px 0 20px 24px; }
+.pn-new { width: 100%; margin-bottom: 10px; }
 .pantheons-view .set-h { padding: 0; }
+
+/* One joined Pantheon, as a button carrying what you need to know first. */
+.pn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.pn-tile {
+  position: relative;
+  display: flex; flex-direction: column; gap: 6px;
+  text-align: left;
+  padding: 12px 14px 40px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.pn-tile:hover { border-color: var(--gold-soft); }
+.pn-tile-head { display: flex; align-items: baseline; gap: 8px; }
+.pn-tile-name { font-weight: 600; font-size: 15px; flex: 1 1 auto; min-width: 0; }
+.pn-tile-role {
+  flex: 0 0 auto; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--ink-muted);
+}
+.pn-tile-desc {
+  margin: 0; font-size: 13px; color: var(--ink-2);
+  /* Two lines, so a long description cannot make one tile twice the height of
+     its neighbour. */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pn-tile-quiet { color: var(--ink-muted); font-style: italic; }
+.pn-tile-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-muted); }
+.pn-tile-manage { position: absolute; right: 12px; bottom: 10px; }
 #global-search {
   width: 300px; padding: 7px 10px;
   background: var(--surface-2); color: var(--ink);

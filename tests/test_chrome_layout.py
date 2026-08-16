@@ -120,6 +120,62 @@ def test_sources_opens_from_settings():
     assert 'el("btn-sources").onclick' in APP
 
 
+# ---------- the Pantheons board ----------
+
+def test_the_two_ways_in_are_on_the_left_of_a_dividing_line():
+    """Make one, or join one somebody else made — both on the left; the ones
+    you are already in on the right. They are different questions, and the eye
+    should not have to work out which list it is reading."""
+    view = HTML[HTML.index('id="pantheons-view"'):HTML.index("</section>",
+                                                             HTML.index('id="pantheons-view"'))]
+    side = view[view.index('class="pn-side"'):view.index('class="pn-main"')]
+    assert 'id="btn-create-pantheon"' in side
+    assert 'id="pn-public"' in side
+    main = view[view.index('class="pn-main"'):]
+    assert 'id="pn-mine"' in main and 'id="pn-invites"' in main
+    assert re.search(r"\.pn-side\s*\{[^}]*border-right:\s*1px solid var\(--hairline\)", CSS)
+
+
+def test_a_joined_pantheon_is_a_button():
+    src = APP[APP.index("function pantheonCard"):APP.index("/* ---------- alerts ----------")]
+    assert 'document.createElement("button")' in src
+    assert 'setView("pantheon:" + p.id)' in src
+
+
+def test_the_button_says_what_the_pantheon_is():
+    """A row of names tells you nothing and makes you open a modal to find
+    out."""
+    src = APP[APP.index("function pantheonCard"):APP.index("/* ---------- alerts ----------")]
+    for fact in ("p.name", "p.description", "p.member_count", "p.owner_name",
+                 "p.feed_count", "p.alert_count", "p.role"):
+        assert fact in src, f"the tile does not show {fact}"
+
+
+def test_an_empty_description_still_takes_its_line():
+    """Otherwise one tile is shorter than the one beside it for no reason."""
+    src = APP[APP.index("function pantheonCard"):APP.index("/* ---------- alerts ----------")]
+    assert "No description." in src
+    assert re.search(r"\.pn-tile-desc\s*\{[^}]*line-clamp:\s*2", CSS), (
+        "a long description would otherwise make its tile twice the height")
+
+
+def test_manage_does_not_also_open_the_board_behind_it():
+    src = APP[APP.index("function pantheonCard"):APP.index("/* ---------- alerts ----------")]
+    assert "stopPropagation()" in src
+    assert "tabIndex" in src, "a control inside a button still has to be reachable"
+
+
+# ---------- and the counters fit where they moved to ----------
+
+def test_the_counters_wrap_instead_of_squeezing():
+    """Reported from a screenshot: in a 400px panel "1187/5120" was rendering
+    as "11875/12"."""
+    rule = re.search(r"\.stat-row\s*\{[^}]*\}", CSS).group(0)
+    assert "grid" in rule
+    tile = re.search(r"\.stat-tile\s*\{[^}]*\}", CSS).group(0)
+    assert "min-width: 0" in tile, "a fixed minimum is what clipped the value"
+
+
 # ---------- and nothing measures itself against a rail that isn't there ----------
 
 def test_the_width_the_rail_reserved_is_now_nothing():

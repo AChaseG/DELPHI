@@ -1560,20 +1560,27 @@
        setting you adjust, and the panel it lived in is gone. -->
   <section id="pantheons-view" class="pantheons-view" hidden>
     <div class="pantheons-body">
-      <div class="map-pane-head">
-        <span class="set-note">A Pantheon is an organization inside Delphi: create one,
-           invite other accounts, and share feeds and alerts with everyone in it. Each
-           one gets its own board beside 🏠 Home and 📋 My feeds.</span>
-        <button class="btn small btn-primary" id="btn-create-pantheon">🏛 New Pantheon</button>
+      <!-- Left: the two ways in — make one, or join one somebody else made.
+           Right: the ones you are already in. A hairline between them, because
+           they are different questions and the eye should not have to work out
+           which list it is reading. -->
+      <aside class="pn-side">
+        <button class="btn btn-primary pn-new" id="btn-create-pantheon">🏛 New Pantheon</button>
+        <p class="set-note">A Pantheon is an organization inside Delphi: invite other
+           accounts and share feeds and alerts with everyone in it. Each one gets its
+           own board beside 🏠 Home and 📋 My feeds.</p>
+        <h3 class="set-h">Public Pantheons</h3>
+        <div id="pn-public"></div>
+      </aside>
+
+      <div class="pn-main">
+        <div id="pn-invites-section" hidden>
+          <h3 class="set-h">Invitations</h3>
+          <div id="pn-invites"></div>
+        </div>
+        <h3 class="set-h">Your Pantheons</h3>
+        <div id="pn-mine" class="pn-grid"></div>
       </div>
-      <div id="pn-invites-section" hidden>
-        <h3 class="set-h">Invitations</h3>
-        <div id="pn-invites"></div>
-      </div>
-      <h3 class="set-h">My Pantheons</h3>
-      <div id="pn-mine"></div>
-      <h3 class="set-h">Public Pantheons</h3>
-      <div id="pn-public"></div>
     </div>
   </section>
 

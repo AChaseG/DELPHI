@@ -4542,27 +4542,64 @@ async function renderPantheonsPanel() {
   } catch (e) { pub.innerHTML = '<div class="feed-empty">Could not load the directory.</div>'; }
 }
 
+/* A Pantheon you are in, as one big button.
+
+   Everything worth knowing before pressing it is on its face — what it is
+   called, what it is for, how many people are in it, and whose it is — because
+   the alternative is a row of names that tells you nothing and a modal you have
+   to open to find out. Pressing it opens its board, which is what a Pantheon is
+   for; managing it is a smaller button in the corner, since that is the rarer
+   thing to want. */
 function pantheonCard(p) {
-  const card = document.createElement("div");
-  card.className = "pn-card";
+  const card = document.createElement("button");
+  card.className = "pn-tile";
+  card.title = `Open ${p.name}'s shared board`;
+  card.onclick = () => setView("pantheon:" + p.id);
+
   const head = document.createElement("div");
-  head.className = "pn-row";
-  const label = document.createElement("span");
-  label.className = "pn-name";
-  label.textContent = `${p.visibility === "public" ? "🌐" : "🔒"} ${p.name}`;
-  const meta = document.createElement("span");
-  meta.className = "s-meta";
-  meta.textContent = `${p.role} · ${p.member_count} member${plural(p.member_count)} · ${p.feed_count}📋 ${p.alert_count}🔔`;
-  const openBtn = document.createElement("button");
-  openBtn.className = "btn small"; openBtn.textContent = "Board";
-  openBtn.title = "Open this Pantheon's shared board";
-  openBtn.onclick = () => setView("pantheon:" + p.id);
-  const detailBtn = document.createElement("button");
-  detailBtn.className = "btn small"; detailBtn.textContent = "Manage";
-  detailBtn.title = "Members, invitations, and access settings";
-  detailBtn.onclick = () => PantheonModal.open(p);
-  head.append(label, meta, openBtn, detailBtn);
-  card.appendChild(head);
+  head.className = "pn-tile-head";
+  const name = document.createElement("span");
+  name.className = "pn-tile-name";
+  name.textContent = `${p.visibility === "public" ? "🌐" : "🔒"} ${p.name}`;
+  const role = document.createElement("span");
+  role.className = "pn-tile-role";
+  role.textContent = p.role;
+  head.append(name, role);
+
+  const desc = document.createElement("p");
+  desc.className = "pn-tile-desc";
+  // An organization with no description says so, rather than collapsing and
+  // making its tile a different height from the one beside it.
+  desc.textContent = p.description || "No description.";
+  if (!p.description) desc.classList.add("pn-tile-quiet");
+
+  const facts = document.createElement("div");
+  facts.className = "pn-tile-facts";
+  for (const [icon, text, why] of [
+    ["👥", `${p.member_count} member${plural(p.member_count)}`, "Members"],
+    ["📋", `${p.feed_count} feed${plural(p.feed_count)}`, "Shared feeds"],
+    ["🔔", `${p.alert_count} alert${plural(p.alert_count)}`, "Shared alerts"],
+    ["👑", p.owner_name || "unknown", "Owner"],
+  ]) {
+    const fact = document.createElement("span");
+    fact.className = "pn-tile-fact";
+    fact.textContent = `${icon} ${text}`;
+    fact.title = why;
+    facts.appendChild(fact);
+  }
+
+  const manage = document.createElement("span");
+  manage.className = "btn small pn-tile-manage";
+  manage.textContent = "Manage";
+  manage.title = "Members, invitations, and access settings";
+  manage.setAttribute("role", "button");
+  manage.tabIndex = 0;
+  // Inside a button, so the click must not also open the board behind it.
+  const open = (e) => { e.stopPropagation(); PantheonModal.open(p); };
+  manage.onclick = open;
+  manage.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") open(e); };
+
+  card.append(head, desc, facts, manage);
   return card;
 }
 

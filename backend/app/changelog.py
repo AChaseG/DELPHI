@@ -20,9 +20,15 @@ CHANGELOG: list[dict] = [
             "apart, and each thing it held put where it belongs. Nothing was "
             "dropped.",
             "🏛 <b>Pantheons is a board</b> now, on the tab bar beside 🏠 Home, "
-            "📋 My feeds and 🗺 Atlas. It lists exactly what the old panel did — "
-            "your Pantheons, your invitations, and the public directory — with "
-            "room to read them.",
+            "📋 My feeds and 🗺 Atlas — and it is laid out as the two questions "
+            "it answers. On the left, the ways in: <b>New Pantheon</b> and the "
+            "public directory. On the right, across a hairline, the ones you "
+            "are already in.",
+            "🎴 Each of those is a <b>button carrying what it is</b>: name, "
+            "description, how many members, how many shared feeds and alerts, "
+            "and whose it is. Press it to open its board; <b>Manage</b> in its "
+            "corner is still there for members and settings. A list of bare "
+            "names told you nothing and made you open each one to find out.",
             "⚙ <b>Settings sits in the top-right corner</b>, with the account "
             "button 👤 to its right, in the corner itself. The four counters — "
             "articles, countries, sources, unseen alert hits — moved into "
