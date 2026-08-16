@@ -360,14 +360,12 @@ def user_for_event(db: Session, obj: dict) -> User | None:
     the customer's to change at Stripe, and matching on it alone would let
     somebody claim another account's subscription by editing a field.
     """
-    for key in ("client_reference_id",):
-        raw = obj.get(key)
-        if raw and str(raw).isdigit():
-            user = db.get(User, int(raw))
-            if user:
-                return user
-    meta = obj.get("metadata") or {}
-    raw = meta.get("delphi_account")
+    raw = obj.get("client_reference_id")
+    if raw and str(raw).isdigit():
+        user = db.get(User, int(raw))
+        if user:
+            return user
+    raw = (obj.get("metadata") or {}).get("delphi_account")
     if raw and str(raw).isdigit():
         user = db.get(User, int(raw))
         if user:

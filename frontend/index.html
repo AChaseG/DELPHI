@@ -1340,7 +1340,8 @@
 
   <!-- What's-new modal: updates shipped since the account was last seen -->
   <div id="updates-backdrop" class="modal-backdrop" hidden>
-    <div class="modal faq-modal updates-modal" role="dialog" aria-modal="true">
+    <div class="modal faq-modal updates-modal" role="dialog" aria-modal="true"
+         aria-labelledby="updates-title">
       <div class="modal-head">
         <h2 id="updates-title">🆕 What's new</h2>
         <button class="icon-btn" id="btn-close-updates" aria-label="Close updates">✕</button>
@@ -1400,6 +1401,10 @@
           <input id="reg-invite" type="text" autocomplete="off" spellcheck="false"
                  placeholder="ABCD-EFGH-JKLM"></label>
         <button class="btn btn-primary gate-btn" id="btn-register">Create account</button>
+        <!-- What it costs, filled in from /api/auth/signup-info and hidden on an
+             instance that charges nobody. Saying the price here rather than
+             after sign-up is the difference between a trial and a surprise. -->
+        <p class="s-meta" id="gate-terms" hidden></p>
         <p class="gate-switch">Already registered? <a href="#" id="gate-to-signin">Sign in</a></p>
       </div>
 
@@ -1689,7 +1694,7 @@
 
   <!-- Feed / Alert builder modal -->
   <div id="modal-backdrop" class="modal-backdrop" hidden>
-    <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="builder-title">
       <div class="modal-head">
         <h2 id="builder-title">New feed</h2>
         <div class="view-switch mode-switch" id="builder-mode" role="tablist"

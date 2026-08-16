@@ -582,6 +582,7 @@ const API = {
   getSettings: () => api("/api/session/settings"),
   changelog: () => api("/api/changelog"),
 
+  signupInfo: () => api("/api/auth/signup-info"),
   register: (username, email, password, invite) =>
     api("/api/auth/register",
         { method: "POST", body: JSON.stringify({ username, email, password, invite }) }),

@@ -1073,6 +1073,27 @@ function wireGate() {
         + "automatically. It never expires into a bill.", true);
   }
 
+  /* The invitation field only makes sense where there is something to be
+     excused from. An instance that charges nobody — the default, and every
+     self-hosted copy — was still offering a code described as meaning "you
+     never pay", which is a promise about a bill nobody was going to get. The
+     row goes away there; where billing is on, the card says what it costs
+     instead of leaving that to be discovered after signing up.
+     Never blocks the gate: if this call fails, the form is what it was. */
+  API.signupInfo().then((info) => {
+    const row = el("reg-invite-row");
+    if (row && !invited) row.hidden = !info.billing_enabled;
+    const terms = el("gate-terms");
+    if (!terms) return;
+    if (!info.billing_enabled) terms.hidden = true;
+    else {
+      terms.hidden = false;
+      terms.textContent = info.trial_days
+        ? `Free for ${info.trial_days} day${info.trial_days === 1 ? "" : "s"}, then ${info.price_label}.`
+        : `Access costs ${info.price_label}.`;
+    }
+  }).catch(() => { /* the form still works; it just says less */ });
+
   on("gate-to-register", (e) => { e.preventDefault(); say(""); show("gate-register"); focus("reg-username"); });
   on("gate-to-signin", (e) => { e.preventDefault(); say(""); show("gate-signin"); focus("auth-username"); });
   on("gate-to-forgot", (e) => { e.preventDefault(); say(""); show("gate-forgot"); focus("forgot-email"); });

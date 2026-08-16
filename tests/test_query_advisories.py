@@ -168,9 +168,17 @@ def test_the_summary_line_reads_correctly_when_plural():
     assert "have the same problem" in notes[-1]
 
 
-def test_a_broken_query_gets_no_advice():
-    """Advice on a query that cannot parse is noise on top of an error."""
-    assert ambiguous_terms('"unclosed') == [] or True   # tolerated either way
+def test_a_broken_query_gets_no_bare_term_advice():
+    """Advice on a query that cannot parse is noise on top of an error.
+
+    This used to carry the same name as the test above the ambiguous-terms
+    section, so Python bound the name to whichever came second and the first
+    was never collected — a test file quietly one test shorter than it read.
+    Its second assertion was `== [] or True`, which is true whatever the code
+    does; if the parser's behaviour on an unterminated quote is worth pinning,
+    it is worth pinning to one answer, so it is asserted here.
+    """
+    assert ambiguous_terms('"unclosed') == []
     assert query_advisories("AND OR") == []
 
 

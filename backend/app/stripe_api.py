@@ -162,18 +162,17 @@ def verify_webhook(payload: bytes, header: str, *, now: float | None = None) -> 
     """
     if not webhook_secret():
         raise ValueError("no webhook secret configured")
-    parts = dict(
-        piece.split("=", 1) for piece in (header or "").split(",")
-        if "=" in piece
-    )
+    # One pass, kept as pairs rather than a dict: Stripe sends several v1
+    # signatures during a secret rotation, and a dict would keep only the last
+    # of them — which is the one that fails while the old secret is still in
+    # use.
+    pairs = [piece.split("=", 1) for piece in (header or "").split(",") if "=" in piece]
+    stamps = [v for k, v in pairs if k == "t"]
     try:
-        timestamp = int(parts.get("t", ""))
-    except ValueError:
+        timestamp = int(stamps[0])
+    except (IndexError, ValueError):
         raise ValueError("no timestamp in the signature header")
-    # Stripe may send several v1 signatures during a secret rotation.
-    signatures = [v for k, v in (
-        piece.split("=", 1) for piece in (header or "").split(",") if "=" in piece
-    ) if k == "v1"]
+    signatures = [v for k, v in pairs if k == "v1"]
     if not signatures:
         raise ValueError("no v1 signature in the header")
 

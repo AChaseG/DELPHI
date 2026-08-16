@@ -13,6 +13,50 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-20",
+        "title": "A pass over the whole of it, and what the pass turned up",
+        "items": [
+            "🧹 A read-through of every file, looking for the things tests do "
+            "not catch: work that is done and then thrown away, rows left "
+            "behind by a delete, and sentences that stopped being true. What "
+            "follows is what it found.",
+            "🗑 <b>Deleting a Pantheon cleaned up after itself; the other two "
+            "ways one ends did not.</b> When the last member leaves, or when "
+            "the owner's account is deleted, the Pantheon closes — and the "
+            "locations shared into it were being left in the database, which "
+            "is the bug that was fixed a month ago arriving through a "
+            "different door. All three paths now go through the same cleanup.",
+            "🧾 <b>A deleted account now really is deleted.</b> Its saved "
+            "places, its read history and its device registrations were "
+            "staying behind: unreachable, so nothing looked wrong, but a list "
+            "of where somebody lives is not a thing to keep after they have "
+            "asked to be forgotten — and it was travelling in every nightly "
+            "backup. The news source each saved place kept pointed at it goes "
+            "too, instead of being polled forever for a place nobody watches.",
+            "🤝 Locations shared into a Pantheon now pass to whoever inherits "
+            "it when the sharer leaves, the way a shared feed or alert "
+            "already did. They belong to the group.",
+            "⚡ <b>The Pantheons board costs the same whether you are in one "
+            "or in twenty.</b> It was running five database queries per tile "
+            "and three per invitation; it now runs four, total. The public "
+            "directory was doing the same thing for up to two hundred "
+            "entries.",
+            "🎟️ The sign-up form only offers the <b>invitation code</b> field "
+            "where there is something to be excused from. On an instance that "
+            "charges nobody — the default — it was offering a code described "
+            "as meaning “you never pay”, which is a promise about a bill "
+            "nobody was going to get. Where payment <i>is</i> on, the card now "
+            "says what it costs before you sign up rather than after.",
+            "🛠 Smaller: an error path in Pantheon deletion would have crashed "
+            "instead of reporting itself; two dialogs did not tell a screen "
+            "reader their own names; a test had been silently shadowing "
+            "another and neither was running the check it described; and a "
+            "note in these very release notes still said the Alerts and "
+            "Locations fold-outs were below their feeds, a week after they "
+            "moved to the top.",
+        ],
+    },
+    {
         "date": "2026-09-19",
         "title": "The pop-out rail is gone; everything it held has a home",
         "items": [
@@ -63,7 +107,7 @@ CHANGELOG: list[dict] = [
             "inside the view, newest first, with the button that makes another "
             "alert. <b>📍 Locations</b> is a feed of what has been reported "
             "inside the places you watch, with the button that adds another "
-            "one. Managing either is a fold-out below its feed.",
+            "one. Managing either is a fold-out at the top of its tab.",
             "✂️ Before this the alerts tab grouped its hits under your watched "
             "places — half of one tab living on the other — and the locations "
             "tab had nothing on it but a form. Neither was the whole of "

@@ -10,7 +10,6 @@ import time
 import urllib.parse
 import uuid
 
-import httpx
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -949,6 +948,27 @@ def _acceptable_password(password: str, *, username: str = "", email: str = "") 
     except passwords.WeakPassword as exc:
         raise HTTPException(422, str(exc))
     return password
+
+
+@app.get("/api/auth/signup-info")
+def signup_info(db: Session = Depends(get_db)):
+    """What the sign-in card needs to know before anybody has an account.
+
+    Only whether this instance charges, and what for. Public because the card
+    itself is — and because a price is not a secret: it is on the paywall the
+    moment you sign in, and on Stripe's own checkout page after that.
+
+    It exists for one field. The sign-up form offers an invitation code
+    described as meaning "you never pay", which on an instance that charges
+    nobody — the default, and every self-hosted copy — is a promise about a
+    bill that does not exist. Without this the card had no way to know.
+    """
+    conf = billing.settings(db)
+    return {
+        "billing_enabled": bool(conf["enabled"]),
+        "price_label": billing.price_label(conf) if conf["enabled"] else "",
+        "trial_days": int(conf["trial_days"]) if conf["enabled"] else 0,
+    }
 
 
 @app.post("/api/auth/register", status_code=201)
@@ -2126,15 +2146,47 @@ def mark_alert_seen(alert_id: int, user_id: str = Depends(user_id_header),
 _DEFAULT_PANTHEON_SETTINGS = {"who_can_invite": "members", "who_can_share": "members"}
 
 
-def _pantheon_json(db: Session, p: Pantheon, member: PantheonMember | None) -> dict:
-    member_count = db.scalar(select(func.count(PantheonMember.id)).where(
-        PantheonMember.pantheon_id == p.id)) or 0
-    feed_count = db.scalar(select(func.count(Feed.id)).where(Feed.pantheon_id == p.id)) or 0
-    alert_count = db.scalar(select(func.count(Alert.id)).where(Alert.pantheon_id == p.id)) or 0
-    owner = db.get(User, p.owner_id)
+def _pantheon_counts(db: Session, ids: list[int]) -> dict[int, dict]:
+    """Members, shared feeds and shared alerts for several Pantheons at once.
+
+    Three grouped queries rather than three per Pantheon. The board lists every
+    Pantheon an account is in, so the per-row version was five queries a tile
+    and grew with the list — cheap on SQLite in-process and still the wrong
+    shape, since the page that shows the most is the one that pays the most.
+    """
+    out = {pid: {"member_count": 0, "feed_count": 0, "alert_count": 0} for pid in ids}
+    if not ids:
+        return out
+    for key, column, model in (("member_count", PantheonMember.pantheon_id, PantheonMember),
+                               ("feed_count", Feed.pantheon_id, Feed),
+                               ("alert_count", Alert.pantheon_id, Alert)):
+        for pid, total in db.execute(select(column, func.count(model.id))
+                                     .where(column.in_(ids)).group_by(column)):
+            if pid in out:
+                out[pid][key] = total
+    return out
+
+
+def _pantheon_json(db: Session, p: Pantheon, member: PantheonMember | None,
+                   counts: dict | None = None,
+                   owner_name: str | None = None) -> dict:
+    """One Pantheon as the client reads it.
+
+    `counts` and `owner_name` let a caller listing several of these gather them
+    all in one query each and hand them in; left out, they are looked up here,
+    which is what the single-Pantheon endpoints want.
+    """
+    if counts is None:
+        counts = _pantheon_counts(db, [p.id])[p.id]
+    member_count = counts["member_count"]
+    feed_count = counts["feed_count"]
+    alert_count = counts["alert_count"]
+    if owner_name is None:
+        owner = db.get(User, p.owner_id)
+        owner_name = owner.username if owner else ""
     out = {
         "id": p.id, "name": p.name, "description": p.description,
-        "visibility": p.visibility, "owner_name": owner.username if owner else "",
+        "visibility": p.visibility, "owner_name": owner_name,
         "member_count": member_count, "feed_count": feed_count, "alert_count": alert_count,
         "role": member.role if member else None,
     }
@@ -2149,20 +2201,35 @@ def list_pantheons(user_id: str = Depends(user_id_header), db: Session = Depends
     uid = _acct_id(user_id)
     memberships = db.scalars(select(PantheonMember).where(
         PantheonMember.user_id == uid)).all()
-    mine = []
-    for m in memberships:
-        p = db.get(Pantheon, m.pantheon_id)
-        if p:
-            mine.append(_pantheon_json(db, p, m))
-    invites = []
-    for inv in db.scalars(select(PantheonInvite).where(PantheonInvite.user_id == uid)):
-        p = db.get(Pantheon, inv.pantheon_id)
-        by = db.get(User, inv.invited_by)
-        if p:
-            invites.append({"id": inv.id, "pantheon_id": p.id, "name": p.name,
-                            "invited_by": by.username if by else "?",
-                            "member_count": db.scalar(select(func.count(PantheonMember.id))
-                                                      .where(PantheonMember.pantheon_id == p.id)) or 0})
+    invitations = db.scalars(select(PantheonInvite).where(
+        PantheonInvite.user_id == uid)).all()
+
+    # Everything this page needs, gathered before anything is rendered: the
+    # Pantheons themselves, their three counts, and the names of whoever did
+    # the inviting. Four queries for a board of any size.
+    wanted = {m.pantheon_id for m in memberships} | {i.pantheon_id for i in invitations}
+    pantheons = {p.id: p for p in db.scalars(select(Pantheon).where(
+        Pantheon.id.in_(wanted)))} if wanted else {}
+    counts = _pantheon_counts(db, list(pantheons))
+    # Owners and inviters in one query, and handed to _pantheon_json rather
+    # than left for it to look up. Loading them and relying on the session's
+    # identity map to answer the later db.get() looks equivalent and is not:
+    # that map holds weak references, so keeping only the names out of the
+    # result lets the objects be collected on the spot and every lookup goes
+    # back to the database. Measured, not assumed.
+    people = ({i.invited_by for i in invitations if i.invited_by}
+              | {p.owner_id for p in pantheons.values()})
+    names = {u.id: u.username for u in db.scalars(select(User).where(
+        User.id.in_(people)))} if people else {}
+
+    mine = [_pantheon_json(db, pantheons[m.pantheon_id], m, counts[m.pantheon_id],
+                           names.get(pantheons[m.pantheon_id].owner_id, ""))
+            for m in memberships if m.pantheon_id in pantheons]
+    invites = [{"id": inv.id, "pantheon_id": inv.pantheon_id,
+                "name": pantheons[inv.pantheon_id].name,
+                "invited_by": names.get(inv.invited_by, "?"),
+                "member_count": counts[inv.pantheon_id]["member_count"]}
+               for inv in invitations if inv.pantheon_id in pantheons]
     return {"mine": sorted(mine, key=lambda x: x["name"].lower()), "invites": invites}
 
 
@@ -2196,17 +2263,14 @@ def public_pantheons(user_id: str = Depends(user_id_header), db: Session = Depen
     # Minimal projection for non-members: only what's needed to decide to
     # join. Internal activity (feed/alert counts) and the owner's username are
     # withheld until you're actually a member — see _pantheon_json.
-    out = []
-    for p in db.scalars(select(Pantheon).where(Pantheon.visibility == "public")
-                        .order_by(Pantheon.name).limit(200)):
-        member_count = db.scalar(select(func.count(PantheonMember.id)).where(
-            PantheonMember.pantheon_id == p.id)) or 0
-        out.append({
-            "id": p.id, "name": p.name, "description": p.description,
-            "visibility": "public", "member_count": member_count,
-            "joined": p.id in joined,
-        })
-    return out
+    listed = list(db.scalars(select(Pantheon).where(Pantheon.visibility == "public")
+                             .order_by(Pantheon.name).limit(200)))
+    counts = _pantheon_counts(db, [p.id for p in listed])
+    return [{
+        "id": p.id, "name": p.name, "description": p.description,
+        "visibility": "public", "member_count": counts[p.id]["member_count"],
+        "joined": p.id in joined,
+    } for p in listed]
 
 
 @app.get("/api/pantheons/{pantheon_id}")
@@ -2273,8 +2337,8 @@ def delete_pantheon(pantheon_id: int, user_id: str = Depends(user_id_header),
     # on every load because it was still in the database. The copy holds no feed
     # and no source of its own — the original keeps those — so there is nothing
     # else to unpick.
-    db.execute(sa_delete(FavoriteLocation).where(
-        FavoriteLocation.pantheon_id == pantheon_id))
+    _drop_locations(db, list(db.scalars(select(FavoriteLocation).where(
+        FavoriteLocation.pantheon_id == pantheon_id))))
     db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == pantheon_id))
     db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == pantheon_id))
     db.delete(pantheon)
@@ -2283,7 +2347,8 @@ def delete_pantheon(pantheon_id: int, user_id: str = Depends(user_id_header),
     # row is the worst version of this: the client removes the card, the next
     # load brings it back, and nothing anywhere says which of the two is wrong.
     if db.get(Pantheon, pantheon_id) is not None:
-        log.error("pantheon %s survived its own deletion", pantheon_id)
+        logging.getLogger("pantheons").error(
+            "pantheon %s survived its own deletion", pantheon_id)
         raise HTTPException(500, "The Pantheon could not be deleted. Nothing was "
                                  "changed — please report this.")
 
@@ -3264,6 +3329,33 @@ def _source_shared_with_others(db: Session, loc: FavoriteLocation) -> bool:
         FavoriteLocation.id != loc.id).limit(1)))
 
 
+def _drop_locations(db: Session, locs: list[FavoriteLocation]) -> None:
+    """Delete these locations and any news source left watching nothing.
+
+    What `delete_location` does for one pin, for a whole list of them at once —
+    used when a Pantheon closes or an account is deleted, which are the two
+    ways a batch of locations goes at the same moment. Written as one helper
+    because the source is the easy half to forget: a location's "Local: …"
+    source is polled every few minutes for as long as the server runs, and
+    deleting only the row that pointed at it leaves it running forever.
+    """
+    if not locs:
+        return
+    candidates = {loc.source_id for loc in locs if loc.source_id}
+    for loc in locs:
+        db.delete(loc)
+    db.flush()   # so the survivors query below cannot see what was just deleted
+    for source_id in candidates:
+        still_watched = db.scalar(select(FavoriteLocation.id).where(
+            FavoriteLocation.source_id == source_id).limit(1))
+        if still_watched:
+            continue
+        source = db.get(Source, source_id)
+        if source is not None:
+            db.delete(source)
+    db.flush()
+
+
 LOCATIONS_FEED_NAME = "📍 Favourite Locations"
 
 
@@ -3659,6 +3751,13 @@ def _close_pantheon(db: Session, p: Pantheon) -> None:
     db.execute(sa_delete(Feed).where(Feed.pantheon_id == p.id))
     for a in db.scalars(select(Alert).where(Alert.pantheon_id == p.id)).all():
         db.delete(a)  # per-row so AlertEvent children cascade
+    # Shared locations, for the same reason they are removed in delete_pantheon:
+    # the copy lives on the sharer's own list, so leaving it behind puts a pin
+    # badged with a Pantheon that no longer exists back on their map at every
+    # load. This path is the other way a Pantheon ends — its last member walks
+    # out, or the owner's account is deleted — and it had been missed.
+    _drop_locations(db, list(db.scalars(select(FavoriteLocation).where(
+        FavoriteLocation.pantheon_id == p.id))))
     db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == p.id))
     db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == p.id))
     db.delete(p)
@@ -3705,6 +3804,19 @@ def _delete_user(db: Session, user: User) -> None:
             # configured it. The alert keeps firing in-app for the group.
             alert.notify_email = False
             alert.webhook_url = ""
+    # A location shared into a Pantheon is the same kind of thing and follows
+    # the same rule. It carries the sharer's own user_id, so without this it
+    # would be swept up with their personal pins below and the group would
+    # quietly lose a watched place when one member left.
+    for loc in db.scalars(select(FavoriteLocation).where(
+            FavoriteLocation.user_id == acct,
+            FavoriteLocation.pantheon_id.isnot(None))).all():
+        p = db.get(Pantheon, loc.pantheon_id)
+        if p:
+            loc.user_id = f"acct:{p.owner_id}"
+            # `shared_by` stays as it is, the way it does for an inherited feed
+            # or alert: who put it there is still true after they leave, and it
+            # is the only account of where a group's pin came from.
     db.flush()
 
     db.execute(sa_delete(PantheonMember).where(PantheonMember.user_id == user.id))
@@ -3714,6 +3826,17 @@ def _delete_user(db: Session, user: User) -> None:
     for a in db.scalars(select(Alert).where(Alert.user_id == acct)).all():
         db.delete(a)
     db.execute(sa_delete(ViewedEvent).where(ViewedEvent.user_id == acct))
+    # The three that were being left behind. None of them is reachable once the
+    # account is gone, so nothing broke visibly — they simply accumulated,
+    # which for the saved places means an account's list of where it lives
+    # outliving the account, and travelling in every nightly accounts backup.
+    # SQLite is not enforcing the foreign keys here (see database.py), so the
+    # devices row would have survived a dangling reference in silence.
+    _drop_locations(db, list(db.scalars(select(FavoriteLocation).where(
+        FavoriteLocation.user_id == acct,
+        FavoriteLocation.pantheon_id.is_(None)))))
+    db.execute(sa_delete(ViewedArticle).where(ViewedArticle.user_id == acct))
+    db.execute(sa_delete(Device).where(Device.user_id == user.id))
     db.delete(user)
 
 
