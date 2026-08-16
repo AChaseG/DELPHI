@@ -243,6 +243,7 @@ function updateViewButtons() {
   el("btn-view-home").classList.toggle("active", VIEW === "home");
   el("btn-view-mine").classList.toggle("active", VIEW === "mine");
   el("btn-view-map").classList.toggle("active", VIEW === "map");
+  el("btn-view-pantheons").classList.toggle("active", VIEW === "pantheons");
   for (const b of document.querySelectorAll(".view-switch .view-pantheon"))
     b.classList.toggle("active", b.dataset.view === VIEW);
 }
@@ -251,17 +252,24 @@ function updateViewButtons() {
    it. Kept in one function because the two must never both be on screen: a
    hidden Leaflet map cannot measure itself, and one that was hidden while it
    loaded comes back with grey tiles until something tells it to look again. */
-function showMapBoard(on) {
+/* Which of the four boards is on screen. Only one ever is: they are the same
+   space, not layers over it. */
+function showBoard(which) {
+  const map = which === "map";
+  const pantheons = which === "pantheons";
+  const columns = !map && !pantheons;
   // The decorative columns frame a board of columns; over a map they are two
   // opaque strips across the thing you are trying to read.
-  document.body.classList.toggle("map-board", on);
-  el("board").hidden = on;
-  el("map-view").hidden = !on;
-  if (on) {
-    el("board-scroll").hidden = true;     // the board's own bar, not the map's
+  document.body.classList.toggle("map-board", map);
+  el("board").hidden = !columns;
+  el("map-view").hidden = !map;
+  el("pantheons-view").hidden = !pantheons;
+  if (!columns) {
+    el("board-scroll").hidden = true;     // the board's own bar, not theirs
     el("empty-state").hidden = true;
-    MapBoard.open();
   }
+  if (map) MapBoard.open();
+  if (pantheons) { refreshPantheons().then(renderPantheonsPanel); }
 }
 
 /* One board button per Pantheon, next to Home and My feeds. */
@@ -447,8 +455,8 @@ async function renderBoard() {
   const generation = ++BOARD_GENERATION;
   const current = () => generation === BOARD_GENERATION;
 
-  showMapBoard(VIEW === "map");
-  if (VIEW === "map") return;             // the map board renders itself
+  showBoard(VIEW === "map" ? "map" : VIEW === "pantheons" ? "pantheons" : "columns");
+  if (VIEW === "map" || VIEW === "pantheons") return;   // they render themselves
 
   if (VIEW.startsWith("pantheon:")) {
     const pid = +VIEW.split(":")[1];
@@ -534,7 +542,6 @@ function wireTopbar() {
   wireBilling();
   wireMyBilling();
   refreshBilling();
-  wireActionRail();
   wireLocations();
   // Reading-language picker: articles in other languages are translated
   // automatically into this language (defaults to the browser language).
@@ -959,11 +966,16 @@ function wireSettings() {
 }
 
 function wireAuth() {
-  // Set only the label span — replacing the button's text would drop the icon
-  // the rail shows when collapsed.
+  // The button is the 👤 glyph alone now, in the corner: the name goes in the
+  // tooltip rather than the label, because a username of any length would push
+  // everything else along the header. (It used to set a `.rail-label` span,
+  // which the rail carried and nothing does now — that threw, and the throw
+  // took the rest of the header's wiring with it.)
   const who = Session.username() || "account";
-  el("btn-profile").querySelector(".rail-label").textContent = who;
-  el("btn-profile").title = `Signed in as ${who} — your feeds and alerts are private to your account`;
+  el("btn-profile").title = who === "account"
+    ? "Sign in — your feeds and alerts are private to your account"
+    : `Signed in as ${who} — click to sign out`;
+  el("btn-profile").setAttribute("aria-label", `Account: ${who}`);
   el("btn-profile").onclick = async () => {
     if (!confirm(`Signed in as ${Session.username()}. Sign out?`)) return;
     // The cached news is a reading history sitting on a disk that may not be
@@ -2742,7 +2754,7 @@ async function refreshPantheons() {
   } catch (e) { PANTHEONS = []; PANTHEON_INVITES = []; }
   renderViewSwitch();
   renderPantheonBadge();
-  if (!el("pantheons-panel").hidden) renderPantheonsPanel();
+  if (VIEW === "pantheons") renderPantheonsPanel();
 }
 
 function renderPantheonBadge() {
@@ -2752,13 +2764,12 @@ function renderPantheonBadge() {
 }
 
 function wirePantheons() {
-  el("btn-pantheons").onclick = async () => {
-    el("pantheons-panel").hidden = false;
+  el("btn-view-pantheons").onclick = async () => {
+    setView("pantheons");
     await refreshPantheons();
     renderPantheonsPanel();
   };
-  feedback(el("btn-pantheons"));
-  el("btn-close-pantheons").onclick = () => { el("pantheons-panel").hidden = true; };
+  feedback(el("btn-view-pantheons"));
   wirePantheonModal();
   el("btn-create-pantheon").onclick = () => PantheonModal.open();
 }
@@ -2835,32 +2846,6 @@ function initBoardScrollbar() {
 }
 // Replaced by the real implementation once the board exists.
 let syncBoardScrollbar = () => {};
-
-/* ---------- action rail ---------- */
-function wireActionRail() {
-  const rail = el("action-rail");
-  const toggle = el("btn-rail-toggle");
-  if (!rail || !toggle) return;
-  const apply = (open) => {
-    rail.classList.toggle("open", open);
-    toggle.setAttribute("aria-expanded", String(open));
-    toggle.title = open ? "Collapse actions (\\)" : "Expand actions (\\)";
-  };
-  apply(Settings.get("rail_open") === true);
-  toggle.onclick = () => {
-    const open = !rail.classList.contains("open");
-    apply(open);
-    Settings.set("rail_open", open);   // follows the account, like other prefs
-  };
-  // Backslash toggles it — no modifier, and never while the user is typing.
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "\\" || e.ctrlKey || e.metaKey || e.altKey) return;
-    const t = e.target;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    e.preventDefault();
-    toggle.click();
-  });
-}
 
 /* ---------- admin / operator console ---------- */
 let ADMIN_ME = null;   // caller's own account id, so the UI never offers self-lockout
@@ -4253,7 +4238,6 @@ function wirePantheonModal() {
   el("btn-pn-board").onclick = () => {
     const id = PantheonModal.id;
     PantheonModal.close();
-    el("pantheons-panel").hidden = true;
     if (id) setView("pantheon:" + id);
   };
 
@@ -4572,7 +4556,7 @@ function pantheonCard(p) {
   const openBtn = document.createElement("button");
   openBtn.className = "btn small"; openBtn.textContent = "Board";
   openBtn.title = "Open this Pantheon's shared board";
-  openBtn.onclick = () => { el("pantheons-panel").hidden = true; setView("pantheon:" + p.id); };
+  openBtn.onclick = () => setView("pantheon:" + p.id);
   const detailBtn = document.createElement("button");
   detailBtn.className = "btn small"; detailBtn.textContent = "Manage";
   detailBtn.title = "Members, invitations, and access settings";

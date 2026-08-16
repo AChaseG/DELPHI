@@ -7,9 +7,10 @@
    Contrast computed against surfaces (all pairs ≥3.8:1; primary ≥5:1).
    Status colors (importance tiers) stay fixed and are never themed. */
 :root, :root[data-theme="dark"] {
-  /* Width of the collapsed action rail; the board reserves this much on the
-     right so the last feed column is never hidden underneath it. */
-  --rail-w: 52px;
+  /* Zero rather than deleted: the board, the map and the right-hand decorative
+     column all measure themselves against what the action rail used to
+     reserve. The rail is gone; one token says so in one place. */
+  --rail-w: 0px;
   /* A feed column's natural width, and how wide it may grow to use up a wide
      monitor. 360 is the width the board was built around; 560 is where a
      headline stops scanning like a column and starts scanning like a page. */
@@ -137,7 +138,16 @@ button { font: inherit; }
   vertical-align: 1px;
 }
 
+/* Ends with the two that are about you: settings, then the account itself in
+   the corner, which is where every application has taught people to look. */
 .topbar-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.topbar-actions #btn-settings,
+.topbar-actions #btn-profile { font-size: 16px; line-height: 1; padding: 6px 10px; }
+
+/* The Pantheons board: a page of lists rather than a row of columns. */
+.pantheons-view { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 12px; }
+.pantheons-body { max-width: 900px; margin: 0 auto; padding: 0 16px 30px; }
+.pantheons-view .set-h { padding: 0; }
 #global-search {
   width: 300px; padding: 7px 10px;
   background: var(--surface-2); color: var(--ink);
@@ -226,70 +236,6 @@ button { font: inherit; }
   font-family: Georgia, "Times New Roman", serif;
   letter-spacing: 0.6px;
 }
-
-/* ---------- action rail ----------
-   Fixed to the right edge and always reachable. Collapsed it shows icons only;
-   expanded it adds labels and the search field. Kept out of the header so the
-   header can stay a single short row at any window width. */
-.action-rail {
-  position: fixed;
-  top: 0; right: 0; bottom: 0;
-  z-index: 600;
-  width: var(--rail-w);
-  display: flex; flex-direction: column; align-items: stretch;
-  gap: 6px;
-  padding: 10px 6px;
-  background: var(--surface);
-  border-left: 1px solid var(--gold-soft);
-  transition: width 0.16s ease;
-  overflow: hidden;
-}
-.action-rail.open { width: 244px; padding: 10px; }
-.rail-spacer { flex: 1 1 auto; }
-
-.rail-toggle {
-  /* Hard against the rail's own edge. Centred, it read as a control belonging
-     to the list of actions below it rather than as the thing that closes the
-     panel — and left a ragged gap on both sides once the rail was open. */
-  align-self: flex-end;
-  background: none; border: 1px solid var(--border); color: var(--ink-2);
-  border-radius: 6px; cursor: pointer;
-  width: 26px; height: 26px; line-height: 1;
-  flex: 0 0 auto;
-}
-.rail-toggle:hover { color: var(--ink); border-color: var(--gold-soft); }
-.action-rail.open .rail-toggle { transform: rotate(180deg); }
-
-.rail-search { display: none; }
-.action-rail.open .rail-search { display: block; }
-.rail-search input {
-  width: 100%;
-  background: var(--surface-2); color: var(--ink);
-  border: 1px solid var(--border); border-radius: 7px;
-  padding: 7px 9px; font-size: 13px;
-}
-
-.rail-btn {
-  display: flex; align-items: center; gap: 9px;
-  width: 100%;
-  padding: 8px;
-  justify-content: center;
-  position: relative;
-  flex: 0 0 auto;
-}
-.action-rail.open .rail-btn { justify-content: flex-start; padding: 8px 10px; }
-/* Emoji have wildly different advance widths, so glyphs left to themselves
-   sit at different x-positions down the rail. A fixed, centred box makes every
-   icon share one optical column. */
-.rail-icon {
-  font-size: 16px; line-height: 1;
-  flex: 0 0 22px; width: 22px;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.rail-label { display: none; white-space: nowrap; }
-.action-rail.open .rail-label { display: inline; }
-/* Collapsed, the icon alone must still say what the control does. */
-.action-rail:not(.open) .rail-btn { aspect-ratio: 1 / 1; padding: 0; }
 
 /* ---------- board ---------- */
 /* Single lateral rail: feeds never wrap below one another. */
@@ -570,8 +516,6 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 body.map-board .pillar { display: none; }
 /* The rail is for the boards made of columns. On Atlas the pane is the rail's
    job, and a pop-out over a map is a pop-out over the thing being read. */
-body.map-board .action-rail { display: none; }
-body.map-board .map-view { padding-right: 0; }
 
 /* Each tab is a column: the same rows the board draws, in a narrower frame. */
 .map-feed .article { padding: 10px 14px; border-bottom: 1px solid var(--hairline); }
@@ -1367,10 +1311,10 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
   .topbar { gap: 8px 10px; padding: 8px 12px; padding-right: calc(var(--rail-w) + 10px); }
   .brand { font-size: 15px; }
   .view-switch { flex: 1 1 100%; }
-  /* Narrower rail on phones, and the expanded form takes most of the screen
-     so labels and the search box stay legible. */
-  .action-rail { --rail-w: 46px; }
-  .action-rail.open { width: min(82vw, 260px); }
+  /* The header's controls wrap onto their own row rather than shrinking the
+     search box to nothing. */
+  .topbar-actions { flex: 1 1 100%; }
+  #global-search { flex: 1 1 auto; width: auto; min-width: 0; }
   .view-switch button { flex: 1; }
   .stat-tile { flex: 1; min-width: 0; padding: 4px 6px; }
 

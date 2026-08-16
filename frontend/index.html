@@ -16,43 +16,25 @@
            fallback text only appears if the image fails to load. -->
       <img src="/img/logo.webp" alt="D.E.L.P.H.I." class="brand-logo" id="brand-logo">
     </div>
-    <div class="stat-row" id="stat-row">
-      <div class="stat-tile"><div class="stat-value" id="stat-articles">–</div><div class="stat-label">articles (24h)</div></div>
-      <div class="stat-tile"><div class="stat-value" id="stat-countries">–</div><div class="stat-label">countries (24h)</div></div>
-      <div class="stat-tile"><div class="stat-value" id="stat-sources">–</div><div class="stat-label">sources healthy</div></div>
-      <div class="stat-tile"><div class="stat-value" id="stat-alerts">–</div><div class="stat-label">alert hits unseen</div></div>
-    </div>
+    <!-- The tab bar. Every board Delphi has, in one row. -->
     <div class="view-switch" role="tablist">
       <button id="btn-view-home" class="active" title="Delphi-curated overview of everything ingested">🏠 Home</button>
       <button id="btn-view-mine" title="Feeds and alerts you created">📋 My feeds</button>
       <button id="btn-view-map" class="bell" title="Atlas — one map: the places you watch and where your alerts are firing">🗺 Atlas<span id="bell-count" class="bell-count" hidden>0</span></button>
+      <button id="btn-view-pantheons" class="bell" title="Pantheons — organizations that share feeds and alerts">🏛 Pantheons<span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
     </div>
-  </header>
 
-  <!-- Action rail: search and every action, pinned to the right edge. Lives
-       outside the header so the header stays one short row — a wrapping header
-       used to grow tall enough to push the board's horizontal scrollbar off
-       the bottom of the screen. Collapsed it is a strip of icons; expanded it
-       adds labels and the search box. -->
-  <aside id="action-rail" class="action-rail" aria-label="Actions">
-    <button id="btn-rail-toggle" class="rail-toggle" aria-expanded="false"
-            aria-controls="action-rail" title="Expand actions (\)">‹</button>
-    <div class="rail-search">
+    <!-- Everything that acts rather than navigates, ending at the two that are
+         about you: settings, then the account itself in the corner. -->
+    <div class="topbar-actions">
       <input id="global-search" type="search" placeholder="Search all news…" autocomplete="off"
              aria-label="Search all news (supports AND OR NOT)">
+      <button id="btn-create" class="btn btn-primary"
+              title="Create a feed or an alert — pick which with the toggle inside">＋ Create</button>
+      <button id="btn-settings" class="btn" title="Settings">⚙</button>
+      <button id="btn-profile" class="btn" title="Your feeds and alerts are private to your profile">👤</button>
     </div>
-    <button id="btn-create" class="btn btn-primary rail-btn" title="Create a feed or an alert — pick which with the toggle inside">
-      <span class="rail-icon">＋</span><span class="rail-label">Create</span></button>
-    <button id="btn-pantheons" class="btn rail-btn bell" title="Pantheons — organizations that share feeds and alerts">
-      <span class="rail-icon">🏛</span><span class="rail-label">Pantheons</span><span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
-    <button id="btn-sources" class="btn rail-btn" title="Manage sources">
-      <span class="rail-icon">📡</span><span class="rail-label">Sources</span></button>
-    <span class="rail-spacer"></span>
-    <button id="btn-settings" class="btn rail-btn" title="Settings">
-      <span class="rail-icon">⚙</span><span class="rail-label">Settings</span></button>
-    <button id="btn-profile" class="btn rail-btn" title="Your feeds and alerts are private to your profile">
-      <span class="rail-icon">👤</span><span class="rail-label">Sign in</span></button>
-  </aside>
+  </header>
 
   <!-- Settings side panel -->
   <aside id="settings-panel" class="side-panel" hidden>
@@ -61,6 +43,23 @@
       <button class="icon-btn" id="btn-close-settings" aria-label="Close settings">✕</button>
     </div>
     <div class="settings-body">
+      <!-- What this instance is doing, and the catalogue behind it. These four
+           numbers used to sit across the top of every board; they are a status
+           report rather than something a reader acts on, so they live where
+           you go when you want to know how Delphi itself is doing. -->
+      <h3 class="set-h">This instance</h3>
+      <div class="stat-row" id="stat-row">
+        <div class="stat-tile"><div class="stat-value" id="stat-articles">–</div><div class="stat-label">articles (24h)</div></div>
+        <div class="stat-tile"><div class="stat-value" id="stat-countries">–</div><div class="stat-label">countries (24h)</div></div>
+        <div class="stat-tile"><div class="stat-value" id="stat-sources">–</div><div class="stat-label">sources healthy</div></div>
+        <div class="stat-tile"><div class="stat-value" id="stat-alerts">–</div><div class="stat-label">alert hits unseen</div></div>
+      </div>
+      <div class="set-row">
+        <span>Every outlet Delphi polls — add one, track a topic, repair or retire
+              what has stopped answering.</span>
+        <button class="btn small" id="btn-sources">📡 Sources</button>
+      </div>
+
       <!-- Only rendered when this instance charges for access; on a free one
            the whole section stays out of the way. -->
       <div id="set-billing" hidden>
@@ -167,13 +166,14 @@
       <div class="set-row">
         <span>Sign out of every device — use this if you've lost a device, or
               think someone else has been in your account. Signing out from the
-              rail only affects this browser; this ends every session, including
+              corner only affects this browser; this ends every session, including
               this one.</span>
         <button class="btn small" id="btn-signout-all">🔒 Sign out everywhere</button>
       </div>
 
-      <!-- Operator console. Lived on the action rail, where it sat among things
-           every reader uses despite almost nobody being able to see it. -->
+      <!-- Operator console. Lived on the action rail among things every reader
+           uses, despite almost nobody being able to see it; Settings is where
+           it belonged all along. -->
       <div id="admin-setting" hidden>
         <h3 class="set-h">Operator</h3>
         <div class="set-row">
@@ -225,10 +225,10 @@
               itself — going there is a button inside that view.</li>
             <li>Found a Home column you want to keep and edit? Press <b>📌</b> in its
               header to copy it to <b>📋 My feeds</b>.</li>
-            <li>Press <b>＋ Create</b> in the rail on the right to build your own feed,
+            <li>Press <b>＋ Create</b> in the header to build your own feed,
               or turn on an alert that tells you the moment something matches.</li>
           </ol>
-          <p>The rail on the right edge holds everything else. Click <b>‹</b> at its
+          <p>The header holds everything else. Click <b>‹</b> at its
              top to expand it into labelled buttons and reveal the search box, or press
              <b>\</b> (backslash) any time you aren't typing in a field.</p>
         </details>
@@ -245,7 +245,7 @@
              account's email address, and open the link that arrives. It takes you
              straight to a "set a new password" card. Reset links expire, so request a
              fresh one rather than reusing an old email.</p>
-          <p><b>Sign out:</b> <b>👤</b> at the bottom of the rail — this browser only.
+          <p><b>Sign out:</b> <b>👤</b> in the top-right corner — this browser only.
              To end every signed-in device at once (a lost phone, or someone else in
              your account), use <b>⚙ Settings → Sign out everywhere</b>.</p>
           <p>No verification email? Check spam first. If it still hasn't arrived, the
@@ -260,7 +260,7 @@
           <p><b>Scroll sideways</b> by dragging the gold bar under the board, clicking
              anywhere on its track to jump, or rolling a mouse wheel over the board. The
              bar hides itself when every column already fits.</p>
-          <p><b>Search everything</b> from the box at the top of the expanded rail: type
+          <p><b>Search everything</b> from the box in the header: type
              and press Enter and the results arrive as a temporary column at the left of
              the board. It accepts plain words or full Boolean syntax. Press <b>✕</b> in
              that column's header to dismiss it, or empty the box and press Enter.</p>
@@ -311,7 +311,7 @@
 
         <details>
           <summary>📋 Creating a feed</summary>
-          <p>Press <b>＋ Create</b> in the rail. Make sure the toggle at the top of the
+          <p>Press <b>＋ Create</b> in the header. Make sure the toggle at the top of the
              wizard reads <b>📋 Feed</b>, then work through the four steps — you can jump
              between them with the numbered tabs, and everything except the name is
              optional.</p>
@@ -509,7 +509,7 @@
 
         <details>
           <summary>📡 Managing sources</summary>
-          <p>Open <b>📡 Sources</b> in the rail. The list runs to hundreds of outlets, so
+          <p>Open <b>⚙ Settings</b> and press <b>📡 Sources</b>. The list runs to hundreds of outlets, so
              start by typing in the <b>filter box</b> — it matches name, country, language,
              platform, scope, category, who added it, and health, and every word you type
              narrows the list further.</p>
@@ -571,7 +571,7 @@
 
         <details>
           <summary>🏛 Setting up a Pantheon</summary>
-          <p><b>Create one:</b> open <b>🏛 Pantheons</b> in the rail, press
+          <p><b>Create one:</b> open the <b>🏛 Pantheons</b> board, press
              <b>🏛 New Pantheon</b>, name it, optionally describe it, choose
              <b>🔒 Private</b> (invitation only) or <b>🌐 Public</b> (anyone can join), and
              press <b>Create</b>.</p>
@@ -596,7 +596,7 @@
 
         <details>
           <summary>⚙ Setting up how Delphi looks and behaves</summary>
-          <p>Open <b>⚙ Settings</b> in the rail. Everything here is saved to your account
+          <p>Open <b>⚙ Settings</b> in the top-right corner. Everything here is saved to your account
              and follows you to any browser or device.</p>
           <ul>
             <li><b>Theme</b> — dark, light, or match your system.</li>
@@ -623,7 +623,7 @@
 
         <details>
           <summary>⟳ Pulling news in now</summary>
-          <p><b>⟳ Refresh</b> in the rail polls every news wire immediately, plus a
+          <p><b>⟳ Refresh</b> on a column polls every news wire immediately, plus a
              bounded slice of the local city feeds. Use it after adding a source or a
              topic tracker.</p>
           <p><b>⟳</b> in a column header re-runs that one feed's search against what has
@@ -682,7 +682,7 @@
           <p>Go to <b>⚙ Settings → Account security → Sign out everywhere</b>.
              That ends every signed-in browser and phone on your account —
              including any you no longer have, and any that isn't yours. Signing
-             out from <b>👤</b> in the rail only forgets <em>this</em> browser,
+             out from <b>👤</b> in the corner only forgets <em>this</em> browser,
              which does nothing about a session somewhere else.</p>
           <p>Then change your password using <b>Forgot password?</b> on the
              sign-in screen. Changing it also signs out every device, so doing
@@ -788,8 +788,6 @@
         <details>
           <summary>⌨ Keyboard</summary>
           <ul>
-            <li><b>\</b> — expand or collapse the action rail (whenever you aren't typing
-              in a field).</li>
             <li><b>Enter</b> — in the search box, run the search; in the sign-in and
               add-source forms, submit them; in a keyword box, add the keyword.</li>
             <li><b>Esc</b> — close the add-source dialog.</li>
@@ -1557,17 +1555,16 @@
   </aside>
 
   <!-- Pantheons side panel -->
-  <aside id="pantheons-panel" class="side-panel" hidden>
-    <div class="side-panel-head">
-      <h2>🏛 Pantheons</h2>
-      <button class="icon-btn" id="btn-close-pantheons" aria-label="Close pantheons">✕</button>
-    </div>
-    <div class="settings-body">
-      <p class="set-note">A Pantheon is an organization inside Delphi: create one, invite other accounts,
-         and share feeds and alerts with everyone in it. Each Pantheon gets its own board
-         beside 🏠 Home and 📋 My feeds.</p>
-      <div class="pn-create">
-        <button class="btn btn-primary" id="btn-create-pantheon">🏛 New Pantheon</button>
+  <!-- The Pantheons board. Everything the side panel listed, on a board of its
+       own beside the others — because a Pantheon is somewhere you go, not a
+       setting you adjust, and the panel it lived in is gone. -->
+  <section id="pantheons-view" class="pantheons-view" hidden>
+    <div class="pantheons-body">
+      <div class="map-pane-head">
+        <span class="set-note">A Pantheon is an organization inside Delphi: create one,
+           invite other accounts, and share feeds and alerts with everyone in it. Each
+           one gets its own board beside 🏠 Home and 📋 My feeds.</span>
+        <button class="btn small btn-primary" id="btn-create-pantheon">🏛 New Pantheon</button>
       </div>
       <div id="pn-invites-section" hidden>
         <h3 class="set-h">Invitations</h3>
@@ -1578,7 +1575,7 @@
       <h3 class="set-h">Public Pantheons</h3>
       <div id="pn-public"></div>
     </div>
-  </aside>
+  </section>
 
   <!-- Admin / operator console -->
   <aside id="admin-panel" class="side-panel wide" hidden>

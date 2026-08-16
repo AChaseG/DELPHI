@@ -41,9 +41,10 @@ def test_the_board_switch_offers_it():
 
 
 def test_choosing_it_replaces_the_board_rather_than_floating_over_it():
-    show = _block("function showMapBoard", "\n}\n")
-    assert 'el("board").hidden = on' in show
-    assert 'el("map-view").hidden = !on' in show
+    show = _block("function showBoard", "\n}\n")
+    assert 'el("board").hidden = !columns' in show
+    assert 'el("map-view").hidden = !map' in show
+    assert 'el("pantheons-view").hidden = !pantheons' in show
 
 
 def test_the_map_is_told_to_measure_itself_when_shown():
@@ -55,7 +56,7 @@ def test_the_map_is_told_to_measure_itself_when_shown():
 def test_the_decorative_columns_get_out_of_the_way():
     """They frame a board of columns. Over a map they are two opaque strips
     across the thing being read."""
-    assert "map-board" in _block("function showMapBoard", "\n}\n")
+    assert "map-board" in _block("function showBoard", "\n}\n")
     assert re.search(r"body\.map-board\s+\.pillar\s*\{[^}]*display:\s*none", CSS)
 
 
@@ -316,11 +317,11 @@ def test_the_choice_is_remembered():
     assert 'localStorage.setItem("gnd_basemap"' in init
 
 
-def test_the_rail_is_only_on_the_column_boards():
-    """A pop-out panel over a map covers the thing being read, and on Atlas the
-    pane does the rail's job anyway."""
-    assert re.search(r"body\.map-board\s+\.action-rail\s*\{[^}]*display:\s*none", CSS)
-    assert re.search(r"body\.map-board\s+\.map-view\s*\{[^}]*padding-right:\s*0", CSS)
+def test_nothing_floats_over_the_map_any_more():
+    """The pop-out rail is gone entirely — see tests/test_chrome_layout.py.
+    What is left is that the map board reserves nothing for it."""
+    assert "action-rail" not in CSS
+    assert "action-rail" not in HTML
 
 
 # ---------- and it stays usable ----------

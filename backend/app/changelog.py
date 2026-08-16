@@ -13,6 +13,30 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-19",
+        "title": "The pop-out rail is gone; everything it held has a home",
+        "items": [
+            "🧭 The strip of buttons pinned to the right edge has been taken "
+            "apart, and each thing it held put where it belongs. Nothing was "
+            "dropped.",
+            "🏛 <b>Pantheons is a board</b> now, on the tab bar beside 🏠 Home, "
+            "📋 My feeds and 🗺 Atlas. It lists exactly what the old panel did — "
+            "your Pantheons, your invitations, and the public directory — with "
+            "room to read them.",
+            "⚙ <b>Settings sits in the top-right corner</b>, with the account "
+            "button 👤 to its right, in the corner itself. The four counters — "
+            "articles, countries, sources, unseen alert hits — moved into "
+            "Settings under <b>This instance</b>, and <b>📡 Sources</b> opens "
+            "from there too. They are a report on how Delphi is doing rather "
+            "than something you act on, and they were taking a row off the top "
+            "of every board.",
+            "🔍 Search and <b>＋ Create</b> are in the header, where they are "
+            "always visible instead of behind a pop-out.",
+            "📐 The board gets the whole window back. On a phone the header "
+            "wraps to its own rows rather than hiding things behind a toggle.",
+        ],
+    },
+    {
         "date": "2026-09-18",
         "title": "Atlas: five base maps, and two tabs that are columns",
         "items": [
