@@ -255,6 +255,37 @@ def test_the_locations_tab_lists_in_view_and_elsewhere():
     assert 'el("loc-elsewhere-head").hidden' in listing
 
 
+# ---------- what is where in a pane ----------
+
+def test_each_fold_out_sits_above_its_feed():
+    """A feed is long. Anything a reader goes looking for — the alert to pause,
+    the place to rename — has to be reachable without scrolling past forty
+    articles first."""
+    alerts = HTML[HTML.index('data-pane="alerts">'):HTML.index('data-pane="locations" hidden')]
+    assert alerts.index('id="alerts-manage"') < alerts.index('id="inview-list"')
+    locations = HTML[HTML.index('data-pane="locations" hidden"'.rstrip('"')):]
+    assert locations.index('id="loc-manage"') < locations.index('id="loc-feed"')
+
+
+def test_the_edit_form_is_next_to_the_list_that_opens_it():
+    """Reported as "Edit does the same thing as Show". It didn't — the form
+    filled in correctly — but the form was at the top of the pane and the list
+    at the bottom, so with a feed between them the only visible effect was the
+    map recentring, which is what Show does."""
+    locations = HTML[HTML.index('data-pane="locations" hidden'):]
+    assert (locations.index('id="loc-manage"')
+            < locations.index('id="loc-create"')
+            < locations.index('id="loc-feed"'))
+
+
+def test_starting_an_edit_puts_the_form_in_front_of_you():
+    edit = _block("  startEdit(loc)")
+    assert "scrollIntoView(" in edit
+    assert "name.focus()" in edit
+    assert "name.select()" in edit, (
+        "renaming is the common case; typing should replace what is there")
+
+
 # ---------- the ground it is read on ----------
 
 def test_there_is_more_than_one_base_map():

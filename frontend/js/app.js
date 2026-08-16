@@ -3835,6 +3835,16 @@ const LocationsPanel = {
     el("btn-loc-save").textContent = "Save changes";
     el("btn-loc-cancel").hidden = false;
     this.setPoint(loc.lat, loc.lon, loc.place_name, loc.country);
+    // Reported as "Edit does the same thing as Show". It did not — the form
+    // filled in correctly — but the form was at the top of the pane and the
+    // list at the bottom, so with a feed between them the only thing that
+    // visibly happened was the map recentring, which is what Show does. The
+    // form is next to the list now; this makes sure it is also *looked at*.
+    const form = el("loc-create");
+    form.scrollIntoView({ block: "nearest" });
+    const name = el("loc-name");
+    name.focus();
+    name.select();
   },
 
   cancelEdit() {

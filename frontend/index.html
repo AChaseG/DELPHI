@@ -1461,11 +1461,11 @@
           <button class="btn small btn-primary" id="btn-new-alert"
                   title="Create an alert — it fires the moment a matching article arrives">＋ New alert</button>
         </div>
-        <div id="inview-list" class="map-feed"></div>
         <details id="alerts-manage">
           <summary>Your alerts</summary>
           <div id="alerts-list"></div>
         </details>
+        <div id="inview-list" class="map-feed"></div>
       </div>
 
       <div class="map-pane" data-pane="locations" hidden>
@@ -1475,6 +1475,13 @@
           <button class="btn small btn-primary" id="btn-new-location"
                   title="Pick a point on the map, or search for a place">＋ New location</button>
         </div>
+
+        <details id="loc-manage">
+          <summary>Your places</summary>
+          <div id="loc-list"></div>
+          <h3 class="set-h" id="loc-elsewhere-head" hidden>Elsewhere</h3>
+          <div id="loc-elsewhere"></div>
+        </details>
 
         <!-- The creation form. Hidden until there is somewhere to put — a
              half-filled form for a place nobody has picked yet is furniture. -->
@@ -1502,15 +1509,8 @@
         </div>
 
         <!-- The tab's own feed: what has been reported inside the radius of
-             the watched places the map is showing. The places themselves are
-             below it, because managing them is the smaller half of the job. -->
+             the watched places the map is showing. -->
         <div id="loc-feed" class="map-feed"></div>
-        <details id="loc-manage">
-          <summary>Your places</summary>
-          <div id="loc-list"></div>
-          <h3 class="set-h" id="loc-elsewhere-head" hidden>Elsewhere</h3>
-          <div id="loc-elsewhere"></div>
-        </details>
       </div>
     </aside>
   </section>
