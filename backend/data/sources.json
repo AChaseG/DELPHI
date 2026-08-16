@@ -914,6 +914,19 @@
     "tier": 1
   },
   {
+    "name": "GDACS — Global Disaster Alerts",
+    "rss_url": "https://www.gdacs.org/xml/rss.xml",
+    "homepage": "https://www.gdacs.org",
+    "country": "",
+    "region": "Global",
+    "language": "en",
+    "scope": "international",
+    "categories": [
+      "disaster"
+    ],
+    "tier": 3
+  },
+  {
     "name": "ESPN — Top Headlines",
     "rss_url": "https://www.espn.com/espn/rss/news",
     "homepage": "https://www.espn.com",

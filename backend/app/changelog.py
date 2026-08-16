@@ -13,6 +13,26 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-21",
+        "title": "Global disaster alerts, from the source the responders use",
+        "items": [
+            "🌍 <b>GDACS</b> — the Global Disaster Alert and Coordination "
+            "System, run jointly by the UN and the European Commission — is "
+            "now one of Delphi's sources. Earthquakes, floods, tropical "
+            "cyclones, volcanoes and droughts, worldwide, with the severity "
+            "colour the humanitarian world actually works from.",
+            "🧭 It arrives as ordinary news, which means everything already "
+            "built for news works on it on day one: put it in a feed, exclude "
+            "it from one, match it with a boolean query, catch it with an "
+            "alert, or let it fall inside one of your watched places and "
+            "appear on 🗺 Atlas. Nothing new to learn.",
+            "🔕 It is filed under <b>disaster</b> and weighted low on purpose, "
+            "so it colours in the map without pushing wire copy off the front "
+            "of 🏠 Home. If you would rather not see it at all, switch it off "
+            "in 📡 Sources like any other.",
+        ],
+    },
+    {
         "date": "2026-09-20",
         "title": "A pass over the whole of it, and what the pass turned up",
         "items": [
