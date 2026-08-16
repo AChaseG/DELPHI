@@ -24,6 +24,11 @@ CHANGELOG: list[dict] = [
             "it answers. On the left, the ways in: <b>New Pantheon</b> and the "
             "public directory. On the right, across a hairline, the ones you "
             "are already in.",
+            "🧹 A Pantheon no longer takes a tab of its own — fine at three, a "
+            "scrolling mess at a dozen. Open one from its button on the "
+            "Pantheons board; a strip above its columns says which one you are "
+            "on, who is in it and what it is for, with <b>← Pantheons</b> to go "
+            "back and <b>Manage</b> to its right.",
             "🎴 Each of those is a <b>button carrying what it is</b>: name, "
             "description, how many members, how many shared feeds and alerts, "
             "and whose it is. Press it to open its board; <b>Manage</b> in its "

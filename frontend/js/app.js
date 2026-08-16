@@ -243,9 +243,10 @@ function updateViewButtons() {
   el("btn-view-home").classList.toggle("active", VIEW === "home");
   el("btn-view-mine").classList.toggle("active", VIEW === "mine");
   el("btn-view-map").classList.toggle("active", VIEW === "map");
-  el("btn-view-pantheons").classList.toggle("active", VIEW === "pantheons");
-  for (const b of document.querySelectorAll(".view-switch .view-pantheon"))
-    b.classList.toggle("active", b.dataset.view === VIEW);
+  // A Pantheon's own board lights the tab it was opened from: it is where you
+  // are, and nothing else in the bar would be lit at all.
+  el("btn-view-pantheons").classList.toggle(
+    "active", VIEW === "pantheons" || VIEW.startsWith("pantheon:"));
 }
 
 /* The map is a board, so it takes the board's place rather than floating over
@@ -273,19 +274,52 @@ function showBoard(which) {
 }
 
 /* One board button per Pantheon, next to Home and My feeds. */
+/* The tab bar is four boards and stays four boards.
+
+   Each Pantheon used to get a tab of its own, which was fine at three and a
+   scrolling mess at a dozen — and unnecessary the moment 🏛 Pantheons became a
+   board that lists them all with what they are. Its board is opened from there
+   now, and the header above the columns says which one you are on and how to
+   get back. */
 function renderViewSwitch() {
-  for (const b of document.querySelectorAll(".view-switch .view-pantheon")) b.remove();
-  const sw = document.querySelector(".view-switch");
-  for (const p of PANTHEONS) {
-    const b = document.createElement("button");
-    b.className = "view-pantheon";
-    b.dataset.view = "pantheon:" + p.id;
-    b.textContent = "🏛 " + (p.name.length > 16 ? p.name.slice(0, 15) + "…" : p.name);
-    b.title = `${p.name} — shared board · ${p.member_count} member${plural(p.member_count)}`;
-    b.onclick = () => setView("pantheon:" + p.id);
-    sw.appendChild(b);
-  }
   updateViewButtons();
+  renderBoardHeader();
+}
+
+/* Which Pantheon's board this is, since it no longer has a tab to name it.
+   Only ever shown for a Pantheon: Home and My feeds are named by the tab that
+   is lit, and a header repeating that is a row of pixels saying nothing. */
+function renderBoardHeader() {
+  const bar = el("board-header");
+  if (!bar) return;
+  const p = VIEW.startsWith("pantheon:")
+    ? PANTHEONS.find(x => x.id === +VIEW.split(":")[1]) : null;
+  bar.hidden = !p;
+  if (!p) return;
+  bar.innerHTML = "";
+
+  const back = document.createElement("button");
+  back.className = "btn small";
+  back.textContent = "← Pantheons";
+  back.title = "Back to all your Pantheons";
+  back.onclick = () => setView("pantheons");
+
+  const name = document.createElement("span");
+  name.className = "board-header-name";
+  name.textContent = `${p.visibility === "public" ? "🌐" : "🔒"} ${p.name}`;
+
+  const meta = document.createElement("span");
+  meta.className = "s-meta";
+  meta.textContent = `${p.role} · ${p.member_count} member${plural(p.member_count)}`
+    + (p.description ? ` · ${p.description}` : "");
+
+  const manage = document.createElement("button");
+  manage.className = "btn small";
+  manage.textContent = "Manage";
+  manage.title = "Members, invitations, and access settings";
+  manage.onclick = () => PantheonModal.open(p);
+
+  bar.append(back, name, meta, manage);
 }
 
 /* Bumped by every render. A render that finds the counter moved on has been
@@ -456,6 +490,7 @@ async function renderBoard() {
   const current = () => generation === BOARD_GENERATION;
 
   showBoard(VIEW === "map" ? "map" : VIEW === "pantheons" ? "pantheons" : "columns");
+  renderBoardHeader();
   if (VIEW === "map" || VIEW === "pantheons") return;   // they render themselves
 
   if (VIEW.startsWith("pantheon:")) {

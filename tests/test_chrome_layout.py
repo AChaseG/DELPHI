@@ -26,6 +26,12 @@ APP = (FRONTEND / "js" / "app.js").read_text(encoding="utf-8")
 CSS = (FRONTEND / "css" / "styles.css").read_text(encoding="utf-8")
 
 HEADER = HTML[HTML.index("<header"):HTML.index("</header>")]
+
+
+def _view_switch_src() -> str:
+    start = APP.index("function renderViewSwitch")
+    return APP[start:APP.index("function renderBoardHeader")]
+
 SETTINGS = HTML[HTML.index('id="settings-panel"'):HTML.index('id="sources-panel"')]
 
 
@@ -84,6 +90,36 @@ def test_the_pantheons_board_replaces_the_columns_rather_than_covering_them():
     show = APP[APP.index("function showBoard"):APP.index("\n}\n", APP.index("function showBoard"))]
     assert 'el("pantheons-view").hidden = !pantheons' in show
     assert 'el("board").hidden = !columns' in show
+
+
+def test_a_pantheon_no_longer_takes_a_tab_of_its_own():
+    """Fine at three, a scrolling mess at a dozen — and unnecessary once the
+    Pantheons board lists them all with what they are."""
+    src = _view_switch_src()
+    assert "view-pantheon" not in src
+    assert "view-pantheon" not in CSS
+    assert "createElement" not in src, "the bar is four boards, built in the HTML"
+
+
+def test_a_pantheons_board_says_which_one_it_is():
+    """Nothing else would. Home and My feeds are named by the lit tab; a
+    Pantheon's board had only its tab, and the tab is gone."""
+    assert 'id="board-header"' in HTML
+    src = APP[APP.index("function renderBoardHeader"):APP.index("let BOARD_GENERATION")]
+    assert "p.name" in src and "p.member_count" in src
+    assert 'setView("pantheons")' in src, "there has to be a way back"
+    assert "PantheonModal.open(p)" in src
+
+
+def test_the_board_header_is_only_for_pantheons():
+    src = APP[APP.index("function renderBoardHeader"):APP.index("let BOARD_GENERATION")]
+    assert 'VIEW.startsWith("pantheon:")' in src
+    assert "bar.hidden = !p" in src
+
+
+def test_the_pantheons_tab_stays_lit_inside_one():
+    src = APP[APP.index("function updateViewButtons"):APP.index("function renderViewSwitch")]
+    assert 'VIEW === "pantheons" || VIEW.startsWith("pantheon:")' in src
 
 
 # ---------- the corner ----------

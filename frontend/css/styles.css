@@ -294,6 +294,19 @@ button { font: inherit; }
   letter-spacing: 0.6px;
 }
 
+/* The strip above a Pantheon's columns: where you are, and the way back. */
+.board-header {
+  display: flex; align-items: center; gap: 12px; flex: 0 0 auto;
+  padding: 10px calc(var(--pillar-w) + 16px);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface);
+}
+.board-header-name { font-weight: 600; font-size: 15px; }
+.board-header .s-meta {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* ---------- board ---------- */
 /* Single lateral rail: feeds never wrap below one another. */
 .board {
@@ -909,7 +922,6 @@ body.map-board .pillar { display: none; }
 .pn-card .pn-row:last-child { border-bottom: none; }
 .pn-detail { padding: 2px 0 8px; }
 .pn-detail select { max-width: 200px; }
-.view-switch .view-pantheon { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* "Showing the last update" strip on a column whose refresh failed. Muted on
    purpose — the articles under it are still real, they're just not current. */
