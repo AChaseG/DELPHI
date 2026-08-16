@@ -13,6 +13,33 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-17",
+        "title": "Atlas — a whole board that is a map",
+        "items": [
+            "🗺 There is a third board beside 🏠 Home and 📋 My feeds: "
+            "<b>Atlas</b>. One map, filling the screen, carrying both the "
+            "places you watch and every alert hit Delphi has geolocated. "
+            "🔔 Alerts and 📍 Locations have moved into it — the rail buttons "
+            "still take you straight to each of them, they just land on the "
+            "map now.",
+            "🎯 Beside the map is a pane that only ever shows <b>what the map "
+            "is looking at</b>. Pan to the Aegean and it lists the alerts that "
+            "have fired around the Aegean; pan away and they go. It groups them "
+            "by the watched place they landed inside, because “an alert fired” "
+            "and “an alert fired inside the harbour you watch” are two "
+            "different pieces of news. Anything inside the view but outside "
+            "every watched place is still listed, under <i>Elsewhere in "
+            "view</i> — the pane narrows what you see, it never hides it.",
+            "🔭 There used to be two maps and neither could show the other's "
+            "layer: one inside Locations for picking a place, one inside Alerts "
+            "that was off by default. So the obvious question — <i>did that "
+            "alert fire somewhere I care about?</i> — could not be asked at "
+            "all. Now the stars and the hits are on the same picture.",
+            "📱 On a narrow window the map and the pane stack instead of "
+            "squeezing, so both stay readable on a phone.",
+        ],
+    },
+    {
         "date": "2026-09-16",
         "title": "Subscriptions, and invitations that skip them",
         "items": [

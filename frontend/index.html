@@ -25,6 +25,7 @@
     <div class="view-switch" role="tablist">
       <button id="btn-view-home" class="active" title="Delphi-curated overview of everything ingested">🏠 Home</button>
       <button id="btn-view-mine" title="Feeds and alerts you created">📋 My feeds</button>
+      <button id="btn-view-map" title="Atlas — one map: the places you watch and where your alerts are firing">🗺 Atlas</button>
     </div>
   </header>
 
@@ -44,9 +45,9 @@
       <span class="rail-icon">＋</span><span class="rail-label">Create</span></button>
     <button id="btn-pantheons" class="btn rail-btn bell" title="Pantheons — organizations that share feeds and alerts">
       <span class="rail-icon">🏛</span><span class="rail-label">Pantheons</span><span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
-    <button id="btn-locations" class="btn rail-btn" title="Favourite locations — flag news near places you care about">
+    <button id="btn-locations" class="btn rail-btn" title="Favourite locations — on the 🗺 Atlas board">
       <span class="rail-icon">📍</span><span class="rail-label">Locations</span></button>
-    <button id="btn-alerts-panel" class="btn rail-btn bell" title="Alerts">
+    <button id="btn-alerts-panel" class="btn rail-btn bell" title="Alerts — on the 🗺 Atlas board">
       <span class="rail-icon">🔔</span><span class="rail-label">Alerts</span><span id="bell-count" class="bell-count" hidden>0</span></button>
     <button id="btn-sources" class="btn rail-btn" title="Manage sources">
       <span class="rail-icon">📡</span><span class="rail-label">Sources</span></button>
@@ -1428,6 +1429,71 @@
   </div>
 
   <main id="board" class="board"></main>
+
+  <!-- Atlas — the map board.
+       One map, carrying everything geographic Delphi knows about this account:
+       the places being watched, and where the alerts have been firing. It is a
+       board rather than a panel because it is a way of reading the news, not a
+       setting — and because the two of them on one map is the whole point: an
+       alert hit means something different when you can see it landed inside a
+       place you watch.
+
+       The pane beside it is tied to what the map is looking at. Pan away and
+       its contents change; that is the feature, not a side effect.
+
+       Named Atlas: the Titan holding up the sky is also the word for a book of
+       maps, so it is the one name here that tells a stranger what the tab does
+       before they open it. The ids stay descriptive (map-view, MapBoard) so the
+       code says what the thing is; the name is what the reader is told. -->
+  <section id="map-view" class="map-view" hidden>
+    <div id="world-map" class="world-map"></div>
+    <aside id="map-side" class="map-side" aria-label="What is on the map right now">
+      <nav class="wiz-nav map-side-tabs" id="map-tabs" role="tablist">
+        <button data-pane="inview" class="active" title="Alerts inside the places you can see">🎯 In view</button>
+        <button data-pane="alerts" title="Every alert, and its recent hits">🔔 Alerts</button>
+        <button data-pane="locations" title="The places you watch">📍 Locations</button>
+      </nav>
+
+      <div class="map-pane" data-pane="inview">
+        <p class="set-note" id="inview-summary">Move the map to see what is inside it.</p>
+        <div id="inview-list"></div>
+      </div>
+
+      <div class="map-pane" data-pane="alerts" hidden>
+        <div id="alerts-list"></div>
+      </div>
+
+      <div class="map-pane" data-pane="locations" hidden>
+        <p class="set-note">Places you want to keep an eye on. Anything reported inside
+           the radius is flagged 📍 wherever it appears, and they share a single
+           📍 Favourite Locations feed.</p>
+
+        <div class="loc-search">
+          <input id="loc-search" type="search" autocomplete="off"
+                 placeholder="Find a place — city, country, or an address…"
+                 aria-label="Find a place — city, country, or an address">
+          <span class="s-meta">…or click the map</span>
+        </div>
+        <div id="loc-results" class="loc-results" hidden></div>
+
+        <div class="loc-form">
+          <input id="loc-name" type="text" maxlength="120" placeholder="Name this location">
+          <label class="loc-radius">
+            <span>Radius <strong id="loc-radius-val">25 km</strong></span>
+            <input type="range" id="loc-radius" min="1" max="500" step="1" value="25">
+          </label>
+          <span id="loc-coords" class="s-meta"></span>
+          <span class="spacer"></span>
+          <button class="btn" id="btn-loc-cancel" hidden>Cancel</button>
+          <button class="btn btn-primary" id="btn-loc-save" disabled>Save location</button>
+        </div>
+        <p id="loc-error" class="builder-error" role="alert" hidden></p>
+
+        <h3 class="set-h">Saved locations</h3>
+        <div id="loc-list"></div>
+      </div>
+    </aside>
+  </section>
   <!-- Custom horizontal scrollbar for the board: the native one is an overlay
        on most platforms (no layout space, fades when idle), so it can't be kept
        visible. Hidden automatically when every feed already fits. -->
@@ -1448,16 +1514,6 @@
   </div>
 
   <!-- Alerts side panel -->
-  <aside id="alerts-panel" class="side-panel" hidden>
-    <div class="side-panel-head">
-      <h2>Alerts</h2>
-      <button class="btn small" id="btn-toggle-alerts-map" title="Show alert hits on a map">🗺 Map</button>
-      <button class="icon-btn" id="btn-close-alerts" aria-label="Close alerts">✕</button>
-    </div>
-    <div id="alerts-map" class="alerts-map" hidden></div>
-    <div id="alerts-list"></div>
-  </aside>
-
   <!-- Sources side panel -->
   <aside id="sources-panel" class="side-panel wide" hidden>
     <div class="side-panel-head">
@@ -1478,45 +1534,6 @@
               title="Add an outlet by the URL of its RSS or Atom feed">➕ Add source</button>
     </div>
     <div id="sources-list"></div>
-  </aside>
-
-  <!-- Favourite locations -->
-  <aside id="locations-panel" class="side-panel wide" hidden>
-    <div class="side-panel-head">
-      <h2>📍 Locations</h2>
-      <button class="icon-btn" id="btn-close-locations" aria-label="Close locations">✕</button>
-    </div>
-    <div class="settings-body">
-      <p class="set-note">Places you want to keep an eye on. Anything reported inside
-         the radius is flagged 📍 wherever it appears, and they share a single
-         📍 Favourite Locations feed.</p>
-
-      <div class="loc-search">
-        <input id="loc-search" type="search" autocomplete="off"
-               placeholder="Find a place — city, country, or an address…"
-               aria-label="Find a place — city, country, or an address">
-        <span class="s-meta">…or click the map</span>
-      </div>
-      <div id="loc-results" class="loc-results" hidden></div>
-
-      <div id="loc-map" class="loc-map"></div>
-
-      <div class="loc-form">
-        <input id="loc-name" type="text" maxlength="120" placeholder="Name this location">
-        <label class="loc-radius">
-          <span>Radius <strong id="loc-radius-val">25 km</strong></span>
-          <input type="range" id="loc-radius" min="1" max="500" step="1" value="25">
-        </label>
-        <span id="loc-coords" class="s-meta"></span>
-        <span class="spacer"></span>
-        <button class="btn" id="btn-loc-cancel" hidden>Cancel</button>
-        <button class="btn btn-primary" id="btn-loc-save" disabled>Save location</button>
-      </div>
-      <p id="loc-error" class="builder-error" role="alert" hidden></p>
-
-      <h3 class="set-h">Saved locations</h3>
-      <div id="loc-list"></div>
-    </div>
   </aside>
 
   <!-- Pantheons side panel -->

@@ -242,8 +242,26 @@ function setView(view) {
 function updateViewButtons() {
   el("btn-view-home").classList.toggle("active", VIEW === "home");
   el("btn-view-mine").classList.toggle("active", VIEW === "mine");
+  el("btn-view-map").classList.toggle("active", VIEW === "map");
   for (const b of document.querySelectorAll(".view-switch .view-pantheon"))
     b.classList.toggle("active", b.dataset.view === VIEW);
+}
+
+/* The map is a board, so it takes the board's place rather than floating over
+   it. Kept in one function because the two must never both be on screen: a
+   hidden Leaflet map cannot measure itself, and one that was hidden while it
+   loaded comes back with grey tiles until something tells it to look again. */
+function showMapBoard(on) {
+  // The decorative columns frame a board of columns; over a map they are two
+  // opaque strips across the thing you are trying to read.
+  document.body.classList.toggle("map-board", on);
+  el("board").hidden = on;
+  el("map-view").hidden = !on;
+  if (on) {
+    el("board-scroll").hidden = true;     // the board's own bar, not the map's
+    el("empty-state").hidden = true;
+    MapBoard.open();
+  }
 }
 
 /* One board button per Pantheon, next to Home and My feeds. */
@@ -429,6 +447,9 @@ async function renderBoard() {
   const generation = ++BOARD_GENERATION;
   const current = () => generation === BOARD_GENERATION;
 
+  showMapBoard(VIEW === "map");
+  if (VIEW === "map") return;             // the map board renders itself
+
   if (VIEW.startsWith("pantheon:")) {
     const pid = +VIEW.split(":")[1];
     const p = PANTHEONS.find(x => x.id === pid);
@@ -509,6 +530,7 @@ function wireTopbar() {
   updateViewButtons();
   wirePantheons();
   wireAdmin();
+  wireMapBoard();
   wireBilling();
   wireMyBilling();
   refreshBilling();
@@ -563,12 +585,8 @@ function wireTopbar() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !el("story-backdrop").hidden) closeStory();
   });
-  el("btn-alerts-panel").onclick = () => { el("alerts-panel").hidden = false; renderAlertsPanel(); };
-  el("btn-close-alerts").onclick = () => { el("alerts-panel").hidden = true; };
-  el("btn-toggle-alerts-map").onclick = () => {
-    localStorage.setItem("gnd_alerts_map", alertsMapWanted() ? "0" : "1");
-    renderAlertsPanel();
-  };
+  // The bell and the pin both lead to Atlas now, each landing on its own pane.
+  el("btn-alerts-panel").onclick = () => { setView("map"); MapBoard.showPane("alerts"); };
   el("btn-sources").onclick = openSourcesPanel;
   el("btn-close-sources").onclick = () => { el("sources-panel").hidden = true; };
 
@@ -872,7 +890,7 @@ function wireSettings() {
   timefmt.onchange = async () => {
     Settings.set("timefmt", timefmt.value);
     await renderBoard();          // re-render timestamps everywhere
-    if (!el("alerts-panel").hidden) renderAlertsPanel();
+    if (alertsPaneShowing()) renderAlertsPanel();
   };
   pos.onchange = () => { Settings.set("toast_pos", pos.value); applySettings(); };
   vol.oninput = () => {
@@ -3611,46 +3629,25 @@ function adminUserRow(u) {
 let LOCATIONS = [];
 
 const LocationsPanel = {
+  /* The map and its saved-place layer belong to Atlas now; this keeps
+     references to them so everything below reads as it did. Nothing here owns
+     a map any more — there is one, and it is the board's. */
   map: null,
-  _mapWanted: null,   // in-flight load of the map library
+  saved: null,
   marker: null,
   circle: null,
   point: null,        // {lat, lon} currently being placed
   editing: null,      // location being edited, if any
 
+  /* "Open the locations panel" is now "show the map board, on that pane".
+     Kept as a method because half a dozen callers say it. */
   async open() {
-    el("locations-panel").hidden = false;
-    const mapReady = this._initMap();          // fetches the map library if needed
-    await this.refresh();                      // the list does not wait for the map
-    await mapReady;
-    this.renderSaved();                        // the map may have arrived last
-    // Leaflet measures the container; it was display:none until a moment ago.
-    setTimeout(() => this.map && this.map.invalidateSize(), 60);
+    setView("map");
+    MapBoard.showPane("locations");
+    await this.refresh();
   },
 
-  close() { el("locations-panel").hidden = true; },
-
-  async _initMap() {
-    if (this.map) return;
-    if (this._mapWanted) return this._mapWanted;   // a second open, same download
-    this._mapWanted = ensureLeaflet();
-    try {
-      await this._mapWanted;
-    } catch (e) {
-      this._mapWanted = null;
-      el("loc-map").textContent =
-        "The map could not be loaded — you can still add a place by searching for it.";
-      return;
-    }
-    if (this.map) return;
-    this.map = L.map("loc-map", { worldCopyJump: true }).setView([25, 10], 2);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(this.map);
-    this.saved = L.featureGroup().addTo(this.map);
-    this.map.on("click", (e) => this.setPoint(e.latlng.lat, e.latlng.lng));
-  },
+  close() { /* nothing to close: it is a board, not a panel */ },
 
   setPoint(lat, lon, name, country) {
     // Two different things, kept apart on purpose. `place` is what the place
@@ -3662,7 +3659,9 @@ const LocationsPanel = {
     el("loc-coords").textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
     el("btn-loc-save").disabled = false;
     this._drawPending();
-    this.map.setView([lat, lon], Math.max(this.map.getZoom(), 6));
+    // A place can be picked from the search box before the map has finished
+    // loading, or when it failed to load at all.
+    if (this.map) this.map.setView([lat, lon], Math.max(this.map.getZoom(), 6));
   },
 
   radiusKm() { return Number(el("loc-radius").value) || 25; },
@@ -3734,7 +3733,7 @@ const LocationsPanel = {
       show.className = "btn small";
       show.textContent = "Show";
       show.title = "Centre the map here";
-      show.onclick = () => this.map.setView([loc.lat, loc.lon], 8);
+      show.onclick = () => this.map && this.map.setView([loc.lat, loc.lon], 8);
       row.appendChild(show);
 
       // Shared copies belong to the Pantheon; only the owner edits them.
@@ -3827,9 +3826,14 @@ const LocationsPanel = {
   clearError() { const b = el("loc-error"); b.textContent = ""; b.hidden = true; },
 };
 
+function wireMapBoard() {
+  el("btn-view-map").onclick = () => setView("map");
+  for (const b of el("map-tabs").querySelectorAll("button"))
+    b.onclick = () => MapBoard.showPane(b.dataset.pane);
+}
+
 function wireLocations() {
   el("btn-locations").onclick = () => LocationsPanel.open();
-  el("btn-close-locations").onclick = () => LocationsPanel.close();
   el("btn-loc-save").onclick = () => LocationsPanel.save();
   feedback(el("btn-loc-save"), "Saving…");
   el("btn-loc-cancel").onclick = () => LocationsPanel.cancelEdit();
@@ -4508,7 +4512,13 @@ async function refreshAlerts(preloaded = null) {
   const bc = el("bell-count");
   bc.hidden = unseen === 0;
   bc.textContent = unseen;
-  if (!el("alerts-panel").hidden) renderAlertsPanel();
+  if (alertsPaneShowing()) renderAlertsPanel();
+}
+
+/* Is the alerts pane the one on screen? Every alert that fires asks this, and
+   the answer used to be "is the panel open" — a panel that no longer exists. */
+function alertsPaneShowing() {
+  return VIEW === "map" && MapBoard.pane === "alerts";
 }
 
 /* Which render owns the panel. Every alert that fires re-renders it, so on a
@@ -4520,7 +4530,8 @@ async function renderAlertsPanel() {
   const box = el("alerts-list");
   const wanted = ++alertsPanelSeq;
   if (!ALERTS.length) {
-    el("alerts-map").hidden = true;
+    ALERT_HITS = [];
+    if (MapBoard.alerts) MapBoard.alerts.clearLayers();
     box.innerHTML = '<div class="feed-empty">No alerts yet. Press “+ Create” and flip the toggle to 🔔 Alert — ' +
       "you'll get a live notification whenever a new article matches its criteria " +
       "(keywords, Boolean search, countries, importance, or a drawn map area).</div>";
@@ -4594,68 +4605,241 @@ async function renderAlertsPanel() {
   box.replaceChildren(built);
 }
 
-/* Map of where recent alert hits are geolocated, plus alert geofences. */
-let alertsMap = null;
-let alertsMapLayer = null;
+/* ---------- Atlas: the map board ----------
 
-function alertsMapWanted() { return localStorage.getItem("gnd_alerts_map") !== "0"; }
+   One map for everything geographic, and a pane beside it that only ever shows
+   what the map is currently looking at. The pane is the point: a list of every
+   alert hit everywhere is a list nobody reads, and the same list narrowed to
+   "inside the places on this screen" is the question a reader actually has.
 
-let alertsMapSeq = 0;
+   Grouped by watched place rather than by alert, for the same reason. An alert
+   fires across the world; what makes a hit worth a second look is that it
+   landed somewhere you already said you cared about. */
+const MapBoard = {
+  map: null,
+  locations: null,        // watched places: rings and stars
+  alerts: null,           // alert hits and alert geofences
+  pane: "inview",
+  _wanted: null,
 
-async function renderAlertsMap(eventsByAlert) {
-  const box = el("alerts-map");
-  if (!alertsMapWanted()) { box.hidden = true; return; }
-  const wanted = ++alertsMapSeq;
-  try { await ensureLeaflet(); } catch (e) { box.hidden = true; return; }
-  if (wanted !== alertsMapSeq) return;   // a later render already owns the map
-  box.hidden = false;
-  if (!alertsMap) {
-    alertsMap = L.map("alerts-map", { worldCopyJump: true }).setView([25, 10], 1);
+  async open() {
+    await this._init();
+    if (!this.map) return;
+    // A map that was hidden while it loaded comes back the size it was built
+    // at, which is nothing at all. Ask it to look again every time it is shown.
+    setTimeout(() => this.map.invalidateSize(), 60);
+    // Both layers, then the pane. The hits have to be fetched even when the
+    // alerts pane is not the one showing — "in view" is built out of them.
+    await LocationsPanel.refresh();
+    await refreshAlerts();
+    await renderAlertsPanel();
+    this.renderInView();
+  },
+
+  async _init() {
+    if (this.map) return;
+    if (this._wanted) return this._wanted;      // a second open, one download
+    this._wanted = ensureLeaflet();
+    try {
+      await this._wanted;
+    } catch (e) {
+      this._wanted = null;
+      el("world-map").textContent =
+        "The map could not be loaded. Your places and alerts are still working — "
+        + "this is the map library, not the news.";
+      return;
+    }
+    if (this.map) return;
+    this.map = L.map("world-map", { worldCopyJump: true }).setView([25, 10], 3);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 18,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(alertsMap);
-    alertsMapLayer = L.featureGroup().addTo(alertsMap);
-  }
-  alertsMapLayer.clearLayers();
-  for (const { alert, events } of eventsByAlert) {
-    const geo = alert.criteria && alert.criteria.geo;
-    if (geo) {
-      const style = { color: "#d4af37", weight: 1.5, dashArray: "5 5", fillOpacity: 0.06 };
-      if (geo.type === "Circle") {
-        alertsMapLayer.addLayer(L.circle([geo.center[0], geo.center[1]],
-          { radius: geo.radius_km * 1000, ...style }));
-      } else {
-        L.geoJSON({ type: "Feature", geometry: geo }, { style })
-          .eachLayer(l => alertsMapLayer.addLayer(l));
+    }).addTo(this.map);
+    this.locations = L.featureGroup().addTo(this.map);
+    this.alerts = L.featureGroup().addTo(this.map);
+    // Clicking empty map starts a new watched place, exactly as the old panel
+    // did — the map is still where a location is picked.
+    this.map.on("click", (e) => {
+      LocationsPanel.setPoint(e.latlng.lat, e.latlng.lng);
+      this.showPane("locations");
+    });
+    // The pane follows the map. `moveend` covers pan, zoom and a programmatic
+    // setView alike, so there is one place this is kept in step.
+    this.map.on("moveend", () => this.renderInView());
+    LocationsPanel.map = this.map;
+    LocationsPanel.saved = this.locations;
+    return this._wanted;
+  },
+
+  showPane(which) {
+    this.pane = which;
+    for (const b of el("map-tabs").querySelectorAll("button"))
+      b.classList.toggle("active", b.dataset.pane === which);
+    for (const p of document.querySelectorAll("#map-side .map-pane"))
+      p.hidden = p.dataset.pane !== which;
+    if (which === "alerts") renderAlertsPanel();
+    if (which === "inview") this.renderInView();
+  },
+
+  /* Alert hits and geofences, on the same map as the watched places. */
+  drawAlerts(eventsByAlert) {
+    if (!this.alerts) return;
+    this.alerts.clearLayers();
+    for (const { alert, events } of eventsByAlert) {
+      const geo = alert.criteria && alert.criteria.geo;
+      if (geo) {
+        const style = { color: "#d4af37", weight: 1.5, dashArray: "5 5", fillOpacity: 0.06 };
+        if (geo.type === "Circle") {
+          this.alerts.addLayer(L.circle([geo.center[0], geo.center[1]],
+            { radius: geo.radius_km * 1000, ...style }));
+        } else {
+          L.geoJSON({ type: "Feature", geometry: geo }, { style })
+            .eachLayer(l => this.alerts.addLayer(l));
+        }
+      }
+      for (const ev of events.slice(0, 30)) {
+        const place = (ev.article.places || [])[0];
+        if (!place) continue;
+        const t = impTier(ev.article.importance);
+        const marker = L.circleMarker([place.lat, place.lon], {
+          radius: ev.seen ? 5 : 7, color: t.color, fillColor: t.color,
+          fillOpacity: ev.seen ? 0.45 : 0.85, weight: 1.5,
+        });
+        const popup = document.createElement("div");
+        const b = document.createElement("b"); b.textContent = alert.name;
+        const link = document.createElement("a");
+        const href = safeUrl(ev.article.url);
+        if (href) { link.href = href; link.target = "_blank"; link.rel = "noopener"; }
+        link.textContent = ev.article.title;
+        const small = document.createElement("div");
+        small.textContent = `${t.icon} ${t.label} ${ev.article.importance} · ${place.name}`;
+        popup.append(b, document.createElement("br"), link, small);
+        marker.bindPopup(popup);
+        this.alerts.addLayer(marker);
       }
     }
+  },
+
+  /* What is inside the current viewport, grouped by the place it landed in.
+
+     Deliberately not "everything my alerts found". The map is the filter, and
+     the pane is a reading of it — so panning to the Aegean answers "what has
+     fired around here", which no list sorted by time can. */
+  renderInView() {
+    const box = el("inview-list");
+    const summary = el("inview-summary");
+    if (!box || !this.map) return;
+    const bounds = this.map.getBounds();
+    const inView = (lat, lon) => bounds.contains(L.latLng(lat, lon));
+
+    const places = LOCATIONS.filter(loc => inView(loc.lat, loc.lon));
+    const hits = ALERT_HITS.filter(h => inView(h.place.lat, h.place.lon));
+
+    // Each hit against the watched places it fell inside. A hit can land in two
+    // overlapping places; it belongs to both, and hiding it from one of them
+    // would make that place look quiet when it is not.
+    const groups = new Map(places.map(p => [p.id, { loc: p, hits: [] }]));
+    const elsewhere = [];
+    for (const hit of hits) {
+      let placed = false;
+      for (const p of places) {
+        if (withinLocation(hit.place.lat, hit.place.lon, p)) {
+          groups.get(p.id).hits.push(hit);
+          placed = true;
+        }
+      }
+      if (!placed) elsewhere.push(hit);
+    }
+
+    summary.textContent = places.length || hits.length
+      ? `${places.length} watched place${plural(places.length)} · `
+        + `${hits.length} alert hit${plural(hits.length)} in view`
+      : "Nothing in view. Zoom out, or add a place to watch.";
+
+    const built = document.createDocumentFragment();
+    for (const { loc, hits: own } of groups.values())
+      built.appendChild(this._group(`📍 ${loc.name}`, `${loc.radius_km} km`, own, loc));
+    if (elsewhere.length)
+      built.appendChild(this._group("Elsewhere in view",
+        "outside every watched place", elsewhere, null));
+    if (!groups.size && !elsewhere.length) {
+      const note = document.createElement("div");
+      note.className = "feed-empty";
+      note.textContent = LOCATIONS.length
+        ? "No watched places on this part of the map."
+        : "No watched places yet — click the map to add one.";
+      built.appendChild(note);
+    }
+    box.replaceChildren(built);
+  },
+
+  _group(title, meta, hits, loc) {
+    const block = document.createElement("div");
+    block.className = "alert-block";
+    const head = document.createElement("div");
+    head.className = "alert-head";
+    const h = document.createElement("h4");
+    h.textContent = `${title}${hits.length ? ` (${hits.length})` : ""}`;
+    head.appendChild(h);
+    const m = document.createElement("span");
+    m.className = "s-meta";
+    m.textContent = meta;
+    head.appendChild(m);
+    if (loc) {
+      head.appendChild(toolBtn("⌖", `Centre the map on ${loc.name}`, () =>
+        this.map.setView([loc.lat, loc.lon], Math.max(this.map.getZoom(), 8))));
+    }
+    block.appendChild(head);
+
+    const list = document.createElement("div");
+    list.className = "alert-events";
+    if (!hits.length) {
+      const quiet = document.createElement("div");
+      quiet.className = "feed-empty";
+      quiet.textContent = "Nothing has fired here.";
+      list.appendChild(quiet);
+    }
+    for (const { alert, ev } of hits.slice(0, 12)) {
+      const row = articleRow(ev.article);
+      const which = document.createElement("span");
+      which.className = "tag";
+      which.textContent = `🔔 ${alert.name}`;
+      which.title = `Found by your alert “${alert.name}”`;
+      row.prepend(which);
+      list.appendChild(row);
+    }
+    block.appendChild(list);
+    return block;
+  },
+};
+
+/* Where the alerts have been firing, drawn on the board's own map.
+
+   There used to be a second map for this, tucked inside the alerts panel and
+   off by default. Two maps of the same world is one too many: the question a
+   reader actually has — "did that land anywhere I care about?" — needs the
+   watched places and the hits on the same picture, and neither map could show
+   the other's layer. This draws into MapBoard's map instead, and hands the
+   hits to the pane beside it. */
+let alertLayer = null;
+
+/* Every hit with a position, flattened out of the per-alert structure, because
+   what the pane asks is geographic rather than per-alert: "which of these is
+   inside what I am looking at". */
+let ALERT_HITS = [];
+
+function renderAlertsMap(eventsByAlert) {
+  ALERT_HITS = [];
+  for (const { alert, events } of eventsByAlert) {
     for (const ev of events.slice(0, 30)) {
       const place = (ev.article.places || [])[0];
       if (!place) continue;
-      const t = impTier(ev.article.importance);
-      const marker = L.circleMarker([place.lat, place.lon], {
-        radius: ev.seen ? 5 : 7, color: t.color, fillColor: t.color,
-        fillOpacity: ev.seen ? 0.45 : 0.85, weight: 1.5,
-      });
-      const popup = document.createElement("div");
-      const b = document.createElement("b"); b.textContent = alert.name;
-      const link = document.createElement("a");
-      const href = safeUrl(ev.article.url);
-      if (href) { link.href = href; link.target = "_blank"; link.rel = "noopener"; }
-      link.textContent = ev.article.title;
-      const small = document.createElement("div");
-      small.textContent = `${t.icon} ${t.label} ${ev.article.importance} · ${place.name}`;
-      popup.append(b, document.createElement("br"), link, small);
-      marker.bindPopup(popup);
-      alertsMapLayer.addLayer(marker);
+      ALERT_HITS.push({ alert, ev, place });
     }
   }
-  setTimeout(() => {
-    alertsMap.invalidateSize();
-    const layers = alertsMapLayer.getLayers();
-    if (layers.length) alertsMap.fitBounds(alertsMapLayer.getBounds().pad(0.35), { maxZoom: 8 });
-  }, 60);
+  if (!MapBoard.map) return;              // drawn when the board next opens
+  MapBoard.drawAlerts(eventsByAlert);
+  MapBoard.renderInView();
 }
 
 /* ---------- sources panel ---------- */
