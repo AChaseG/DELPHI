@@ -337,6 +337,162 @@ def test_hazards_need_an_account_like_everything_else(client, db):
     assert client.get("/api/hazards").status_code == 401
 
 
+# ---------- AirNow ----------
+#
+# The EPA's regulatory monitors, replacing the crowdsourced sensors Wildfire
+# Command used. Two things make this provider different from the fire feed and
+# both are tested here: it answers per station *per pollutant*, so the same
+# place arrives more than once; and its severity is the EPA's six published
+# categories rather than a scale of Delphi's own devising.
+
+def _reading(aqi, lat=34.0, lon=-118.0, parameter="PM2.5", code="060371103",
+             site="Los Angeles - N. Main Street"):
+    return {"Latitude": lat, "Longitude": lon, "AQI": aqi, "Parameter": parameter,
+            "FullAQSCode": code, "SiteName": site, "AgencyName": "South Coast AQMD",
+            "UTC": "2026-09-22T18:00"}
+
+
+def test_a_reading_becomes_a_hazard():
+    rows = hazards.normalize_airnow([_reading(165)])
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["kind"] == "air_quality" and row["provider"] == "airnow"
+    assert row["name"] == "Los Angeles - N. Main Street"
+    assert row["raw"]["aqi"] == 165
+    assert row["raw"]["category"] == "Unhealthy"
+    assert row["raw"]["agency"] == "South Coast AQMD"
+
+
+def test_a_station_reports_its_worst_pollutant_not_both():
+    """AirNow answers per parameter. Two dots on one place would hide the worse
+    of them under the better, and the EPA's own index is a maximum across
+    pollutants rather than an average — so this matches how it is published."""
+    rows = hazards.normalize_airnow([
+        _reading(42, parameter="OZONE"),
+        _reading(158, parameter="PM2.5"),
+        _reading(60, parameter="PM10"),
+    ])
+
+    assert len(rows) == 1
+    assert rows[0]["raw"]["aqi"] == 158
+    assert rows[0]["raw"]["parameter"] == "PM2.5"
+
+
+def test_two_different_stations_stay_two():
+    rows = hazards.normalize_airnow([
+        _reading(50, code="060371103", lat=34.0, lon=-118.0),
+        _reading(90, code="060658001", lat=33.9, lon=-117.4, site="Riverside"),
+    ])
+    assert len(rows) == 2
+
+
+def test_a_station_with_no_reading_is_dropped():
+    """-999 is AirNow for "this monitor has nothing for you"."""
+    assert hazards.normalize_airnow([_reading(-999)]) == []
+
+
+def test_a_station_with_no_code_still_gets_a_dot():
+    """It is a real monitor at a real point; where it stands identifies it."""
+    entry = _reading(75)
+    del entry["FullAQSCode"]
+    rows = hazards.normalize_airnow([entry])
+    assert len(rows) == 1 and rows[0]["external_id"] == "34.0,-118.0"
+
+
+def test_an_error_body_is_not_an_empty_sky():
+    """AirNow answers a bad key with an object, not a list."""
+    assert hazards.normalize_airnow({"WebServiceError": [{"Message": "bad key"}]}) is None
+    assert hazards.normalize_airnow("Invalid API key") is None
+
+
+@pytest.mark.parametrize("aqi,category,label", [
+    (0, 0, "Good"), (50, 0, "Good"),
+    (51, 1, "Moderate"), (100, 1, "Moderate"),
+    (101, 2, "Unhealthy for Sensitive Groups"),
+    (151, 3, "Unhealthy"),
+    (201, 4, "Very Unhealthy"),
+    (301, 5, "Hazardous"), (500, 5, "Hazardous"),
+])
+def test_the_epa_breakpoints_are_the_epa_breakpoints(aqi, category, label):
+    """Not Delphi's judgement to make. These are the published boundaries the
+    country's guidance is written against."""
+    assert hazards.aqi_category(aqi) == category
+    assert hazards.aqi_label(aqi) == label
+
+
+def test_severity_round_trips_back_to_the_category():
+    """Alerting steps on the category, and it reads it back off the stored
+    severity — so the two have to agree at every step or a reading would be
+    alerted at the wrong threshold."""
+    for aqi in (10, 60, 120, 170, 250, 400):
+        row = hazards.normalize_airnow([_reading(aqi)])[0]
+        assert hazards.bucket_of_score(row["severity"], "air_quality") \
+            == hazards.aqi_category(aqi), aqi
+
+
+def test_air_crossing_into_a_worse_category_is_an_escalation(client, db, monkeypatch):
+    moderate = hazards.normalize_airnow([_reading(80)])
+    unhealthy = hazards.normalize_airnow([_reading(165)])
+
+    _run(monkeypatch, db, {"airnow": moderate})
+    result = _run(monkeypatch, db, {"airnow": unhealthy})
+
+    assert result["escalated"] == 1
+
+
+def test_air_drifting_inside_one_category_is_not(client, db, monkeypatch):
+    """51 to 52 is not news, and a station that reported every fifteen minutes
+    would otherwise be a notification every fifteen minutes."""
+    low = hazards.normalize_airnow([_reading(55)])
+    high = hazards.normalize_airnow([_reading(98)])
+    assert hazards.aqi_category(55) == hazards.aqi_category(98)
+
+    _run(monkeypatch, db, {"airnow": low})
+    result = _run(monkeypatch, db, {"airnow": high})
+
+    assert result["escalated"] == 0 and result["updated"] == 0
+
+
+def test_a_stale_reading_goes_sooner_than_a_stale_fire(client, db, monkeypatch):
+    """Air is not a fire. An incident the feed dropped yesterday is still worth
+    showing while the picture settles; a six-hour-old AQI is a different
+    afternoon, and presenting it as current is worse than showing nothing."""
+    from datetime import timedelta
+
+    from backend.app.models import utcnow
+
+    _run(monkeypatch, db, {"airnow": hazards.normalize_airnow([_reading(80)]),
+                           "wfigs": hazards.normalize_wfigs(
+                               _payload(_feature("f", "Old fire", 40.0, -122.0)))})
+
+    aged = utcnow() - timedelta(hours=hazards.AIR_RETENTION_HOURS + 1)
+    for row in db.scalars(select(Hazard)):
+        row.last_seen_at = aged
+    db.commit()
+
+    # Both providers answer, both stop listing what they had before.
+    _run(monkeypatch, db, {
+        "airnow": hazards.normalize_airnow([_reading(40, code="other", lat=35.0)]),
+        "wfigs": hazards.normalize_wfigs(_payload(_feature("g", "New", 41.0, -121.0))),
+    })
+
+    kinds = sorted(h.kind for h in db.scalars(select(Hazard)))
+    assert "air_quality" in kinds
+    assert kinds.count("wildfire") == 2, (
+        "the day-old fire should still be there; only the air had gone stale")
+    assert kinds.count("air_quality") == 1, "the stale reading should have gone"
+
+
+def test_without_a_key_there_is_no_air_layer(monkeypatch):
+    """No error and no empty layer — nothing to explain to somebody who never
+    asked for air quality. Wildfire Command's search-scraper hard-failed
+    without its key; this follows the FIRMS branch instead."""
+    monkeypatch.delenv("AIRNOW_API_KEY", raising=False)
+    import asyncio
+    assert asyncio.run(hazards.fetch_airnow(None)) is None
+
+
 # ---------- the switch ----------
 
 def test_it_is_off_unless_asked_for(monkeypatch):

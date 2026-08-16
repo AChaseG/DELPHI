@@ -71,16 +71,28 @@ def test_there_is_no_third_pane():
 
 # ---------- off by default, remembered after that ----------
 
-def test_it_is_not_added_to_the_map_unless_it_was_left_on():
-    assert 'localStorage.getItem("gnd_overlay_hazards") === "1"' in INIT
+def test_both_layers_are_offered():
+    """Wildfires and air quality are separate switches: somebody watching smoke
+    wants the air, somebody watching a fire line wants the incidents, and one
+    combined toggle would serve neither."""
+    assert "TYPHON_LAYER" in APP and "TYPHON_AIR_LAYER" in APP
+    assert re.search(r'TYPHON_AIR_LAYER\s*=\s*"[^"]*\(US\)"', APP), (
+        "the air layer covers one country too and has to say so")
+    assert "this.airquality = L.featureGroup();" in INIT
+
+
+def test_neither_is_added_to_the_map_unless_it_was_left_on():
+    assert 'if (localStorage.getItem(o.key) === "1") o.group.addTo(this.map);' in INIT
     assert "this.hazards = L.featureGroup();" in INIT, (
         "built, but not .addTo(this.map) like locations and alerts are")
 
 
-def test_the_choice_is_remembered_the_way_the_basemap_is():
+def test_each_layer_is_remembered_under_its_own_name():
+    """One key for both would mean switching the air on switched fires on too."""
     assert 'this.map.on("overlayadd"' in INIT
     assert 'this.map.on("overlayremove"' in INIT
-    assert 'localStorage.setItem("gnd_overlay_hazards"' in INIT
+    keys = set(re.findall(r'key:\s*"(gnd_overlay_\w+)"', INIT))
+    assert len(keys) == 2, keys
 
 
 def test_switching_it_on_fetches_immediately():
@@ -95,8 +107,24 @@ def test_switching_it_on_fetches_immediately():
 REFRESH = _fn("  async refreshHazards()")
 
 
-def test_a_switched_off_layer_costs_nothing():
-    assert "if (!this.map.hasLayer(this.hazards)) return;" in REFRESH
+def test_switched_off_layers_cost_nothing():
+    assert "this.map.hasLayer(o.group)" in REFRESH
+    assert "if (!wanted.length) return;" in REFRESH, (
+        "with both layers off there is nobody to fetch for")
+
+
+def test_one_request_serves_both_layers():
+    """The rows say which kind they are. Asking twice for the same rectangle
+    to sort them out on the client is a second round trip for an if."""
+    assert len(re.findall(r"API\.hazards\(", REFRESH)) == 1
+    assert 'h.kind === "air_quality"' in REFRESH
+
+
+def test_a_reading_is_never_credited_to_the_wrong_agency():
+    """The popup used to name NIFC unconditionally. An AirNow reading credited
+    to the wildfire service is a false citation, not a styling slip."""
+    assert '"AirNow · US EPA"' in POPUP
+    assert 'h.provider === "airnow"' in POPUP
 
 
 def test_panning_does_not_reask_for_the_same_rectangle():

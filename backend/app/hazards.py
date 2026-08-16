@@ -46,6 +46,12 @@ log = logging.getLogger("hazards")
 # which is what "does not compete with the news poll" looks like in practice.
 POLL_EVERY_SECONDS = float(os.environ.get("NEWS_HAZARD_EVERY_S", "900"))
 RETENTION_DAYS = float(os.environ.get("NEWS_HAZARD_RETENTION_DAYS", "7"))
+# Air goes stale in a way a fire does not. A wildfire the feed stopped listing
+# a day ago is still worth showing while the picture settles; an air-quality
+# reading six hours old is a different city's afternoon, and a dot presented as
+# current when it is not is worse than no dot. Six hours also covers a station
+# that reports hourly and skips one.
+AIR_RETENTION_HOURS = float(os.environ.get("NEWS_AIR_RETENTION_H", "6"))
 # A backstop against a provider bug, not a disk-space policy. The real risk is
 # subtler than the volume filling: storage.over_ceiling() measures the whole
 # database file while prune_to_fit() only ever deletes *articles*, so a hazard
@@ -200,7 +206,148 @@ async def fetch_wfigs(client: httpx.AsyncClient) -> list[dict] | None:
     return rows
 
 
-PROVIDERS = {"wfigs": fetch_wfigs}
+# ---------- AirNow: what the air is actually like ----------
+#
+# The EPA's own service, and the reason it is here rather than the crowdsourced
+# sensor network Wildfire Command used: these are regulatory monitors, run by
+# the agencies whose numbers get quoted when a county tells people to stay
+# indoors. One dot per station, at the station's real coordinate.
+#
+# Needs a key. Without one the provider is simply absent — no error, no empty
+# layer, nothing to explain to somebody who never asked for air quality.
+
+AIRNOW_URL = "https://www.airnowapi.org/aq/data/"
+# Continental US. Alaska and Hawaii would each need a call of their own, which
+# is two more requests for two more places the incident feed does not cover
+# either; when that changes, this becomes a list.
+AIRNOW_BBOX = os.environ.get("NEWS_AIRNOW_BBOX", "-125,24,-66,50")
+AIRNOW_PARAMETERS = "PM25,OZONE,PM10"
+KIND_AIR = "air_quality"
+
+# The EPA's six categories, as (floor, label). These are not Delphi's opinion —
+# they are the published breakpoints the whole country's guidance is written
+# against, which is why alerting steps on them rather than on the AQI number.
+AQI_CATEGORIES = ((301, "Hazardous"), (201, "Very Unhealthy"),
+                  (151, "Unhealthy"), (101, "Unhealthy for Sensitive Groups"),
+                  (51, "Moderate"), (0, "Good"))
+# Category to the shared 0-100 severity, so one colour ramp means roughly the
+# same thing whether it is drawn over a fire or a monitor.
+_AQI_SEVERITY = {5: 100, 4: 85, 3: 65, 2: 45, 1: 25, 0: 10}
+
+
+def aqi_category(aqi: float) -> int:
+    """0 (Good) through 5 (Hazardous)."""
+    for step, (floor, _label) in enumerate(AQI_CATEGORIES):
+        if aqi >= floor:
+            return len(AQI_CATEGORIES) - 1 - step
+    return 0
+
+
+def aqi_label(aqi: float) -> str:
+    for floor, label in AQI_CATEGORIES:
+        if aqi >= floor:
+            return label
+    return "Good"
+
+
+def normalize_airnow(payload) -> list[dict] | None:
+    """One row per monitoring station, carrying its worst pollutant.
+
+    AirNow answers per station *per parameter*, so a site measuring both
+    particulates and ozone arrives twice. Drawing both would put two dots on
+    one place and make the worse of them the one that happens to be underneath.
+    The station's reading is its highest AQI, which is also how the EPA reports
+    it: the index is a maximum across pollutants, not an average.
+    """
+    if not isinstance(payload, list):
+        return None                        # an error body is a dict or a string
+
+    worst: dict[str, dict] = {}
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        lat, lon = entry.get("Latitude"), entry.get("Longitude")
+        aqi = entry.get("AQI")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        if not isinstance(aqi, (int, float)) or isinstance(aqi, bool) or aqi < 0:
+            continue                       # -999 is AirNow for "no reading"
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            continue
+        # The station's own identifier where there is one; a station without a
+        # code is still a real point, so fall back to where it stands.
+        code = str(entry.get("FullAQSCode") or entry.get("IntlAQSCode") or "").strip()
+        key = code or f"{round(float(lat), 4)},{round(float(lon), 4)}"
+        best = worst.get(key)
+        if best is not None and best["_aqi"] >= aqi:
+            continue
+        site = str(entry.get("SiteName") or "").strip()
+        worst[key] = {
+            "kind": KIND_AIR,
+            "provider": "airnow",
+            "external_id": key[:120],
+            "name": site or "Air quality station",
+            "lat": float(lat),
+            "lon": float(lon),
+            "country": "US",
+            "severity": _AQI_SEVERITY[aqi_category(aqi)],
+            "started_at": None,
+            "_aqi": float(aqi),
+            "raw": {
+                "aqi": int(aqi),
+                "category": aqi_label(aqi),
+                "parameter": str(entry.get("Parameter") or "").strip(),
+                "site": site,
+                "agency": str(entry.get("AgencyName") or "").strip(),
+                "observed_utc": str(entry.get("UTC") or "").strip(),
+            },
+        }
+    for row in worst.values():
+        row.pop("_aqi", None)
+    return list(worst.values())
+
+
+async def fetch_airnow(client: httpx.AsyncClient) -> list[dict] | None:
+    key = os.environ.get("AIRNOW_API_KEY", "").strip()
+    if not key:
+        return None                        # not configured: no layer, no noise
+    # A two-hour window rather than "now". Stations report on their own clock
+    # and the service lags them; asking for the current hour alone routinely
+    # comes back empty, which this module is required to treat as a failure.
+    end = datetime.utcnow()
+    start = end - timedelta(hours=2)
+    params = {
+        "startDate": start.strftime("%Y-%m-%dT%H"),
+        "endDate": end.strftime("%Y-%m-%dT%H"),
+        "parameters": AIRNOW_PARAMETERS,
+        "BBOX": AIRNOW_BBOX,
+        "dataType": "A",                   # the index itself, not raw concentrations
+        "format": "application/json",
+        "verbose": "1",                    # station name and agency
+        "monitorType": "0",                # permanent regulatory monitors
+        "API_KEY": key,
+    }
+    try:
+        resp = await client.get(AIRNOW_URL, params=params)
+    except (httpx.HTTPError, safefetch.BlockedURL) as exc:
+        log.warning("airnow: could not reach the service: %s", exc)
+        return None
+    if resp.status_code != 200:
+        # 401/403 is a bad or expired key; say which, since the fix differs.
+        log.warning("airnow: HTTP %s%s", resp.status_code,
+                    " — check AIRNOW_API_KEY" if resp.status_code in (401, 403) else "")
+        return None
+    try:
+        rows = normalize_airnow(resp.json())
+    except ValueError as exc:
+        log.warning("airnow: response was not JSON: %s", exc)
+        return None
+    if rows is None:
+        log.warning("airnow: response was not a list of observations")
+    return rows
+
+
+PROVIDERS = {"wfigs": fetch_wfigs, "airnow": fetch_airnow}
 
 
 # ---------- the poll ----------
@@ -284,11 +431,29 @@ def bucket_of_score(severity: int, kind: str) -> int:
             if severity >= floor:
                 return len(_WILDFIRE_BUCKETS) - step
         return 0
+    if kind == KIND_AIR:
+        # Straight back to the EPA category the severity was derived from, so
+        # a step here is a step the published guidance recognises: crossing out
+        # of Moderate into Unhealthy for Sensitive Groups, not 51 into 52.
+        for category, score in sorted(_AQI_SEVERITY.items()):
+            if severity <= score:
+                return category
+        return max(_AQI_SEVERITY)
     return severity // 20
 
 
 def bucket_of(hazard: Hazard) -> int:
     return bucket_of_score(hazard.severity, hazard.kind)
+
+
+def _retention_days() -> dict[str, float]:
+    """How long each kind survives the provider going quiet about it.
+
+    Read at call time rather than at import, so a test — or an operator — can
+    change the environment without reloading the module.
+    """
+    return {KIND_WILDFIRE: RETENTION_DAYS,
+            KIND_AIR: AIR_RETENTION_HOURS / 24.0}
 
 
 def _prune(db: Session, answered: set[str]) -> int:
@@ -301,11 +466,14 @@ def _prune(db: Session, answered: set[str]) -> int:
     if not answered:
         return 0
     removed = 0
-    if RETENTION_DAYS > 0:
-        cutoff = utcnow() - timedelta(days=RETENTION_DAYS)
-        removed += db.execute(sa_delete(Hazard).where(
-            Hazard.provider.in_(answered),
-            Hazard.last_seen_at < cutoff)).rowcount or 0
+    now = utcnow()
+    for provider in answered:
+        for kind, days in _retention_days().items():
+            if days <= 0:
+                continue
+            removed += db.execute(sa_delete(Hazard).where(
+                Hazard.provider == provider, Hazard.kind == kind,
+                Hazard.last_seen_at < now - timedelta(days=days))).rowcount or 0
 
     # The backstop. Only reachable if a provider returns far more than it is
     # supposed to; keep the worst, since a table this size is read by a map and

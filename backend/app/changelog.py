@@ -13,6 +13,34 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-23",
+        "title": "Typhon can see the air now",
+        "items": [
+            "🌫 A second Typhon layer on 🗺 Atlas: <b>air quality</b>, from "
+            "<b>AirNow</b> — the EPA's own network of regulatory monitors, the "
+            "ones whose numbers get quoted when a county tells people to stay "
+            "indoors. One dot per station, at the station's real location, in "
+            "the six colours the index is always published in.",
+            "🎨 Those colours are the EPA's and not ours on purpose. Air "
+            "quality is read by colour by people who already know what green "
+            "through maroon means, and a prettier scale that matched the "
+            "dashboard would be a worse map.",
+            "🫁 Press a station for its <b>AQI and what that AQI means</b> — "
+            "<i>Moderate</i>, <i>Unhealthy for Sensitive Groups</i>, and so on "
+            "— which pollutant is the worst one there, who runs the monitor, "
+            "and when it last reported. A station measuring several pollutants "
+            "shows its highest reading, which is how the index is defined.",
+            "⏱ Air goes stale in a way a fire does not, so a reading that "
+            "stops being refreshed disappears within hours rather than lingering "
+            "for days. A dot presented as current when it is six hours old "
+            "would be worse than no dot.",
+            "🔀 The two Typhon layers switch on and off independently, and "
+            "both are off until you ask. They cover the United States — as "
+            "their names say — and the worldwide picture still comes through "
+            "GDACS as ordinary news.",
+        ],
+    },
+    {
         "date": "2026-09-22",
         "title": "Typhon: what is burning, on the map, while it burns",
         "items": [

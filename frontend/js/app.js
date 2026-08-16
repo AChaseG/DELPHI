@@ -4786,19 +4786,43 @@ const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenS
    why rather than left to conclude it is broken. GDACS, in the source catalog,
    is what carries worldwide disasters, and it arrives as ordinary news. */
 const TYPHON_LAYER = "🐉 Typhon · Wildfires (US)";
-const TYPHON_MAX = 300;
+const TYPHON_AIR_LAYER = "🌫 Typhon · Air quality (US)";
+const TYPHON_MAX = 600;
+
+/* The EPA's own six colours. Normally this file would reach for the theme's
+   status tokens, which are reserved for exactly this and never reused as
+   series colours — but air quality is read by colour by people who already
+   know what these mean, and inventing a palette for it would be a worse map
+   that happened to match the dashboard. The scale is the standard's. */
+const AQI_COLORS = ["#00e400", "#ffff00", "#ff7e00", "#ff0000", "#8f3f97", "#7e0023"];
 
 /* Severity paints and sizes the dot. The status colours are the ones the rest
    of Delphi already reserves for exactly this and are never used as series
    colours, so a red dot means the same thing here as anywhere else. */
 function hazardStyle(h) {
   const s = h.severity || 0;
+  if (h.kind === "air_quality") {
+    // A station is a fixed point, not a growing thing: same size for all of
+    // them, and the colour carries the whole of the meaning.
+    const color = AQI_COLORS[Math.min(AQI_COLORS.length - 1,
+                                      Math.max(0, aqiCategory(h)))];
+    return { radius: 6, color: "#333", fillColor: color, fillOpacity: 0.85,
+             weight: 1 };
+  }
   const color = s >= 80 ? "#e5484d" : s >= 60 ? "#f76b15"
     : s >= 40 ? "#e0b341" : s >= 20 ? "#d4af37" : "#9b8f6b";
   return {
     radius: 5 + Math.round(s / 14),      // 5px to ~12px
     color, fillColor: color, fillOpacity: 0.45, weight: 1.5,
   };
+}
+
+/* The EPA category, from the AQI itself rather than the shared severity —
+   the number is what the colour has to agree with. */
+function aqiCategory(h) {
+  const aqi = (h.raw && h.raw.aqi) || 0;
+  return aqi >= 301 ? 5 : aqi >= 201 ? 4 : aqi >= 151 ? 3
+    : aqi >= 101 ? 2 : aqi >= 51 ? 1 : 0;
 }
 
 /* What a hazard says when you press it. Built as nodes: an incident name is a
@@ -4811,13 +4835,22 @@ function hazardPopup(h) {
   wrap.appendChild(title);
 
   const raw = h.raw || {};
-  const where = [raw.county ? `${raw.county} County` : "", raw.state || ""]
-    .filter(Boolean).join(", ");
   const facts = [];
-  if (raw.acres != null) facts.push(`${Number(raw.acres).toLocaleString()} acres`);
-  if (raw.containment != null) facts.push(`${raw.containment}% contained`);
-  if (where) facts.push(where);
-  if (raw.cause) facts.push(`Cause: ${raw.cause}`);
+  if (h.kind === "air_quality") {
+    // The number, then what it means. An AQI on its own is a figure most
+    // people cannot place; the category is the part that says stay indoors.
+    facts.push(`AQI ${raw.aqi} — ${raw.category || ""}`.trim());
+    if (raw.parameter) facts.push(`Worst pollutant: ${raw.parameter}`);
+    if (raw.agency) facts.push(raw.agency);
+    if (raw.observed_utc) facts.push(`Observed ${raw.observed_utc} UTC`);
+  } else {
+    const where = [raw.county ? `${raw.county} County` : "", raw.state || ""]
+      .filter(Boolean).join(", ");
+    if (raw.acres != null) facts.push(`${Number(raw.acres).toLocaleString()} acres`);
+    if (raw.containment != null) facts.push(`${raw.containment}% contained`);
+    if (where) facts.push(where);
+    if (raw.cause) facts.push(`Cause: ${raw.cause}`);
+  }
   for (const line of facts) {
     const p = document.createElement("div");
     p.className = "s-meta";
@@ -4831,10 +4864,12 @@ function hazardPopup(h) {
     wrap.appendChild(started);
   }
   // Whose figure this is. The layer is only as good as the agency behind it,
-  // and a number on a map with no source is worth less than no number.
+  // and a number on a map with no source is worth less than no number. Named
+  // per provider rather than per layer — an AirNow reading credited to NIFC
+  // would be a false citation, not a cosmetic slip.
   const who = document.createElement("div");
   who.className = "s-meta haz-attr";
-  who.textContent = "NIFC / WFIGS";
+  who.textContent = h.provider === "airnow" ? "AirNow · US EPA" : "NIFC / WFIGS";
   wrap.appendChild(who);
   return wrap;
 }
@@ -4921,26 +4956,32 @@ const MapBoard = {
     // Typhon: live hazards, as an overlay rather than a pane. The layers
     // control's second argument was always {} until now.
     this.hazards = L.featureGroup();
-    const overlays = { [TYPHON_LAYER]: this.hazards };
+    this.airquality = L.featureGroup();
+    // Keyed by the storage name each one is remembered under, so switching a
+    // layer on and off is one handler rather than one per layer.
+    this._overlays = {
+      [TYPHON_LAYER]: { group: this.hazards, key: "gnd_overlay_hazards" },
+      [TYPHON_AIR_LAYER]: { group: this.airquality, key: "gnd_overlay_air" },
+    };
+    const overlays = {};
+    for (const [label, o] of Object.entries(this._overlays)) overlays[label] = o.group;
     L.control.layers(bases, overlays, { position: "topright" }).addTo(this.map);
-    // Off unless it was left on. It covers the United States and most readers
+    // Off unless it was left on. They cover the United States and most readers
     // here are not there; a layer that shows an empty map by default reads as
     // a broken feature rather than an absent one.
-    if (localStorage.getItem("gnd_overlay_hazards") === "1")
-      this.hazards.addTo(this.map);
+    for (const o of Object.values(this._overlays))
+      if (localStorage.getItem(o.key) === "1") o.group.addTo(this.map);
     // Remembered per browser: which map somebody reads best on is a preference
     // about their eyes and their screen, not about their account.
     this.map.on("baselayerchange", (e) => {
       try { localStorage.setItem("gnd_basemap", e.name); } catch (err) { /* ok */ }
     });
-    this.map.on("overlayadd", () => {
-      try { localStorage.setItem("gnd_overlay_hazards", "1"); } catch (err) { /* ok */ }
+    this.map.on("overlayadd", (e) => {
+      this._rememberOverlay(e.name, "1");
       this._hazKey = "";                    // it was off; nothing was fetched
       this.refreshHazards();
     });
-    this.map.on("overlayremove", () => {
-      try { localStorage.setItem("gnd_overlay_hazards", "0"); } catch (err) { /* ok */ }
-    });
+    this.map.on("overlayremove", (e) => this._rememberOverlay(e.name, "0"));
     this.locations = L.featureGroup().addTo(this.map);
     this.alerts = L.featureGroup().addTo(this.map);
     // Clicking empty map starts a new watched place, exactly as the old panel
@@ -4984,9 +5025,20 @@ const MapBoard = {
      which fires moveend continuously, does not re-ask for the same rectangle;
      and a generation counter so a slow answer for somewhere the reader has
      already left cannot repaint the layer under them. */
+  _rememberOverlay(label, value) {
+    const o = this._overlays && this._overlays[label];
+    if (!o) return;
+    try { localStorage.setItem(o.key, value); } catch (err) { /* private mode */ }
+  },
+
   async refreshHazards() {
     if (!this.map || !this.hazards) return;
-    if (!this.map.hasLayer(this.hazards)) return;   // switched off; nobody is looking
+    // One request serves both layers — the rows say which kind they are, and
+    // asking twice for the same rectangle to sort them out here would be a
+    // second round trip for an if-statement.
+    const wanted = Object.values(this._overlays || {})
+      .filter(o => this.map.hasLayer(o.group));
+    if (!wanted.length) return;                     // both off; nobody is looking
     const b = this.map.getBounds();
     const round = (n) => Math.round(n * 20) / 20;   // ~5km, finer than any pan
     const bbox = [round(b.getWest()), round(b.getSouth()),
@@ -5004,9 +5056,13 @@ const MapBoard = {
     }
     if (generation !== this._hazSeq) return;
     this.hazards.clearLayers();
-    for (const h of rows) L.circleMarker([h.lat, h.lon], hazardStyle(h))
-      .bindPopup(hazardPopup(h))
-      .addTo(this.hazards);
+    this.airquality.clearLayers();
+    for (const h of rows) {
+      const group = h.kind === "air_quality" ? this.airquality : this.hazards;
+      L.circleMarker([h.lat, h.lon], hazardStyle(h))
+        .bindPopup(hazardPopup(h))
+        .addTo(group);
+    }
   },
 
   /* Alert hits and geofences, on the same map as the watched places. */
