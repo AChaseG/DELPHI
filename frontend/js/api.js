@@ -568,6 +568,10 @@ const API = {
   adminResetPassword: (id, password) => api(`/api/admin/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
   adminDeleteUser: (id) => api(`/api/admin/users/${id}`, { method: "DELETE" }),
 
+  // Typhon: whatever is burning inside the rectangle the map is showing.
+  hazards: (bbox, limit = 300) =>
+    api(`/api/hazards?bbox=${encodeURIComponent(bbox)}&limit=${limit}`),
+
   locations: () => api("/api/locations"),
   createLocation: (body) => api("/api/locations", { method: "POST", body: JSON.stringify(body) }),
   updateLocation: (id, body) => api(`/api/locations/${id}`, { method: "PATCH", body: JSON.stringify(body) }),

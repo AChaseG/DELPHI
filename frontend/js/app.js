@@ -4780,6 +4780,65 @@ async function renderAlertsPanel() {
 const DEFAULT_BASEMAP = "Street";
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
+/* Typhon — live hazards, named for the storm-giant, beside Atlas and the
+   Pantheons. The extent is in the label because the layer covers the United
+   States: a reader in Lyon switching it on and finding nothing should be told
+   why rather than left to conclude it is broken. GDACS, in the source catalog,
+   is what carries worldwide disasters, and it arrives as ordinary news. */
+const TYPHON_LAYER = "🐉 Typhon · Wildfires (US)";
+const TYPHON_MAX = 300;
+
+/* Severity paints and sizes the dot. The status colours are the ones the rest
+   of Delphi already reserves for exactly this and are never used as series
+   colours, so a red dot means the same thing here as anywhere else. */
+function hazardStyle(h) {
+  const s = h.severity || 0;
+  const color = s >= 80 ? "#e5484d" : s >= 60 ? "#f76b15"
+    : s >= 40 ? "#e0b341" : s >= 20 ? "#d4af37" : "#9b8f6b";
+  return {
+    radius: 5 + Math.round(s / 14),      // 5px to ~12px
+    color, fillColor: color, fillOpacity: 0.45, weight: 1.5,
+  };
+}
+
+/* What a hazard says when you press it. Built as nodes: an incident name is a
+   string from a third party, and this file does not hand those to innerHTML. */
+function hazardPopup(h) {
+  const wrap = document.createElement("div");
+  wrap.className = "haz-popup";
+  const title = document.createElement("strong");
+  title.textContent = h.name;
+  wrap.appendChild(title);
+
+  const raw = h.raw || {};
+  const where = [raw.county ? `${raw.county} County` : "", raw.state || ""]
+    .filter(Boolean).join(", ");
+  const facts = [];
+  if (raw.acres != null) facts.push(`${Number(raw.acres).toLocaleString()} acres`);
+  if (raw.containment != null) facts.push(`${raw.containment}% contained`);
+  if (where) facts.push(where);
+  if (raw.cause) facts.push(`Cause: ${raw.cause}`);
+  for (const line of facts) {
+    const p = document.createElement("div");
+    p.className = "s-meta";
+    p.textContent = line;
+    wrap.appendChild(p);
+  }
+  if (h.started_at) {
+    const started = document.createElement("div");
+    started.className = "s-meta";
+    started.textContent = `Reported ${timeAgo(h.started_at)}`;
+    wrap.appendChild(started);
+  }
+  // Whose figure this is. The layer is only as good as the agency behind it,
+  // and a number on a map with no source is worth less than no number.
+  const who = document.createElement("div");
+  who.className = "s-meta haz-attr";
+  who.textContent = "NIFC / WFIGS";
+  wrap.appendChild(who);
+  return wrap;
+}
+
 function baseMaps() {
   const carto = ' &copy; <a href="https://carto.com/attributions">CARTO</a>';
   return {
@@ -4815,8 +4874,15 @@ const MapBoard = {
   map: null,
   _locKey: null,        // the circles the locations feed was last asked for
   _locSeq: 0,
+  _hazKey: "",          // the rectangle Typhon was last asked for
+  // Declared, and it has to be: `++this._hazSeq` on an undeclared property is
+  // ++undefined, which is NaN, and `NaN !== NaN` is true — so the guard that
+  // drops a stale answer would drop every answer and the layer would never
+  // draw a thing. Found by driving it, because every source-level test passed.
+  _hazSeq: 0,
   locations: null,        // watched places: rings and stars
   alerts: null,           // alert hits and alert geofences
+  hazards: null,          // Typhon: live wildfire incidents
   pane: "alerts",
   _wanted: null,
 
@@ -4852,11 +4918,28 @@ const MapBoard = {
     const bases = baseMaps();
     const wanted = localStorage.getItem("gnd_basemap");
     (bases[wanted] || bases[DEFAULT_BASEMAP]).addTo(this.map);
-    L.control.layers(bases, {}, { position: "topright" }).addTo(this.map);
+    // Typhon: live hazards, as an overlay rather than a pane. The layers
+    // control's second argument was always {} until now.
+    this.hazards = L.featureGroup();
+    const overlays = { [TYPHON_LAYER]: this.hazards };
+    L.control.layers(bases, overlays, { position: "topright" }).addTo(this.map);
+    // Off unless it was left on. It covers the United States and most readers
+    // here are not there; a layer that shows an empty map by default reads as
+    // a broken feature rather than an absent one.
+    if (localStorage.getItem("gnd_overlay_hazards") === "1")
+      this.hazards.addTo(this.map);
     // Remembered per browser: which map somebody reads best on is a preference
     // about their eyes and their screen, not about their account.
     this.map.on("baselayerchange", (e) => {
       try { localStorage.setItem("gnd_basemap", e.name); } catch (err) { /* ok */ }
+    });
+    this.map.on("overlayadd", () => {
+      try { localStorage.setItem("gnd_overlay_hazards", "1"); } catch (err) { /* ok */ }
+      this._hazKey = "";                    // it was off; nothing was fetched
+      this.refreshHazards();
+    });
+    this.map.on("overlayremove", () => {
+      try { localStorage.setItem("gnd_overlay_hazards", "0"); } catch (err) { /* ok */ }
     });
     this.locations = L.featureGroup().addTo(this.map);
     this.alerts = L.featureGroup().addTo(this.map);
@@ -4872,6 +4955,8 @@ const MapBoard = {
     this.map.on("moveend", () => {
       if (this.pane === "alerts") this.renderInView();
       else { this.renderLocationFeed(); LocationsPanel.renderList(); }
+      // Unconditional: the hazard overlay is independent of which pane shows.
+      this.refreshHazards();
     });
     LocationsPanel.map = this.map;
     LocationsPanel.saved = this.locations;
@@ -4889,6 +4974,39 @@ const MapBoard = {
     // Full separation: each tab loads its own subject and nothing else.
     if (which === "alerts") { renderAlertsPanel(); this.renderInView(); }
     if (which === "locations") { this.renderLocationFeed(); LocationsPanel.renderList(); }
+  },
+
+  /* Typhon: live hazards for whatever the map is looking at.
+
+     Modelled on renderLocationFeed — it asks the server for the current
+     rectangle rather than holding every hazard on earth in the browser and
+     filtering. Two guards, both learned there: a rounded key so that panning,
+     which fires moveend continuously, does not re-ask for the same rectangle;
+     and a generation counter so a slow answer for somewhere the reader has
+     already left cannot repaint the layer under them. */
+  async refreshHazards() {
+    if (!this.map || !this.hazards) return;
+    if (!this.map.hasLayer(this.hazards)) return;   // switched off; nobody is looking
+    const b = this.map.getBounds();
+    const round = (n) => Math.round(n * 20) / 20;   // ~5km, finer than any pan
+    const bbox = [round(b.getWest()), round(b.getSouth()),
+                  round(b.getEast()), round(b.getNorth())].join(",");
+    if (bbox === this._hazKey) return;
+    this._hazKey = bbox;
+    const generation = ++this._hazSeq;
+
+    let rows;
+    try {
+      rows = await API.hazards(bbox, TYPHON_MAX);
+    } catch (e) {
+      this._hazKey = "";                            // let the next pan retry
+      return;
+    }
+    if (generation !== this._hazSeq) return;
+    this.hazards.clearLayers();
+    for (const h of rows) L.circleMarker([h.lat, h.lon], hazardStyle(h))
+      .bindPopup(hazardPopup(h))
+      .addTo(this.hazards);
   },
 
   /* Alert hits and geofences, on the same map as the watched places. */

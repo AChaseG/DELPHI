@@ -21,8 +21,8 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, or_, select
 
-from . import (accounts_backup, discovery, home, langdetect, mailer, repair,
-               safefetch, storage, syndication, translate, watchdog)
+from . import (accounts_backup, discovery, hazards, home, langdetect, mailer,
+               repair, safefetch, storage, syndication, translate, watchdog)
 from .clustering import assign_events, live_events
 from .content import clean_summary, fetch_article_text
 from .database import SessionLocal
@@ -1203,6 +1203,10 @@ _next_audit_at: float = 0.0
 # Not zero: mailing a copy of every account is not what a restart is for, and a
 # deploy loop would send one per deploy. The first copy goes out an hour in.
 _next_account_backup_at: float = 3600.0
+# A minute in, for the same reason as the backup but shorter: a restart's first
+# tick should be spent on the source catalog warming up, not on somebody else's
+# API. A minute is soon enough that a deploy shows hazards almost immediately.
+_next_hazard_at: float = 60.0
 
 
 async def warm_home():
@@ -1292,7 +1296,7 @@ async def ingest_loop():
     (news wires first, then a bounded slice of city feeds), paced per host so
     Google gets a steady drip rather than a burst. Each source refreshes on its
     own interval; nothing starves and no single tick runs long."""
-    global _next_prune_at, _next_audit_at, _next_account_backup_at
+    global _next_prune_at, _next_audit_at, _next_account_backup_at, _next_hazard_at
     status["running"] = True
     started_at = time.monotonic()      # the warmup ramp measures from here
     # The one-off conversion to incremental auto-vacuum is NOT done here, and
@@ -1341,6 +1345,16 @@ async def ingest_loop():
                             [:warmup_batch(CITY_PER_TICK, since_start)])
                         if batch:
                             new_articles = (await _ingest_batch(db, batch))["new_articles"]
+
+                    # Typhon, on the news side of the disk guard rather than
+                    # the housekeeping side. Audit and backup run even when the
+                    # volume is nearly full because they mostly delete; a
+                    # hazard poll writes, so it stops when fetching stops. This
+                    # is the disk-full outage trying to come back in a new door.
+                    if (hazards.enabled() and time.monotonic() >= _next_hazard_at
+                            and not (space["ok"] and space["low"])):
+                        _next_hazard_at = time.monotonic() + hazards.POLL_EVERY_SECONDS
+                        status["hazards"] = await hazards.poll(db)
 
                     if time.monotonic() >= _next_audit_at:
                         _next_audit_at = time.monotonic() + AUDIT_EVERY_SECONDS

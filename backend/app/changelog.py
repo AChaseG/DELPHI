@@ -13,6 +13,34 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-22",
+        "title": "Typhon: what is burning, on the map, while it burns",
+        "items": [
+            "🐉 <b>Typhon</b> is a new layer on 🗺 Atlas — named for the "
+            "storm-giant, beside Atlas and the Pantheons — carrying live "
+            "wildfire incidents from <b>NIFC</b>, the federal interagency "
+            "feed. Switch it on from the layers button in the map's top-right "
+            "corner. Every incident is a dot sized and coloured by how much of "
+            "a problem it is; press one for its acreage, its containment, "
+            "where it is and what started it.",
+            "🇺🇸 It covers the <b>United States</b>, which is why the layer "
+            "says so in its own name, and it is off until you switch it on. "
+            "Worldwide disasters — earthquakes, floods, cyclones, volcanoes — "
+            "arrive separately through GDACS, as ordinary news you can feed, "
+            "filter and alert on.",
+            "📈 The point of a live layer is that it is live. A fire that "
+            "grows from 200 acres to 40,000 is the <i>same</i> incident with a "
+            "new number, so Typhon keeps a record it can rewrite rather than a "
+            "story it can only add to — which is what will let a watched place "
+            "tell you a fire near it got worse, rather than that one exists.",
+            "🧯 Deliberately quiet about itself: the layer is off by default, "
+            "asks the server only for the rectangle you are looking at, and "
+            "asks nothing at all while it is switched off. Hazards are kept "
+            "out of your feeds, out of search and off 🏠 Home — a fire is not "
+            "a story, and mixing the two would make Delphi worse at both.",
+        ],
+    },
+    {
         "date": "2026-09-21",
         "title": "Global disaster alerts, from the source the responders use",
         "items": [

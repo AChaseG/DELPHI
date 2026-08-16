@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -375,6 +376,73 @@ class FavoriteLocation(Base):
     source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.id"),
                                                   nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Hazard(Base):
+    """One live hazard — a wildfire, a reading of the air — on the Typhon layer.
+
+    Deliberately not an Article, and the reason is mutability rather than
+    taste. The federal wildfire feed re-reports the same incident every few
+    minutes with new acreage and new containment; an air-quality reading is a
+    number that changes all day. Delphi's ingest is append-only, dedupes on
+    `Article.url`, and evaluates alerts only over rows inserted in that tick —
+    so an *updated* article can never fire an alert, and "the fire near your
+    town grew from 200 to 40,000 acres" is exactly the event this exists to
+    deliver. A row that is meant to be rewritten needs a table that expects it.
+
+    Keeping them out of the article corpus also keeps them out of the things
+    tuned for prose: full-text search, importance scoring, clustering into
+    events, translation, and Home's curated columns. A hazard has no headline
+    and no body. That boundary is the design; if it erodes, Delphi gets worse
+    at the thing it is good at.
+
+    The upside of a table of its own: these carry real coordinates from the
+    provider, so they are never subject to the gazetteer's limit of matching
+    place names it happens to know. A hazard geofences perfectly, always.
+    """
+    __tablename__ = "hazards"
+    __table_args__ = (
+        # What "the same hazard as last poll" means. Every provider hands back
+        # a stable id of its own — an IRWIN id for a fire, a reporting area for
+        # air — and the upsert turns on finding this row again.
+        UniqueConstraint("provider", "external_id", name="uq_hazard_external"),
+        # The map asks "what is inside this rectangle" and nothing else.
+        Index("ix_hazards_lat_lon", "lat", "lon"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # What sort of thing this is; drives which map layer draws it and how
+    # `severity` is bucketed for alerting.
+    kind: Mapped[str] = mapped_column(String(24), index=True)
+    # Who said so. A column rather than an assumption, so a second wildfire
+    # provider for another continent slots in behind the same shape.
+    provider: Mapped[str] = mapped_column(String(24), index=True)
+    external_id: Mapped[str] = mapped_column(String(120))
+
+    name: Mapped[str] = mapped_column(String(200))
+    lat: Mapped[float] = mapped_column(Float)
+    lon: Mapped[float] = mapped_column(Float)
+    country: Mapped[str] = mapped_column(String(2), default="")
+
+    # 0-100, normalised across kinds so one scale colours the map. What counts
+    # as a step *for alerting* is bucketed per kind instead (see hazards.py):
+    # air quality has the EPA's six categories, and a fire has size bands.
+    # Alerting on the raw number would notify on 51 -> 52.
+    severity: Mapped[int] = mapped_column(Integer, default=0)
+    # The provider's own fields, kept whole. The popup reads acreage,
+    # containment and cause straight out of here, so a provider offering one
+    # more useful number is not a migration.
+    raw: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True,
+                                                        default=None)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # Stamped on every row the provider still lists. Retention is "the provider
+    # stopped mentioning it a week ago", which is how a contained fire leaves
+    # without anybody having to be told it ended.
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow,
+                                                   index=True)
 
 
 class Feed(Base):

@@ -597,6 +597,17 @@ body.map-board .pillar { display: none; }
 /* The rail is for the boards made of columns. On Atlas the pane is the rail's
    job, and a pop-out over a map is a pop-out over the thing being read. */
 
+/* Typhon: what a hazard says when you press its dot. Leaflet's popup provides
+   the frame; this is only the contents. */
+.haz-popup strong { display: block; font-size: 14px; margin-bottom: 4px; }
+.haz-popup .s-meta { font-size: 12px; line-height: 1.5; }
+/* Whose figure this is, set apart from the figures themselves. */
+.haz-popup .haz-attr {
+  margin-top: 6px; padding-top: 5px;
+  border-top: 1px solid var(--hairline);
+  letter-spacing: 0.4px; text-transform: uppercase; font-size: 10px;
+}
+
 /* Each tab is a column: the same rows the board draws, in a narrower frame. */
 .map-feed .article { padding: 10px 14px; border-bottom: 1px solid var(--hairline); }
 .map-feed .feed-empty { padding: 14px; }

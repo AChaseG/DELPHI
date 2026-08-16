@@ -41,7 +41,7 @@ from .events import broadcaster
 from .geo import load_gazetteer, search_places
 from .matching import explain_text_match, query_articles
 from .models import (Alert, AlertEvent, Article, Device, DiscoveredDomain, Event,
-                     FavoriteLocation, Feed, Invite,
+                     FavoriteLocation, Feed, Hazard, Invite,
                      Pantheon, PantheonInvite, PantheonMember, Source,
                      Translation, User, ViewedArticle, ViewedEvent, utcnow)
 from .schemas import AlertIn, FeedIn, QueryValidateIn, SocialTrackerIn, SourceIn, TopicTrackerIn
@@ -3180,6 +3180,43 @@ def _reject_invalid_query(criteria):
 
 
 # ---------- favourite locations ----------
+
+# ---------- Typhon: live hazards on the map ----------
+
+@app.get("/api/hazards")
+def list_hazards(bbox: str = Query(default=""), kind: str = Query(default=""),
+                 limit: int = Query(default=300, ge=1, le=1000),
+                 user_id: str = Depends(user_id_header),
+                 db: Session = Depends(get_db)):
+    """Hazards inside a map rectangle, worst first.
+
+    `bbox` is west,south,east,north. The map sets worldCopyJump, so panning
+    past the antimeridian hands back longitudes beyond ±180 — clamped here
+    rather than trusted, since the alternative is a query that matches nothing
+    and a layer that looks broken.
+    """
+    query = select(Hazard)
+    if kind:
+        query = query.where(Hazard.kind == kind)
+    if bbox:
+        try:
+            west, south, east, north = (float(p) for p in bbox.split(",", 3))
+        except ValueError:
+            raise HTTPException(422, "bbox must be west,south,east,north")
+        south, north = max(-90.0, min(south, north)), min(90.0, max(south, north))
+        west, east = max(-180.0, min(west, east)), min(180.0, max(west, east))
+        query = query.where(Hazard.lat.between(south, north),
+                            Hazard.lon.between(west, east))
+    rows = db.scalars(query.order_by(Hazard.severity.desc(),
+                                     Hazard.last_seen_at.desc()).limit(limit))
+    return [{
+        "id": h.id, "kind": h.kind, "provider": h.provider,
+        "name": h.name, "lat": h.lat, "lon": h.lon, "country": h.country,
+        "severity": h.severity, "raw": h.raw or {},
+        "started_at": h.started_at.isoformat() + "Z" if h.started_at else None,
+        "updated_at": h.updated_at.isoformat() + "Z" if h.updated_at else None,
+    } for h in rows]
+
 
 @app.get("/api/geo/search")
 async def geo_search(q: str = Query(default=""), request: Request = None,
