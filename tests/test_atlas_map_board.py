@@ -82,10 +82,36 @@ def test_the_alerts_and_locations_panes_live_in_the_board():
         assert needed in side, f"{needed} did not move into the map board"
 
 
-def test_the_rail_leads_to_the_board():
-    """The bell and the pin used to open panels that no longer exist."""
-    assert 'setView("map"); MapBoard.showPane("alerts")' in APP
-    assert 'el("btn-locations").onclick = () => LocationsPanel.open()' in APP
+def test_the_rail_no_longer_carries_them():
+    """They were in the rail's pop-out on every board, opening panels that no
+    longer exist. Atlas is where they live; two buttons pointing at another
+    board is a second front door to maintain."""
+    assert 'id="btn-alerts-panel"' not in HTML
+    assert 'id="btn-locations"' not in HTML
+    assert 'el("btn-alerts-panel")' not in APP
+    assert 'el("btn-locations")' not in APP
+
+
+def test_the_unseen_count_moved_with_them():
+    """The badge was the only live sign that an alert had fired while you were
+    reading something else. Dropping the button must not drop that."""
+    tab = HTML[HTML.index('id="btn-view-map"'):]
+    tab = tab[:tab.index("</button>")]
+    assert 'id="bell-count"' in tab
+    assert HTML.count('id="bell-count"') == 1
+    assert 'const bc = el("bell-count")' in APP
+
+
+def test_the_badge_is_not_sliced_by_the_switch():
+    """The view switch clips its overflow to keep the buttons joined up, so a
+    badge pinned to the corner would be cut in half."""
+    rule = re.search(r"\.view-switch\s+\.bell-count\s*\{[^}]*\}", CSS)
+    assert rule and "position: static" in rule.group(0)
+
+
+def test_opening_locations_still_lands_on_the_board():
+    """Everything else that says "show me the locations" — the empty state, a
+    toast, anything added later — goes through this."""
     assert 'setView("map")' in _block("  async open()", "\n  },\n")
 
 
@@ -120,39 +146,55 @@ def test_only_what_is_inside_the_viewport_is_listed():
     view = _block("  renderInView()")
     assert "this.map.getBounds()" in view
     assert "bounds.contains" in view
-    assert "LOCATIONS.filter" in view and "ALERT_HITS.filter" in view
+    assert "ALERT_HITS" in view
 
 
-def test_hits_are_grouped_by_the_watched_place_they_landed_in():
+def test_the_alerts_tab_is_a_feed_and_nothing_else():
+    """It used to group its hits under the watched place each one landed in,
+    which put half of the locations tab on the alerts tab. Flat, newest-first
+    rows — the same ones the board draws — and no place in sight."""
     view = _block("  renderInView()")
-    assert "withinLocation(" in view
-    assert "elsewhere" in view, (
-        "a hit inside the viewport but outside every watched place still has to "
-        "appear somewhere, or the pane quietly loses it")
-
-
-def test_a_hit_inside_two_overlapping_places_belongs_to_both():
-    """Stopping at the first match would make the second place look quiet."""
-    view = _block("  renderInView()")
-    assert "placed = true" in view and "break" not in view.split("for (const p of places)")[1][:200]
-
-
-def test_the_hits_are_collected_even_when_the_alerts_pane_is_not_showing():
-    """The "in view" pane is built out of them, and it is the pane that opens
-    first."""
-    open_src = _block("  async open()", after="const MapBoard = {")
-    assert "renderAlertsPanel()" in open_src
-    assert "renderInView()" in open_src
+    assert "articleRow(" in view
+    assert "withinLocation(" not in view, "that is the locations tab's question"
+    assert "LOCATIONS" not in view
+    assert "published_at" in view, "a feed is newest-first"
 
 
 def test_each_row_says_which_alert_found_it():
-    group = _block("  _group(title, meta, hits, loc)")
-    assert "alert.name" in group
-
-
-def test_the_pane_says_what_it_is_showing():
     view = _block("  renderInView()")
-    assert "watched place" in view and "alert hit" in view
+    assert "alert.name" in view
+
+
+def test_the_locations_tab_is_a_feed_of_what_was_reported_inside_them():
+    """The complaint was that this tab had nothing on it but a form. It is a
+    column now: the circles in view become the criteria, which is the same
+    question the 📍 Favourite Locations column asks."""
+    feed = _block("  async renderLocationFeed()")
+    assert "API.search(" in feed
+    assert '"Circle"' in feed and "radius_km" in feed
+    assert "articleRow(" in feed
+    assert "ALERT_HITS" not in feed, "that is the alerts tab's question"
+
+
+def test_the_locations_feed_follows_the_map_without_asking_twice():
+    """Panning fires this continuously; the same circles must not be re-queried
+    on every frame."""
+    feed = _block("  async renderLocationFeed()")
+    assert "this._locKey" in feed
+    assert "this._locSeq" in feed, "a later pan has to win the race"
+
+
+def test_each_tab_loads_only_its_own_subject():
+    pane = _block("  showPane(which)")
+    assert 'if (which === "alerts") { renderAlertsPanel(); this.renderInView(); }' in pane
+    assert "renderLocationFeed()" in pane
+    move = _block("  async _init()")
+    assert 'if (this.pane === "alerts") this.renderInView();' in move
+
+
+def test_the_panes_say_what_they_are_showing():
+    assert "alert hit" in _block("  renderInView()")
+    assert "watched place" in _block("  async renderLocationFeed()")
 
 
 # ---------- two tabs, and each carries its own subject whole ----------
@@ -211,6 +253,43 @@ def test_the_locations_tab_lists_in_view_and_elsewhere():
     assert "MapBoard.map.getBounds()" in listing
     assert "bounds.contains" in listing
     assert 'el("loc-elsewhere-head").hidden' in listing
+
+
+# ---------- the ground it is read on ----------
+
+def test_there_is_more_than_one_base_map():
+    """A city block, a coastline and a mountain range are not best read on the
+    same ground, and a light map is the brightest thing on a dark dashboard."""
+    maps = _block("function baseMaps", "\n}\n")
+    names = set(re.findall(r"^\s{4}(\w+): L\.tileLayer", maps, re.M))
+    assert {"Street", "Muted", "Night", "Terrain", "Satellite"} <= names
+
+
+def test_every_base_map_carries_its_attribution():
+    """It is the condition each of these is offered under, not decoration."""
+    maps = _block("function baseMaps", "\n}\n")
+    assert maps.count("attribution:") == maps.count("L.tileLayer(")
+
+
+def test_none_of_them_needs_a_key():
+    """A key in the page is a key anybody can read."""
+    maps = _block("function baseMaps", "\n}\n")
+    for suspicious in ("apikey", "api_key", "access_token", "?key="):
+        assert suspicious not in maps.lower()
+
+
+def test_the_choice_is_remembered():
+    init = _block("  async _init()")
+    assert 'localStorage.getItem("gnd_basemap")' in init
+    assert "L.control.layers(" in init
+    assert 'localStorage.setItem("gnd_basemap"' in init
+
+
+def test_the_rail_is_only_on_the_column_boards():
+    """A pop-out panel over a map covers the thing being read, and on Atlas the
+    pane does the rail's job anyway."""
+    assert re.search(r"body\.map-board\s+\.action-rail\s*\{[^}]*display:\s*none", CSS)
+    assert re.search(r"body\.map-board\s+\.map-view\s*\{[^}]*padding-right:\s*0", CSS)
 
 
 # ---------- and it stays usable ----------

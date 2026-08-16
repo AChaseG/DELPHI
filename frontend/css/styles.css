@@ -126,6 +126,16 @@ button { font: inherit; }
   border: none; padding: 7px 14px; cursor: pointer; font-size: 13px;
 }
 .view-switch button.active { background: var(--accent-strong); color: var(--accent-ink); font-weight: 600; }
+/* The unseen-alert count rides on the Atlas tab, since that is where the
+   alerts now are. Inline rather than pinned to the corner: the switch clips
+   its overflow to keep the joined-up look, so a badge hanging outside the
+   button would be sliced in half. */
+.view-switch .bell-count {
+  position: static;
+  margin-left: 7px;
+  padding: 1px 6px;
+  vertical-align: 1px;
+}
 
 .topbar-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
 #global-search {
@@ -558,6 +568,19 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   overflow: hidden;
 }
 body.map-board .pillar { display: none; }
+/* The rail is for the boards made of columns. On Atlas the pane is the rail's
+   job, and a pop-out over a map is a pop-out over the thing being read. */
+body.map-board .action-rail { display: none; }
+body.map-board .map-view { padding-right: 0; }
+
+/* Each tab is a column: the same rows the board draws, in a narrower frame. */
+.map-feed .article { padding: 10px 14px; border-bottom: 1px solid var(--hairline); }
+.map-feed .feed-empty { padding: 14px; }
+.map-pane details > summary {
+  padding: 10px 14px; cursor: pointer; color: var(--ink-2);
+  border-top: 1px solid var(--hairline);
+}
+.map-pane details[open] > summary { color: var(--ink); }
 
 /* The head of a group: name on the left, its measure on the right, wrapping
    rather than clipping. Without the wrap "300 km" came out as "300 kr" — the

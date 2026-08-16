@@ -13,6 +13,34 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-18",
+        "title": "Atlas: five base maps, and two tabs that are columns",
+        "items": [
+            "🗺 The map can be read on <b>five different grounds</b> now — "
+            "Street, Muted, Night, Terrain and Satellite — from the layers "
+            "button in its top-right corner. A city block, a coastline and a "
+            "mountain range are not best read on the same map, and on a dark "
+            "dashboard at night the plain street map is the brightest thing on "
+            "the screen. Your choice is remembered on this browser.",
+            "📰 Both tabs are proper columns now, and each is only its own "
+            "subject. <b>🔔 Alerts</b> is a feed of what your alerts have found "
+            "inside the view, newest first, with the button that makes another "
+            "alert. <b>📍 Locations</b> is a feed of what has been reported "
+            "inside the places you watch, with the button that adds another "
+            "one. Managing either is a fold-out below its feed.",
+            "✂️ Before this the alerts tab grouped its hits under your watched "
+            "places — half of one tab living on the other — and the locations "
+            "tab had nothing on it but a form. Neither was the whole of "
+            "anything.",
+            "🛝 The pop-out rail is now only on 🏠 Home and 📋 My feeds. On "
+            "Atlas it covered the map, and the pane already does its job.",
+            "🔤 Fixed, and overdue: the What's-new popup was showing the markup "
+            "in these notes as literal text — “was taking &lt;b&gt;78 "
+            "seconds&lt;/b&gt;”. Thirteen entries were affected. It renders the "
+            "emphasis properly now.",
+        ],
+    },
+    {
         "date": "2026-09-17",
         "title": "Atlas — a whole board that is a map",
         "items": [

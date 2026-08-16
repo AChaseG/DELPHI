@@ -585,8 +585,6 @@ function wireTopbar() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !el("story-backdrop").hidden) closeStory();
   });
-  // The bell and the pin both lead to Atlas now, each landing on its own pane.
-  el("btn-alerts-panel").onclick = () => { setView("map"); MapBoard.showPane("alerts"); };
   el("btn-sources").onclick = openSourcesPanel;
   el("btn-close-sources").onclick = () => { el("sources-panel").hidden = true; };
 
@@ -741,6 +739,52 @@ function desktopNotify(title, body) {
 
 let FAQ_AFTER_UPDATES = false;  // chain: close What's-new → open the guide
 
+/* A changelog item's small emphasis, as nodes.
+
+   The entries are written in this repository and they use a little markup —
+   <b> for the thing that changed, <code> for something to type. Set as
+   textContent they came out with the tags showing: "…is now <b>78 seconds</b>",
+   read by every account that opened the What's-new popup for weeks.
+
+   Handed to innerHTML they would render, and this file would then contain one
+   place where a string becomes markup. It stays zero: the tags are matched
+   against an allowlist and built as elements, so anything else in the string —
+   including anything that ever reaches this text from somewhere less trusted
+   than the repository — is text and cannot be anything else. */
+const UPDATE_TAGS = new Set(["b", "i", "em", "code"]);
+const UPDATE_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" };
+
+function updateItemNodes(text) {
+  const frag = document.createDocumentFragment();
+  const open = [frag];
+  const put = (s) => {
+    if (!s) return;
+    const decoded = s.replace(/&(amp|lt|gt|quot|#39);/g,
+                              (m, name) => UPDATE_ENTITIES[name] || m);
+    open[open.length - 1].appendChild(document.createTextNode(decoded));
+  };
+  const tag = /<(\/?)([a-z]+)>/gi;
+  let last = 0;
+  let m;
+  while ((m = tag.exec(text))) {
+    const name = m[2].toLowerCase();
+    if (!UPDATE_TAGS.has(name)) continue;      // left as the text it is
+    put(text.slice(last, m.index));
+    last = tag.lastIndex;
+    if (m[1]) {
+      // Only closes what is actually open, so "</b>" on its own is nothing.
+      if (open.length > 1
+          && open[open.length - 1].tagName.toLowerCase() === name) open.pop();
+    } else {
+      const node = document.createElement(name);
+      open[open.length - 1].appendChild(node);
+      open.push(node);
+    }
+  }
+  put(text.slice(last));
+  return frag;
+}
+
 function showUpdates(entries, note = "") {
   const box = el("updates-body");
   box.innerHTML = "";
@@ -757,7 +801,7 @@ function showUpdates(entries, note = "") {
     const ul = document.createElement("ul");
     for (const item of entry.items) {
       const li = document.createElement("li");
-      li.textContent = item;
+      li.appendChild(updateItemNodes(item));
       ul.appendChild(li);
     }
     block.append(date, title, ul);
@@ -3859,7 +3903,6 @@ function wireMapBoard() {
 }
 
 function wireLocations() {
-  el("btn-locations").onclick = () => LocationsPanel.open();
   el("btn-loc-save").onclick = () => LocationsPanel.save();
   feedback(el("btn-loc-save"), "Saving…");
   el("btn-loc-cancel").onclick = () => LocationsPanel.cancelEdit();
@@ -4631,6 +4674,42 @@ async function renderAlertsPanel() {
   box.replaceChildren(built);
 }
 
+/* The base maps Atlas can be read on.
+
+   Different questions want different ground. A watched place in a city is
+   easiest to judge on the plain street map; a coastline or a mountain range on
+   the terrain one; and on a dark dashboard at night the light basemap is the
+   brightest thing on the screen, which is why the muted pair are here.
+
+   All of them are free-to-use tile services that need no key, and all of them
+   have a usage policy — they are somebody else's servers. If Delphi ever draws
+   enough traffic to matter to them, the honest move is an account with a tile
+   host rather than more of this. The satellite layer in particular is Esri's
+   and its terms are the least clear of the five for a paid service; it is one
+   line to remove.
+
+   Attribution is not optional and is not decoration: it is the condition every
+   one of these is offered under. */
+const DEFAULT_BASEMAP = "Street";
+const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+function baseMaps() {
+  const carto = ' &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  return {
+    Street: L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      { maxZoom: 18, attribution: OSM_ATTR }),
+    Muted: L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      { maxZoom: 19, attribution: OSM_ATTR + carto }),
+    Night: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      { maxZoom: 19, attribution: OSM_ATTR + carto }),
+    Terrain: L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+      { maxZoom: 17, attribution: OSM_ATTR + ', <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)' }),
+    Satellite: L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 19, attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" }),
+  };
+}
+
 /* ---------- Atlas: the map board ----------
 
    One map for everything geographic, and a pane beside it that only ever shows
@@ -4641,8 +4720,14 @@ async function renderAlertsPanel() {
    Grouped by watched place rather than by alert, for the same reason. An alert
    fires across the world; what makes a hit worth a second look is that it
    landed somewhere you already said you cared about. */
+/* How many rows either tab shows. A pane is a column, not an archive — and
+   both of these are re-read every time the map stops moving. */
+const MAP_FEED_MAX = 40;
+
 const MapBoard = {
   map: null,
+  _locKey: null,        // the circles the locations feed was last asked for
+  _locSeq: 0,
   locations: null,        // watched places: rings and stars
   alerts: null,           // alert hits and alert geofences
   pane: "alerts",
@@ -4659,7 +4744,7 @@ const MapBoard = {
     await LocationsPanel.refresh();
     await refreshAlerts();
     await renderAlertsPanel();
-    this.renderInView();
+    this.showPane(this.pane);
   },
 
   async _init() {
@@ -4677,10 +4762,15 @@ const MapBoard = {
     }
     if (this.map) return;
     this.map = L.map("world-map", { worldCopyJump: true }).setView([25, 10], 3);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(this.map);
+    const bases = baseMaps();
+    const wanted = localStorage.getItem("gnd_basemap");
+    (bases[wanted] || bases[DEFAULT_BASEMAP]).addTo(this.map);
+    L.control.layers(bases, {}, { position: "topright" }).addTo(this.map);
+    // Remembered per browser: which map somebody reads best on is a preference
+    // about their eyes and their screen, not about their account.
+    this.map.on("baselayerchange", (e) => {
+      try { localStorage.setItem("gnd_basemap", e.name); } catch (err) { /* ok */ }
+    });
     this.locations = L.featureGroup().addTo(this.map);
     this.alerts = L.featureGroup().addTo(this.map);
     // Clicking empty map starts a new watched place, exactly as the old panel
@@ -4693,8 +4783,8 @@ const MapBoard = {
     // The pane follows the map. `moveend` covers pan, zoom and a programmatic
     // setView alike, so there is one place this is kept in step.
     this.map.on("moveend", () => {
-      this.renderInView();
-      LocationsPanel.renderList();
+      if (this.pane === "alerts") this.renderInView();
+      else { this.renderLocationFeed(); LocationsPanel.renderList(); }
     });
     LocationsPanel.map = this.map;
     LocationsPanel.saved = this.locations;
@@ -4709,8 +4799,9 @@ const MapBoard = {
       p.hidden = p.dataset.pane !== which;
     // The alerts pane carries the in-view groups above the alert list, so
     // both are refreshed when it is the one being shown.
+    // Full separation: each tab loads its own subject and nothing else.
     if (which === "alerts") { renderAlertsPanel(); this.renderInView(); }
-    if (which === "locations") LocationsPanel.renderList();
+    if (which === "locations") { this.renderLocationFeed(); LocationsPanel.renderList(); }
   },
 
   /* Alert hits and geofences, on the same map as the watched places. */
@@ -4752,96 +4843,104 @@ const MapBoard = {
     }
   },
 
-  /* What is inside the current viewport, grouped by the place it landed in.
+  /* The alerts tab: a feed of what the alerts have found inside the view.
 
-     Deliberately not "everything my alerts found". The map is the filter, and
-     the pane is a reading of it — so panning to the Aegean answers "what has
-     fired around here", which no list sorted by time can. */
+     Flat and newest-first, like any other column — the reader knows how to
+     read one of those. It used to group these under the watched place each one
+     landed in, which put the locations half of the board on the alerts tab and
+     made neither tab the whole of anything. The two tabs are separate now: this
+     one is alerts and only alerts. */
   renderInView() {
     const box = el("inview-list");
     const summary = el("inview-summary");
     if (!box || !this.map) return;
     const bounds = this.map.getBounds();
-    const inView = (lat, lon) => bounds.contains(L.latLng(lat, lon));
+    const hits = ALERT_HITS
+      .filter(h => bounds.contains(L.latLng(h.place.lat, h.place.lon)))
+      .sort((a, b) => String(b.ev.article.published_at || "")
+        .localeCompare(String(a.ev.article.published_at || "")));
 
-    const places = LOCATIONS.filter(loc => inView(loc.lat, loc.lon));
-    const hits = ALERT_HITS.filter(h => inView(h.place.lat, h.place.lon));
-
-    // Each hit against the watched places it fell inside. A hit can land in two
-    // overlapping places; it belongs to both, and hiding it from one of them
-    // would make that place look quiet when it is not.
-    const groups = new Map(places.map(p => [p.id, { loc: p, hits: [] }]));
-    const elsewhere = [];
-    for (const hit of hits) {
-      let placed = false;
-      for (const p of places) {
-        if (withinLocation(hit.place.lat, hit.place.lon, p)) {
-          groups.get(p.id).hits.push(hit);
-          placed = true;
-        }
-      }
-      if (!placed) elsewhere.push(hit);
-    }
-
-    summary.textContent = places.length || hits.length
-      ? `${places.length} watched place${plural(places.length)} · `
-        + `${hits.length} alert hit${plural(hits.length)} in view`
-      : "Nothing in view. Zoom out, or add a place to watch.";
+    summary.textContent = !ALERTS.length
+      ? "No alerts yet. Press ＋ New alert to make one."
+      : hits.length
+        ? `${hits.length} alert hit${plural(hits.length)} inside the view`
+        : "Nothing your alerts found is inside the view.";
 
     const built = document.createDocumentFragment();
-    for (const { loc, hits: own } of groups.values())
-      built.appendChild(this._group(`📍 ${loc.name}`, `${loc.radius_km} km`, own, loc));
-    if (elsewhere.length)
-      built.appendChild(this._group("Elsewhere in view",
-        "outside every watched place", elsewhere, null));
-    if (!groups.size && !elsewhere.length) {
-      const note = document.createElement("div");
-      note.className = "feed-empty";
-      note.textContent = LOCATIONS.length
-        ? "No watched places on this part of the map."
-        : "No watched places yet — click the map to add one.";
-      built.appendChild(note);
-    }
-    box.replaceChildren(built);
-  },
-
-  _group(title, meta, hits, loc) {
-    const block = document.createElement("div");
-    block.className = "alert-block";
-    const head = document.createElement("div");
-    head.className = "alert-head";
-    const h = document.createElement("h4");
-    h.textContent = `${title}${hits.length ? ` (${hits.length})` : ""}`;
-    head.appendChild(h);
-    const m = document.createElement("span");
-    m.className = "s-meta";
-    m.textContent = meta;
-    head.appendChild(m);
-    if (loc) {
-      head.appendChild(toolBtn("⌖", `Centre the map on ${loc.name}`, () =>
-        this.map.setView([loc.lat, loc.lon], Math.max(this.map.getZoom(), 8))));
-    }
-    block.appendChild(head);
-
-    const list = document.createElement("div");
-    list.className = "alert-events";
-    if (!hits.length) {
-      const quiet = document.createElement("div");
-      quiet.className = "feed-empty";
-      quiet.textContent = "Nothing has fired here.";
-      list.appendChild(quiet);
-    }
-    for (const { alert, ev } of hits.slice(0, 12)) {
+    for (const { alert, ev } of hits.slice(0, MAP_FEED_MAX)) {
       const row = articleRow(ev.article);
       const which = document.createElement("span");
       which.className = "tag";
       which.textContent = `🔔 ${alert.name}`;
       which.title = `Found by your alert “${alert.name}”`;
       row.prepend(which);
-      list.appendChild(row);
+      built.appendChild(row);
     }
-    block.appendChild(list);
-    return block;
+    if (!hits.length) {
+      built.appendChild(feedEmpty(ALERTS.length
+        ? "Pan or zoom out — your alerts have fired elsewhere."
+        : "An alert notifies you the moment a matching article arrives."));
+    }
+    box.replaceChildren(built);
+  },
+
+  /* The locations tab: a feed of what has been reported inside the watched
+     places the map is showing.
+
+     A real query rather than a filter over something already on the client:
+     the circles in view become the criteria, which is exactly what the
+     📍 Favourite Locations column asks the server for — so this tab is that
+     column, narrowed to the part of the world on screen. */
+  async renderLocationFeed() {
+    const box = el("loc-feed");
+    const summary = el("loc-summary");
+    if (!box || !this.map) return;
+    const bounds = this.map.getBounds();
+    const inView = LOCATIONS.filter(l => bounds.contains(L.latLng(l.lat, l.lon)));
+    const key = JSON.stringify(inView.map(l => [l.id, l.radius_km]));
+    if (!inView.length) {
+      this._locKey = key;
+      summary.textContent = LOCATIONS.length
+        ? "No watched places on this part of the map."
+        : "No watched places yet. Press ＋ New location, or click the map.";
+      box.replaceChildren(feedEmpty(LOCATIONS.length
+        ? "Pan to one of your places, or zoom out."
+        : "Anything reported inside a place's radius is flagged 📍 wherever it "
+          + "appears, and collected here."));
+      return;
+    }
+    // Panning fires this constantly; asking the server again for the same set
+    // of circles is a request nobody needs.
+    if (key === this._locKey && box.children.length) return;
+    this._locKey = key;
+    const generation = ++this._locSeq;
+    summary.textContent = `Reports inside ${inView.length} watched `
+      + `place${plural(inView.length)} in view`;
+
+    let articles;
+    try {
+      articles = await API.search({
+        geos: inView.map(l => ({
+          type: "Circle", center: [l.lat, l.lon], radius_km: l.radius_km,
+          name: l.place_name || "", country: (l.country || "").toUpperCase(),
+        })),
+      }, "newest", MAP_FEED_MAX);
+    } catch (e) {
+      if (generation !== this._locSeq) return;
+      box.replaceChildren(feedEmpty(`Couldn't load this feed — ${e.message}`));
+      return;
+    }
+    if (generation !== this._locSeq) return;     // a later pan owns the pane
+    summary.textContent = `${articles.length}${articles.length >= MAP_FEED_MAX ? "+" : ""} `
+      + `report${plural(articles.length)} inside ${inView.length} watched `
+      + `place${plural(inView.length)} in view`;
+    const built = document.createDocumentFragment();
+    for (const a of articles) built.appendChild(articleRow(a));
+    if (!articles.length) {
+      built.appendChild(feedEmpty("Nothing has been reported inside these places "
+                                  + "yet. They are watched from now on."));
+    }
+    box.replaceChildren(built);
   },
 };
 

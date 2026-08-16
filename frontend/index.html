@@ -25,7 +25,7 @@
     <div class="view-switch" role="tablist">
       <button id="btn-view-home" class="active" title="Delphi-curated overview of everything ingested">🏠 Home</button>
       <button id="btn-view-mine" title="Feeds and alerts you created">📋 My feeds</button>
-      <button id="btn-view-map" title="Atlas — one map: the places you watch and where your alerts are firing">🗺 Atlas</button>
+      <button id="btn-view-map" class="bell" title="Atlas — one map: the places you watch and where your alerts are firing">🗺 Atlas<span id="bell-count" class="bell-count" hidden>0</span></button>
     </div>
   </header>
 
@@ -45,10 +45,6 @@
       <span class="rail-icon">＋</span><span class="rail-label">Create</span></button>
     <button id="btn-pantheons" class="btn rail-btn bell" title="Pantheons — organizations that share feeds and alerts">
       <span class="rail-icon">🏛</span><span class="rail-label">Pantheons</span><span id="pantheon-invite-count" class="bell-count" hidden>0</span></button>
-    <button id="btn-locations" class="btn rail-btn" title="Favourite locations — on the 🗺 Atlas board">
-      <span class="rail-icon">📍</span><span class="rail-label">Locations</span></button>
-    <button id="btn-alerts-panel" class="btn rail-btn bell" title="Alerts — on the 🗺 Atlas board">
-      <span class="rail-icon">🔔</span><span class="rail-label">Alerts</span><span id="bell-count" class="bell-count" hidden>0</span></button>
     <button id="btn-sources" class="btn rail-btn" title="Manage sources">
       <span class="rail-icon">📡</span><span class="rail-label">Sources</span></button>
     <span class="rail-spacer"></span>
@@ -474,8 +470,8 @@
 
         <details>
           <summary>📍 Keeping a list of favourite locations</summary>
-          <p><b>Add one:</b> open <b>📍 Locations</b> in the rail and start typing in the
-             search box. Suggestions appear as you type: cities and countries
+          <p><b>Add one:</b> open the <b>🗺 Atlas</b> board, go to the <b>📍 Locations</b>
+             tab, press <b>＋ New location</b> and start typing in the search box. Suggestions appear as you type: cities and countries
              D.E.L.P.H.I. ships come first and instantly, and a street address, a town
              or a district is looked up through OpenStreetMap and listed below them,
              marked <b>📍</b>. Each suggestion says where it is, so two towns with the
@@ -556,8 +552,10 @@
 
         <details>
           <summary>🔔 Working through alert hits</summary>
-          <p>Open the <b>🔔</b> panel in the rail. The number on the button counts hits
-             you haven't seen.</p>
+          <p>Open the <b>🗺 Atlas</b> board — the <b>🔔 Alerts</b> tab is the one it
+             opens on. The number on the Atlas button counts hits you haven't seen,
+             and the top of the tab lists the ones inside whatever the map is
+             currently showing, grouped by the watched place they landed in.</p>
           <ul>
             <li>Each alert lists its recent hits, newest first, with a thumbnail and its
               importance. Click one to read the article. The alert's own header counts
@@ -1459,19 +1457,21 @@
 
       <div class="map-pane" data-pane="alerts">
         <div class="map-pane-head">
-          <span class="set-note" id="inview-summary">Move the map to see what is inside it.</span>
+          <span class="set-note" id="inview-summary">What your alerts have found inside the view.</span>
           <button class="btn small btn-primary" id="btn-new-alert"
                   title="Create an alert — it fires the moment a matching article arrives">＋ New alert</button>
         </div>
-        <div id="inview-list"></div>
-        <h3 class="set-h">Your alerts</h3>
-        <div id="alerts-list"></div>
+        <div id="inview-list" class="map-feed"></div>
+        <details id="alerts-manage">
+          <summary>Your alerts</summary>
+          <div id="alerts-list"></div>
+        </details>
       </div>
 
       <div class="map-pane" data-pane="locations" hidden>
         <div class="map-pane-head">
-          <span class="set-note">Anything reported inside the radius is flagged 📍
-             wherever it appears, and they share one 📍 Favourite Locations feed.</span>
+          <span class="set-note" id="loc-summary">Reports from inside the places
+             the map is showing.</span>
           <button class="btn small btn-primary" id="btn-new-location"
                   title="Pick a point on the map, or search for a place">＋ New location</button>
         </div>
@@ -1501,10 +1501,16 @@
           <p id="loc-error" class="builder-error" role="alert" hidden></p>
         </div>
 
-        <h3 class="set-h">In view</h3>
-        <div id="loc-list"></div>
-        <h3 class="set-h" id="loc-elsewhere-head" hidden>Elsewhere</h3>
-        <div id="loc-elsewhere"></div>
+        <!-- The tab's own feed: what has been reported inside the radius of
+             the watched places the map is showing. The places themselves are
+             below it, because managing them is the smaller half of the job. -->
+        <div id="loc-feed" class="map-feed"></div>
+        <details id="loc-manage">
+          <summary>Your places</summary>
+          <div id="loc-list"></div>
+          <h3 class="set-h" id="loc-elsewhere-head" hidden>Elsewhere</h3>
+          <div id="loc-elsewhere"></div>
+        </details>
       </div>
     </aside>
   </section>
