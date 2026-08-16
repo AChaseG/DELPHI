@@ -21,9 +21,10 @@ CHANGELOG: list[dict] = [
             "dropped.",
             "🏛 <b>Pantheons is a board</b> now, on the tab bar beside 🏠 Home, "
             "📋 My feeds and 🗺 Atlas — and it is laid out as the two questions "
-            "it answers. On the left, the ways in: <b>New Pantheon</b> and the "
-            "public directory. On the right, across a hairline, the ones you "
-            "are already in.",
+            "it answers. Against the left wall, in a narrow column, the ways "
+            "in: <b>New Pantheon</b> and the public directory. Across a "
+            "hairline, with the rest of the window to itself, a wall of the "
+            "ones you are already in.",
             "🧹 A Pantheon no longer takes a tab of its own — fine at three, a "
             "scrolling mess at a dozen. Open one from its button on the "
             "Pantheons board; a strip above its columns says which one you are "

@@ -155,18 +155,28 @@ button { font: inherit; }
   display: flex;
   gap: 0;
   align-items: stretch;
-  max-width: 1400px;
-  margin: 0 auto;
-  /* Clear the decorative columns, which are fixed and would sit over this. */
-  padding: 0 calc(var(--pillar-w) + 16px) 30px;
+  /* Against the left wall, not centred. A centred 1400px band put the left
+     column a third of the way across a wide screen, with the hairline out in
+     the middle of the page and the tiles crowded into the last third. */
+  padding: 0 16px 30px;
   min-height: 100%;
 }
+/* Clear the decorative columns, which are fixed and would sit over this. They
+   are hidden below 1281px, and so is the room kept for them. */
+@media (min-width: 1281px) {
+  .pantheons-body { padding: 0 calc(var(--pillar-w) + 16px) 30px; }
+}
 .pn-side {
-  flex: 0 0 320px;
-  max-width: 42vw;
+  /* About a fifth of the width: a button and a list of names does not need
+     more. Clamped at both ends so the list stays readable in a narrow window
+     and does not sprawl across a wide one. */
+  flex: 0 0 20%;
+  min-width: 240px;
+  max-width: 380px;
   padding: 4px 20px 20px 0;
   border-right: 1px solid var(--hairline);
 }
+/* Everything left over is the wall of joined Pantheons. */
 .pn-main { flex: 1 1 auto; min-width: 0; padding: 4px 0 20px 24px; }
 .pn-new { width: 100%; margin-bottom: 10px; }
 .pantheons-view .set-h { padding: 0; }

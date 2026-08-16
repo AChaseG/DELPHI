@@ -172,6 +172,27 @@ def test_the_two_ways_in_are_on_the_left_of_a_dividing_line():
     assert re.search(r"\.pn-side\s*\{[^}]*border-right:\s*1px solid var\(--hairline\)", CSS)
 
 
+def test_the_list_side_is_against_the_wall_and_stays_narrow():
+    """It is a button and a list of names, and it was starting a third of the
+    way across a 1600px window — the body was a centred 1400px band, so the
+    hairline landed mid-page and the tiles were crowded into the last third."""
+    body = re.search(r"\.pantheons-body\s*\{[^}]*\}", CSS).group(0)
+    assert "margin: 0 auto" not in body, "centring is what pushed it off the wall"
+    assert "max-width" not in body
+    side = re.search(r"\.pn-side\s*\{[^}]*\}", CSS).group(0)
+    assert re.search(r"flex:\s*0 0 20%", side), side
+    assert "min-width" in side and "max-width" in side, (
+        "a bare percentage is unreadable narrow and sprawling wide")
+
+
+def test_the_room_kept_for_the_pillars_goes_when_they_do():
+    """They are hidden below 1281px; the padding that cleared them was not, so
+    the list sat 58px in from a wall with nothing against it."""
+    band = CSS[CSS.index(".pantheons-body"):CSS.index(".pn-side")]
+    assert "@media (min-width: 1281px)" in band
+    assert "var(--pillar-w)" in band.split("@media")[1]
+
+
 def test_a_joined_pantheon_is_a_button():
     src = APP[APP.index("function pantheonCard"):APP.index("/* ---------- alerts ----------")]
     assert 'document.createElement("button")' in src
