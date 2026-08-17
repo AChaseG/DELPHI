@@ -54,6 +54,10 @@
         <div class="stat-tile"><div class="stat-value" id="stat-sources">–</div><div class="stat-label">sources healthy</div></div>
         <div class="stat-tile"><div class="stat-value" id="stat-alerts">–</div><div class="stat-label">alert hits unseen</div></div>
       </div>
+      <!-- Typhon's own state, in the place somebody already comes to ask how
+           Delphi is doing. Without it, an operator whose hazard layers are
+           empty has nowhere at all to find out why. -->
+      <p class="s-meta" id="stat-hazards"></p>
       <div class="set-row">
         <span>Every outlet Delphi polls — add one, track a topic, repair or retire
               what has stopped answering.</span>
@@ -1461,7 +1465,14 @@
        before they open it. The ids stay descriptive (map-view, MapBoard) so the
        code says what the thing is; the name is what the reader is told. -->
   <section id="map-view" class="map-view" hidden>
-    <div id="world-map" class="world-map"></div>
+    <div id="world-map" class="world-map">
+      <!-- Why a Typhon layer is empty, when it is. An empty layer used to look
+           identical whether it was switched off at the server, missing an API
+           key, unreachable, or simply over a quiet stretch of map — and only
+           one of those is worth anybody's evening. Shown while a Typhon layer
+           is ticked and there is something to say; hidden otherwise. -->
+      <div id="map-note" class="map-note" role="status" hidden></div>
+    </div>
     <aside id="map-side" class="map-side" aria-label="What is on the map right now">
       <!-- Two tabs, and each one is the whole of its subject: what is on the
            map right now, what else there is, and the way to make another. Both

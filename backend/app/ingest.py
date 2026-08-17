@@ -120,6 +120,13 @@ BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 ACCEPT = "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8"
 
 status: dict = {"running": False, "last_run": None, "last_new_articles": 0, "cycles": 0}
+# Present from import, not from the first successful poll. /api/meta ships this
+# dict to every client, and while this key was simply absent until a poll
+# succeeded there was no way for anything — the map, Settings, an operator — to
+# tell a hazard layer that is switched off from one that is working and quiet.
+# Both drew a blank map under a ticked box. An always-present key is the whole
+# fix; everything downstream just reads it.
+status["hazards"] = hazards.idle_status("no poll has run yet")
 
 # Full-article content fetching (match criteria against the story body, not
 # just headline + feed summary). NEWS_CONTENT_FETCH=0 disables.
@@ -1351,8 +1358,13 @@ async def ingest_loop():
                     # volume is nearly full because they mostly delete; a
                     # hazard poll writes, so it stops when fetching stops. This
                     # is the disk-full outage trying to come back in a new door.
-                    if (hazards.enabled() and time.monotonic() >= _next_hazard_at
-                            and not (space["ok"] and space["low"])):
+                    if not hazards.enabled():
+                        status["hazards"] = hazards.idle_status(
+                            "switched off with NEWS_HAZARDS=0")
+                    elif space["ok"] and space["low"]:
+                        status["hazards"] = hazards.idle_status(
+                            "paused — the data volume is nearly full")
+                    elif time.monotonic() >= _next_hazard_at:
                         _next_hazard_at = time.monotonic() + hazards.POLL_EVERY_SECONDS
                         status["hazards"] = await hazards.poll(db)
 

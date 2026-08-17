@@ -495,9 +495,20 @@ def test_without_a_key_there_is_no_air_layer(monkeypatch):
 
 # ---------- the switch ----------
 
-def test_it_is_off_unless_asked_for(monkeypatch):
+def test_it_runs_unless_an_operator_turns_it_off(monkeypatch):
+    """This shipped defaulting to *off*, and that was the wrong trade.
+
+    The map's layer control lists both Typhon layers whether or not the poller
+    is running, so an instance with the flag unset looked exactly like an
+    instance with nothing burning nearby: a ticked box and a blank map, with
+    nothing anywhere to tell the two apart. Somebody lost an evening to it.
+
+    What made the caution unnecessary: the layers are themselves off per
+    browser until a reader ticks them, so nothing appears for anybody who has
+    not asked. The variable is an off switch now, not an on switch.
+    """
     monkeypatch.delenv("NEWS_HAZARDS", raising=False)
-    assert hazards.enabled() is False
+    assert hazards.enabled() is True
 
 
 @pytest.mark.parametrize("value,expected", [

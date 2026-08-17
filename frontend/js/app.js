@@ -1311,6 +1311,38 @@ function renderStats(meta) {
       ? "No source could be fetched — check the Sources panel for per-source errors"
       : "";
   }
+  renderHazardStatus();
+  // The map note is built from the same status, and META is refreshed here
+  // rather than anywhere else — a poll that starts working while somebody is
+  // looking at the map should take the caption away.
+  MapBoard.renderHazardNote();
+}
+
+/* Typhon's state, in words, under the counters.
+
+   This exists because it did not: an operator whose hazard layers were empty
+   had nowhere to find out whether the feature was off, missing a key, failing,
+   or simply looking at a quiet part of the world. */
+function renderHazardStatus() {
+  const box = el("stat-hazards");
+  if (!box) return;
+  const h = (META && META.ingest && META.ingest.hazards) || null;
+  if (!h) { box.hidden = true; return; }
+  box.hidden = false;
+  const bits = [];
+  if (h.enabled === false) bits.push("🐉 Typhon: off (NEWS_HAZARDS=0)");
+  else if (h.ok) {
+    bits.push(`🐉 Typhon: ${(h.providers || []).join(", ") || "no providers"}`);
+    if (h.seen != null) bits.push(`${h.seen} hazards last poll`);
+    if (h.at) bits.push(timeAgo(h.at + "Z"));
+  } else {
+    bits.push(`🐉 Typhon: ${h.reason || "not running"}`);
+  }
+  // The one an operator can fix in a minute, and would otherwise never learn
+  // about — the air layer would just be empty for good.
+  if ((h.no_key || []).includes("airnow"))
+    bits.push("air quality needs AIRNOW_API_KEY");
+  box.textContent = bits.join(" · ");
 }
 
 /* ---------- feed board ---------- */
@@ -5161,8 +5193,12 @@ const MapBoard = {
       this._rememberOverlay(e.name, "1");
       this._hazKey = "";                    // it was off; nothing was fetched
       this.refreshHazards();
+      this.renderHazardNote();              // even when there is nothing to fetch
     });
-    this.map.on("overlayremove", (e) => this._rememberOverlay(e.name, "0"));
+    this.map.on("overlayremove", (e) => {
+      this._rememberOverlay(e.name, "0");
+      this.renderHazardNote();
+    });
     this.locations = L.featureGroup().addTo(this.map);
     this.alerts = L.featureGroup().addTo(this.map);
     // Clicking empty map starts a new watched place, exactly as the old panel
@@ -5182,6 +5218,15 @@ const MapBoard = {
     });
     LocationsPanel.map = this.map;
     LocationsPanel.saved = this.locations;
+    // A layer remembered as on has to fetch for the view it opens at. The
+    // setView on the first line of this function fired `moveend` thirty lines
+    // before that handler existed, and Leaflet only fires `overlayadd` from
+    // the control's own checkbox — never from addTo — so neither route ran and
+    // the layer sat blank until the reader happened to pan. Every browser
+    // probe called setView after opening the board, which fired moveend and
+    // hid this completely.
+    this.refreshHazards();
+    this.renderHazardNote();
     return this._wanted;
   },
 
@@ -5206,6 +5251,42 @@ const MapBoard = {
      which fires moveend continuously, does not re-ask for the same rectangle;
      and a generation counter so a slow answer for somewhere the reader has
      already left cannot repaint the layer under them. */
+  /* Why a Typhon layer is empty, when it is.
+
+     The bug this exists for: a layer switched off at the server, a provider
+     that could not be reached, a missing API key and a genuinely quiet corner
+     of the map all drew exactly the same thing — a ticked box and nothing
+     else. "Nothing here" and "nothing working" must not read the same, and the
+     only place a reader is looking is the map.
+
+     Shown only while a Typhon layer is ticked, so it costs nothing to anybody
+     not using the feature. */
+  hazardNote() {
+    const on = Object.values(this._overlays || {})
+      .some(o => this.map && this.map.hasLayer(o.group));
+    if (!on) return "";
+    const s = (META && META.ingest && META.ingest.hazards) || null;
+    if (!s) return "";
+    if (s.enabled === false)
+      return "🐉 Typhon is switched off on this instance.";
+    if (s.ok === false && s.reason)
+      return `🐉 Typhon has no data right now — ${s.reason}.`;
+    if ((s.no_key || []).includes("airnow")
+        && this.map.hasLayer(this.airquality))
+      return "🌫 Air quality needs an AirNow API key on this instance.";
+    if (this._hazRows && !this._hazRows.length)
+      return "🐉 Nothing reported in this view. Typhon covers the United States.";
+    return "";
+  },
+
+  renderHazardNote() {
+    const box = el("map-note");
+    if (!box) return;
+    const text = this.hazardNote();
+    box.textContent = text;
+    box.hidden = !text;
+  },
+
   _rememberOverlay(label, value) {
     const o = this._overlays && this._overlays[label];
     if (!o) return;
@@ -5261,6 +5342,7 @@ const MapBoard = {
         : L.circleMarker([h.lat, h.lon], hazardStyle(h));
       marker.bindPopup(hazardPopup(h, near)).addTo(group);
     }
+    this.renderHazardNote();
   },
 
   /* Alert hits and geofences, on the same map as the watched places. */

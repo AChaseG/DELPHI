@@ -13,6 +13,30 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-27",
+        "title": "An empty Typhon layer now tells you why it is empty",
+        "items": [
+            "🐉 <b>Typhon runs by default now.</b> It shipped switched off "
+            "behind a setting, which was a mistake: the layers appear in the "
+            "map's control whether or not the poller is running, so an "
+            "instance with it off looked exactly like one with nothing burning "
+            "nearby — a ticked box and a blank map. The real opt-in was always "
+            "the layers themselves, which stay off until you tick them.",
+            "💬 And when a layer <i>is</i> empty, the map now says why: "
+            "switched off, no API key, the provider could not be reached, or "
+            "simply nothing reported in this view. Four different silences "
+            "that used to look identical. <b>“Nothing here” and “nothing "
+            "working” should never read the same.</b>",
+            "🩺 ⚙ <b>Settings → This instance</b> carries the same in one "
+            "line — which providers answered, when, and what is missing — "
+            "beside the counters. If air quality needs a key, it says so "
+            "there rather than leaving an empty layer to be puzzled over.",
+            "🗺 Fixed alongside: a layer you had left switched on stayed blank "
+            "after a reload until you happened to pan the map. It draws "
+            "straight away now.",
+        ],
+    },
+    {
         "date": "2026-09-26",
         "title": "Miles, if you think in miles",
         "items": [

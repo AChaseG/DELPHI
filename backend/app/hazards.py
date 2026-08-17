@@ -20,8 +20,11 @@ once proximity alerting exists, notify every watcher about every fire they had
 already been told about. Every provider therefore returns None for "I could not
 tell you" and a list for "this is what there is", and None never prunes.
 
-Off by default (`NEWS_HAZARDS`). Providers needing a key no-op without one
-rather than failing, so an instance that never sets one simply has no layer.
+On unless `NEWS_HAZARDS=0` — see enabled() for why that default was reversed.
+Providers needing a key no-op without one rather than failing, but they say so
+in the status: a layer that is empty because nobody set a key is otherwise
+indistinguishable from one that is empty because nothing is burning, and only
+one of those is worth an operator's evening.
 """
 from __future__ import annotations
 
@@ -66,7 +69,26 @@ KIND_WILDFIRE = "wildfire"
 
 
 def enabled() -> bool:
-    return os.environ.get("NEWS_HAZARDS", "0") not in ("0", "", "off", "false")
+    """On unless an operator turns it off, which is a reversal worth explaining.
+
+    This shipped defaulting to *off* — "ship it dark and turn it on
+    deliberately" — and that turned out to be a bad trade. The layers appear in
+    the map's control whether or not the poller is running, so an instance with
+    the flag unset looked exactly like an instance with no fires nearby: a
+    ticked box and a blank map, with nothing anywhere to tell the two apart.
+    Somebody spent an evening wondering why Seattle had no air quality.
+
+    The caution it was protecting against has expired. WFIGS needs no key and
+    costs one request every fifteen minutes; AirNow no-ops without one; the
+    table is bounded well under a megabyte; and every failure mode now has a
+    test. The real protection was always elsewhere anyway — both map layers are
+    off per browser until a reader ticks them, so nothing shows up for anybody
+    who has not asked for it.
+
+    So the variable stays as an operator's *off* switch. A self-hosted copy that
+    wants no US hazard polling sets NEWS_HAZARDS=0.
+    """
+    return os.environ.get("NEWS_HAZARDS", "1") not in ("0", "", "off", "false")
 
 
 # ---------- WFIGS: active US wildfire incidents ----------
@@ -629,14 +651,37 @@ async def deliver(db: Session, hits: list[dict]) -> int:
     return sent
 
 
+def idle_status(reason: str) -> dict:
+    """What to report when no poll has run, or none can.
+
+    The shape matches a real poll's, so whatever reads it never has to ask
+    whether the key is the one that means "never ran". An absent key was the
+    original bug: /api/meta carried ingest.status to every client and simply
+    said nothing about hazards, so the client could not distinguish a feature
+    that was off from one that was working and quiet.
+    """
+    return {"ok": False, "enabled": enabled(), "reason": reason,
+            "providers": [], "no_key": sorted(_missing_keys())}
+
+
+def _missing_keys() -> set[str]:
+    """Providers that are configured out for want of a credential.
+
+    Reported by name rather than passed over in silence: this is the one
+    failure an operator can fix in a minute, and would otherwise never learn
+    about — the layer would simply be empty forever.
+    """
+    return set() if os.environ.get("AIRNOW_API_KEY", "").strip() else {"airnow"}
+
+
 async def poll(db: Session) -> dict:
     """One hazard cycle. Never raises into the ingest loop."""
     started = time.monotonic()
     try:
         rows, answered = await _fetch_all()
         if not answered:
-            return {"ok": False, "at": utcnow().isoformat(),
-                    "error": "no provider answered"}
+            return {**idle_status("no provider answered"),
+                    "at": utcnow().isoformat()}
         counts, changed = await asyncio.to_thread(_upsert, db, rows)
         pruned = await asyncio.to_thread(_prune, db, answered)
         hits = await asyncio.to_thread(evaluate_fire_ring, db, changed)
@@ -646,10 +691,10 @@ async def poll(db: Session) -> dict:
         for hit in hits:
             broadcaster.publish({"type": "hazard", **hit})
         emailed = await deliver(db, hits)
-        return {"ok": True, "at": utcnow().isoformat(),
-                "providers": sorted(answered), "pruned": pruned,
-                "hits": len(hits), "emailed": emailed,
+        return {"ok": True, "enabled": True, "at": utcnow().isoformat(),
+                "providers": sorted(answered), "no_key": sorted(_missing_keys()),
+                "pruned": pruned, "hits": len(hits), "emailed": emailed,
                 "seconds": round(time.monotonic() - started, 2), **counts}
     except Exception as exc:                      # never break the news poll
         log.exception("hazard poll failed")
-        return {"ok": False, "at": utcnow().isoformat(), "error": str(exc)}
+        return {**idle_status(str(exc)), "at": utcnow().isoformat()}

@@ -621,6 +621,20 @@ body.map-board .pillar { display: none; }
   border: 1px solid rgba(0, 0, 0, 0.45);
 }
 
+/* Why a Typhon layer is empty. Bottom-left, out of the way of the layers
+   control and the zoom buttons, above the tiles but below Leaflet's own popups
+   — it is an explanation, not a thing to interact with. */
+.map-note {
+  position: absolute; left: 10px; bottom: 26px; z-index: 500;
+  max-width: min(460px, calc(100% - 24px));
+  padding: 7px 11px;
+  background: var(--surface); color: var(--ink-2);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 12.5px; line-height: 1.45;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
 /* A fire inside a watched place's ring. Same treatment as the saved-place
    star: its own artwork, so no box and no border, and a shadow to lift it off
    a busy tile without needing a second colour. */
