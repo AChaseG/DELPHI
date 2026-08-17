@@ -113,11 +113,25 @@ def test_switched_off_layers_cost_nothing():
         "with both layers off there is nobody to fetch for")
 
 
+DRAW = _fn("  drawHazards()")
+
+
 def test_one_request_serves_both_layers():
     """The rows say which kind they are. Asking twice for the same rectangle
     to sort them out on the client is a second round trip for an if."""
     assert len(re.findall(r"API\.hazards\(", REFRESH)) == 1
-    assert 'h.kind === "air_quality"' in REFRESH
+    assert 'h.kind === "air_quality"' in DRAW
+
+
+def test_drawing_is_separate_from_fetching():
+    """The picture changes without the map moving — a ring switched on, a place
+    saved or deleted, LOCATIONS arriving after the board opened. `_hazKey`
+    exists to stop panning re-requesting the same rectangle and would just as
+    happily stop any of those from showing, so redrawing must not need a
+    fetch."""
+    assert "this._hazRows = rows;" in REFRESH
+    assert "this.drawHazards();" in REFRESH
+    assert "API.hazards" not in DRAW, "redrawing must not go back to the server"
 
 
 def test_a_reading_is_never_credited_to_the_wrong_agency():

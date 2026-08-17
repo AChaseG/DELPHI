@@ -13,6 +13,27 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-25",
+        "title": "The fires that concern you look different",
+        "items": [
+            "🔥 A wildfire inside the distance you set for a watched place is "
+            "now drawn as a <b>flame</b> rather than a dot. Every fire used to "
+            "look the same, which answered \"how big is that one\" — but the "
+            "question you open a map with is <i>is one of them near me</i>, and "
+            "a huge fire two states away was taking the eye from a small one "
+            "up the road.",
+            "🎨 It still carries its colour, so the shape tells you it is "
+            "close and the colour tells you how bad it is. Press it and the "
+            "first line says which of your places it is near and how far away "
+            "— and if it is inside more than one, how many others.",
+            "🎯 <b>Near</b> means the same distance your alerts use, so a "
+            "flame on the map and a message on your screen always mean the "
+            "same thing. A place with no wildfire distance set draws no "
+            "flames; switch one on and they appear straight away, without "
+            "having to move the map.",
+        ],
+    },
+    {
         "date": "2026-09-24",
         "title": "Your watched places know what is burning, and what you are breathing",
         "items": [

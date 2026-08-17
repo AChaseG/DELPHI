@@ -1609,6 +1609,67 @@ function locationStar(colour) {
   return icon;
 }
 
+const _FLAME_ICONS = new Map();
+
+/* A wildfire inside the ring of somewhere you watch.
+
+   Every fire is a dot today, sized and coloured by how big it is — which
+   answers "how bad is that one" and not the question anybody opens this map
+   with, which is *is one of them near me*. A 120,000-acre fire in Montana and a
+   900-acre one eight kilometres from the house look identical, and the big one
+   takes the eye. A flame is a different shape at a glance, before any reading
+   of size or colour happens.
+
+   Still coloured by the same severity ramp the dots use: the shape says "this
+   one is near somewhere you watch", the colour says "and this is how bad it
+   is". Losing the second to gain the first would be a poor trade. */
+function fireFlame(colour) {
+  if (_FLAME_ICONS.has(colour)) return _FLAME_ICONS.get(colour);
+  // Same paint-order trick as the star: the stroke sits behind the fill, so
+  // the outline rims the flame instead of eating into its tip.
+  const svg =
+    '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">'
+    + '<path d="M12 2.2c.5 3.1-1.1 4.4-2.6 5.8C7.8 9.5 6.2 11 6.2 13.9'
+    + 'a5.8 5.8 0 0 0 11.6 0c0-2.2-.9-3.9-2-5.3-.3 1-1 1.8-1.9 2.1'
+    + '.7-2.9-.2-6.1-1.9-8.5z" '
+    + `fill="${colour}" stroke="#12140f" stroke-width="1.3" `
+    + 'stroke-linejoin="round" paint-order="stroke"/></svg>';
+  const icon = L.divIcon({
+    className: "haz-flame", html: svg, iconSize: [22, 22], iconAnchor: [11, 11],
+    tooltipAnchor: [0, 0],
+  });
+  _FLAME_ICONS.set(colour, icon);
+  return icon;
+}
+
+/* Which watched place, if any, this fire is inside the ring of.
+
+   `fire_km` and nothing else — the same distance the alerts use, so a flame on
+   the map and a toast on the screen always mean the same thing. A place with
+   no ring set has not asked to be told about fires and gets no flames; nor
+   does a Pantheon's shared copy, which share_location deliberately does not
+   carry fire_km across, because the group never opted in.
+
+   Worked out here rather than on the server, which is the exception in Typhon
+   and worth the note: the client already holds both halves — LOCATIONS carries
+   lat/lon/fire_km, the hazard rows carry lat/lon — and haversineKm above is
+   already used for exactly this shape of test. A server field would be a
+   second implementation of a distance that already agrees. */
+function fireRingHit(hazard) {
+  if (hazard.kind !== "wildfire" || !Array.isArray(LOCATIONS)) return null;
+  let best = null, others = 0;
+  for (const loc of LOCATIONS) {
+    if (!loc.fire_km) continue;
+    const km = haversineKm(hazard.lat, hazard.lon, loc.lat, loc.lon);
+    if (km > loc.fire_km) continue;
+    if (best === null || km < best.km) {
+      if (best !== null) others += 1;
+      best = { loc, km };
+    } else others += 1;
+  }
+  return best && { ...best, others };
+}
+
 /* Favourite locations are always a point and a radius, so this is the circle
    case only — the wizard's drawn polygons stay server-side, where the SQL that
    selects the candidates lives. */
@@ -3784,6 +3845,9 @@ const LocationsPanel = {
     catch (e) { this.showError(e.message); return; }
     this.renderList();
     this.renderSaved();
+    // The flames are drawn from these rings, so a place that just gained or
+    // lost one has to change the map as well as the list.
+    MapBoard.drawHazards();
   },
 
   renderSaved() {
@@ -4893,12 +4957,23 @@ function aqiCategory(h) {
 
 /* What a hazard says when you press it. Built as nodes: an incident name is a
    string from a third party, and this file does not hand those to innerHTML. */
-function hazardPopup(h) {
+function hazardPopup(h, near) {
   const wrap = document.createElement("div");
   wrap.className = "haz-popup";
   const title = document.createElement("strong");
   title.textContent = h.name;
   wrap.appendChild(title);
+
+  // Why this one is a flame. First line, because it is the reason the reader
+  // pressed it — everything below is detail about the fire itself.
+  if (near) {
+    const line = document.createElement("div");
+    line.className = "haz-near";
+    line.textContent = `📍 Reported ${near.km.toFixed(1)} km from ${near.loc.name}`
+      + (near.others ? ` and ${near.others} other watched `
+                       + `place${near.others === 1 ? "" : "s"}` : "");
+    wrap.appendChild(line);
+  }
 
   const raw = h.raw || {};
   const facts = [];
@@ -4976,6 +5051,7 @@ const MapBoard = {
   _locKey: null,        // the circles the locations feed was last asked for
   _locSeq: 0,
   _hazKey: "",          // the rectangle Typhon was last asked for
+  _hazRows: null,       // and what came back, so it can be redrawn without one
   // Declared, and it has to be: `++this._hazSeq` on an undeclared property is
   // ++undefined, which is NaN, and `NaN !== NaN` is true — so the guard that
   // drops a stale answer would drop every answer and the layer would never
@@ -5121,13 +5197,30 @@ const MapBoard = {
       return;
     }
     if (generation !== this._hazSeq) return;
+    this._hazRows = rows;
+    this.drawHazards();
+  },
+
+  /* Draw whatever the last fetch returned.
+
+     Split out from the fetch because the picture can change without the map
+     moving: switching a ring on, saving a place, deleting one, or simply
+     LOCATIONS arriving after the board opened. `_hazKey` exists to stop
+     panning re-requesting the same rectangle, and it would just as happily
+     stop any of those from showing — a reader would set a ring and see nothing
+     until they panned. So the guard keeps doing only the job it was written
+     for, and this redraws from what is already in hand. */
+  drawHazards() {
+    if (!this.hazards || !this._hazRows) return;
     this.hazards.clearLayers();
     this.airquality.clearLayers();
-    for (const h of rows) {
+    for (const h of this._hazRows) {
       const group = h.kind === "air_quality" ? this.airquality : this.hazards;
-      L.circleMarker([h.lat, h.lon], hazardStyle(h))
-        .bindPopup(hazardPopup(h))
-        .addTo(group);
+      const near = fireRingHit(h);
+      const marker = near
+        ? L.marker([h.lat, h.lon], { icon: fireFlame(hazardStyle(h).color) })
+        : L.circleMarker([h.lat, h.lon], hazardStyle(h));
+      marker.bindPopup(hazardPopup(h, near)).addTo(group);
     }
   },
 
