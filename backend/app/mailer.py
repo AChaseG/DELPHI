@@ -179,6 +179,38 @@ def send_alert_digest(to: str, alert_name: str, hits: list[dict]) -> bool:
     )
 
 
+def send_hazard_digest(to: str, place_name: str, hits: list[dict]) -> bool:
+    """One email per watched place per hazard poll, listing the fires near it.
+
+    Worded carefully about distance. WFIGS reports an incident *point*, not a
+    perimeter, and a hundred-thousand-acre fire's point can sit twenty
+    kilometres inside its own edge — so this says "reported N km away" rather
+    than "N km away", which would be a claim about the fire's nearest flame
+    that nobody here is in a position to make.
+    """
+    lines = []
+    for h in hits:
+        facts = []
+        if h.get("acres") is not None:
+            facts.append(f"{float(h['acres']):,.0f} acres")
+        if h.get("containment") is not None:
+            facts.append(f"{h['containment']}% contained")
+        detail = f" — {', '.join(facts)}" if facts else ""
+        grew = " (grown since we last told you)" if h.get("again") else ""
+        lines.append(f"{h['name']}{detail}\n"
+                     f"  reported {h['distance_km']} km from {place_name}{grew}")
+    n = len(hits)
+    return send(
+        to, f"🔥 D.E.L.P.H.I.: {n} wildfire{'' if n == 1 else 's'} near {place_name}",
+        f"{'A wildfire is' if n == 1 else f'{n} wildfires are'} burning within the "
+        f"distance you set for “{place_name}”:\n\n" + "\n\n".join(lines) +
+        "\n\nDistances are to the incident point the agency reported, which for a "
+        "large fire can be well inside its own perimeter. Open D.E.L.P.H.I. and "
+        "switch on Typhon to see them on the map.\n\n"
+        "To stop these, turn off the wildfire distance on that place.\n",
+    )
+
+
 def send_duplicate_registration(to: str, username: str, reset_link: str) -> bool:
     """Someone tried to register with an address that already has an account.
 

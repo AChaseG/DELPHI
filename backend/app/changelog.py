@@ -13,6 +13,38 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-24",
+        "title": "Your watched places know what is burning, and what you are breathing",
+        "items": [
+            "🔥 A watched place can now carry a <b>wildfire distance</b>. Set "
+            "one and Delphi tells you — a toast, and an email if you ask — "
+            "when a fire turns up that close, and again if it grows "
+            "materially worse. Off until you switch it on, on each place "
+            "separately, under ＋ New location and Edit.",
+            "🔕 It is built to stay quiet. The federal feed re-reports every "
+            "incident every few minutes, so you hear about a fire <b>once</b> "
+            "— not every quarter of an hour until it is out. A second word "
+            "only comes if it climbs past the size you were already warned "
+            "about, and the smallest fires never interrupt at all.",
+            "📏 Distances are to the <b>incident point the agency reported</b>, "
+            "which for a very large fire can sit well inside its own "
+            "perimeter. The wording says so everywhere it appears, because "
+            "\"40 km away\" would be a promise about the nearest flame that "
+            "nobody here is in a position to make.",
+            "🌫 Every watched place now also shows <b>what the air is like "
+            "there</b>, and says where the figure came from: an average of the "
+            "monitors within 5 km, or — when there are none that close — the "
+            "nearest one, with its distance stated. Beyond 100 km it says "
+            "nothing rather than something wrong.",
+            "🤔 Air quality deliberately does <i>not</i> alert, and that is a "
+            "decision rather than an omission. A fire is an event that either "
+            "turns up near you or does not; air is a value that exists "
+            "everywhere, so a ring around a city would hold a dozen monitors "
+            "nearly all reading fine — a dozen notifications saying nothing is "
+            "wrong. It is a fact about the place, so it is shown on the place.",
+        ],
+    },
+    {
         "date": "2026-09-23",
         "title": "Typhon can see the air now",
         "items": [

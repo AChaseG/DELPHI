@@ -36,8 +36,10 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import safefetch
-from .models import Hazard, utcnow
+from . import mailer, safefetch
+from .events import broadcaster
+from .geo import haversine_km
+from .models import FavoriteLocation, Hazard, HazardHit, User, utcnow
 
 log = logging.getLogger("hazards")
 
@@ -398,10 +400,17 @@ def _upsert(db: Session, rows: list[dict]) -> dict:
         select(Hazard).where(Hazard.provider.in_(providers)))} if providers else {}
 
     added, updated, escalated = 0, 0, 0
+    # What is worth telling somebody about: the ones that are new to us and the
+    # ones that got worse. Returned as rows rather than counted, because the
+    # proximity pass needs the hazards themselves and re-reading the table to
+    # find them again would be both slower and a different answer.
+    changed: list[Hazard] = []
     for row in rows:
         existing = known.get((row["provider"], row["external_id"]))
         if existing is None:
-            db.add(Hazard(**row, first_seen_at=now, updated_at=now, last_seen_at=now))
+            fresh = Hazard(**row, first_seen_at=now, updated_at=now, last_seen_at=now)
+            db.add(fresh)
+            changed.append(fresh)
             added += 1
             continue
         was = bucket_of_score(existing.severity, existing.kind)
@@ -414,9 +423,10 @@ def _upsert(db: Session, rows: list[dict]) -> dict:
             updated += 1
             if now_bucket > was:
                 escalated += 1
-    db.commit()
+                changed.append(existing)
+    db.commit()          # ids are assigned here, which the hits will need
     return {"seen": len(rows), "added": added, "updated": updated,
-            "escalated": escalated}
+            "escalated": escalated}, changed
 
 
 # Alerting steps on buckets, never on the raw score, so a fire creeping from
@@ -494,6 +504,115 @@ def _prune(db: Session, answered: set[str]) -> int:
     return removed
 
 
+# ---------- the fire ring ----------
+#
+# Fires only. Air quality has no ring and never notifies: it is a continuous
+# field with a value everywhere, so a ring around a place holds a dozen
+# stations nearly all reading Good, and each would be a message saying nothing
+# is wrong. Air is reported *at* the place instead — see main.air_readings.
+
+# The smallest band does not notify. In fire season a 50km ring in California
+# would otherwise carry several a day, most of them quarter-acre roadside
+# starts that are out by evening, and a notification channel that cries wolf
+# daily is one nobody reads on the day it matters.
+FIRE_ALERT_MIN_BAND = int(os.environ.get("NEWS_FIRE_ALERT_MIN_BAND", "1"))
+
+
+def evaluate_fire_ring(db: Session, changed: list[Hazard]) -> list[dict]:
+    """Which watched places should hear about which of these fires.
+
+    Runs over what changed, never the whole table — the feed re-reports every
+    incident every fifteen minutes, so "is inside the ring" is true of the same
+    fires forever and is not on its own a reason to say anything.
+
+    Two guards decide whether a fire that *is* inside the ring is news:
+    the unique constraint on (location, hazard), which makes the first sighting
+    the only one; and `severity_at_alert`, which lets a fire that grows a band
+    speak again. Both live on the HazardHit row.
+    """
+    fires = [h for h in changed
+             if h.kind == KIND_WILDFIRE
+             and bucket_of_score(h.severity, h.kind) >= FIRE_ALERT_MIN_BAND]
+    if not fires:
+        return []
+    watchers = db.scalars(select(FavoriteLocation).where(
+        FavoriteLocation.fire_km > 0)).all()
+    if not watchers:
+        return []
+
+    # Every hit already recorded for these places, in one query. Without this
+    # the guard would be a lookup per (place, fire) pair on every poll.
+    existing = {(h.location_id, h.hazard_id): h for h in db.scalars(
+        select(HazardHit).where(
+            HazardHit.location_id.in_([w.id for w in watchers])))}
+
+    hits: list[dict] = []
+    for loc in watchers:
+        for fire in fires:
+            km = haversine_km(loc.lat, loc.lon, fire.lat, fire.lon)
+            if km > loc.fire_km:
+                continue
+            band = bucket_of_score(fire.severity, fire.kind)
+            seen_before = existing.get((loc.id, fire.id))
+            if seen_before is not None:
+                # Already told them. Only a worse band earns a second word;
+                # the same fire still burning does not.
+                if band <= bucket_of_score(seen_before.severity_at_alert, fire.kind):
+                    continue
+                seen_before.severity_at_alert = fire.severity
+                seen_before.distance_km = km
+                seen_before.created_at = utcnow()
+                seen_before.seen = False
+            else:
+                db.add(HazardHit(location_id=loc.id, hazard_id=fire.id,
+                                 distance_km=km, severity_at_alert=fire.severity))
+            hits.append({
+                "location_id": loc.id, "location_name": loc.name,
+                "user_id": loc.user_id, "pantheon_id": loc.pantheon_id,
+                "fire_email": bool(loc.fire_email),
+                "hazard_id": fire.id, "name": fire.name,
+                "severity": fire.severity, "distance_km": round(km, 1),
+                "acres": (fire.raw or {}).get("acres"),
+                "containment": (fire.raw or {}).get("containment"),
+                "again": seen_before is not None,
+            })
+    db.commit()
+    return hits
+
+
+async def deliver(db: Session, hits: list[dict]) -> int:
+    """Email whoever asked to be emailed, batched one message per place.
+
+    In-app delivery is the caller's job, the same split `deliver_alerts` uses.
+    Never raises: a mail server having a bad afternoon must not stop the poll.
+    """
+    if not hits:
+        return 0
+    from collections import defaultdict
+    by_place: dict[int, list[dict]] = defaultdict(list)
+    for hit in hits:
+        if hit.get("fire_email"):
+            by_place[hit["location_id"]].append(hit)
+    if not by_place or not mailer.enabled():
+        return 0
+
+    sent = 0
+    for items in by_place.values():
+        first = items[0]
+        uid = first["user_id"]
+        user = db.get(User, int(uid.split(":", 1)[1])) if uid.startswith("acct:") else None
+        if not user or not user.email:
+            continue
+        try:
+            # smtplib blocks; keep it off the loop, exactly as alerts do.
+            await asyncio.to_thread(mailer.send_hazard_digest,
+                                    user.email, first["location_name"], items)
+            sent += 1
+        except Exception:
+            log.exception("hazard email delivery failed")
+    return sent
+
+
 async def poll(db: Session) -> dict:
     """One hazard cycle. Never raises into the ingest loop."""
     started = time.monotonic()
@@ -502,10 +621,18 @@ async def poll(db: Session) -> dict:
         if not answered:
             return {"ok": False, "at": utcnow().isoformat(),
                     "error": "no provider answered"}
-        counts = await asyncio.to_thread(_upsert, db, rows)
+        counts, changed = await asyncio.to_thread(_upsert, db, rows)
         pruned = await asyncio.to_thread(_prune, db, answered)
+        hits = await asyncio.to_thread(evaluate_fire_ring, db, changed)
+        # In-app first: it is instant and cannot fail in a way that matters.
+        # Email second, and after the hits are committed, so a mail server
+        # having a bad afternoon cannot lose a recorded hit.
+        for hit in hits:
+            broadcaster.publish({"type": "hazard", **hit})
+        emailed = await deliver(db, hits)
         return {"ok": True, "at": utcnow().isoformat(),
                 "providers": sorted(answered), "pruned": pruned,
+                "hits": len(hits), "emailed": emailed,
                 "seconds": round(time.monotonic() - started, 2), **counts}
     except Exception as exc:                      # never break the news poll
         log.exception("hazard poll failed")

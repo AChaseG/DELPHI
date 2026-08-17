@@ -365,6 +365,25 @@ class FavoriteLocation(Base):
     lat: Mapped[float] = mapped_column(Float)
     lon: Mapped[float] = mapped_column(Float)
     radius_km: Mapped[float] = mapped_column(Float, default=25.0)
+    # How close a wildfire has to be before this place hears about it. Zero is
+    # off, which is the default, so nobody is opted into notifications they did
+    # not ask for. Kept apart from radius_km on purpose: that one answers "what
+    # counts as local coverage" and is usually 25km, while this answers "how
+    # close is too close" — evacuation routes, road closures — and is usually
+    # 50 to 100. Sharing one number would mean the first fire alert pushed
+    # somebody into widening their news radius and flooding their feed.
+    #
+    # Fire only. Air quality gets no ring: it is a continuous field with a
+    # value everywhere, so "alert me about air within N km" has no good answer
+    # — a ring near any city holds a dozen stations nearly all reading Good.
+    # Air is reported *at* the place instead (see main.air_readings).
+    #
+    # No index=True on these two, and that is not an oversight: they are added
+    # to a live table by ALTER TABLE ADD COLUMN, which cannot create an index,
+    # so the flag would be true of a fresh database and quietly false of the
+    # one actually running. Same trap as Source.syndicate above.
+    fire_km: Mapped[float] = mapped_column(Float, default=0.0)
+    fire_email: Mapped[bool] = mapped_column(Boolean, default=False)
     # Colour used for its pin and the badge on flagged articles.
     color: Mapped[str] = mapped_column(String(16), default="gold")
     # The feed created for this location, so deleting the location can clean up.
@@ -443,6 +462,39 @@ class Hazard(Base):
     # without anybody having to be told it ended.
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow,
                                                    index=True)
+
+
+class HazardHit(Base):
+    """A wildfire that came inside a watched place's ring, and was told about.
+
+    This is the record that stops a feed which is re-read wholesale every
+    fifteen minutes from notifying every fifteen minutes. The unique constraint
+    means one row per (place, fire) for as long as both exist, and
+    `severity_at_alert` remembers how bad it was when we last said something —
+    so a fire that grows a band gets a second word and a fire that merely
+    carries on burning does not.
+
+    Not an AlertEvent, and it could not be: that table's article_id is NOT NULL
+    with a foreign key, which SQLite cannot relax without rebuilding the table
+    under a live database. It is also the wrong shape — a proximity alert has
+    no criteria, no boolean query and no keywords. It is one number on a place.
+    """
+    __tablename__ = "hazard_hits"
+    __table_args__ = (
+        UniqueConstraint("location_id", "hazard_id", name="uq_hazard_hit"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("favorite_locations.id"), index=True)
+    hazard_id: Mapped[int] = mapped_column(ForeignKey("hazards.id"), index=True)
+    # How far away it was when it was reported. Worth keeping rather than
+    # recomputing: a fire moves, and what the reader was told is what the
+    # record should say.
+    distance_km: Mapped[float] = mapped_column(Float, default=0.0)
+    severity_at_alert: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    seen: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Feed(Base):

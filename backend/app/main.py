@@ -29,16 +29,16 @@ from starlette.concurrency import run_in_threadpool
 import re as _username_re
 
 from . import (accounts_backup, auth, billing, devices, discovery, export,
-               geocode, home, ingest, langdetect, mailer, passwords, ratelimit,
-               repair, safefetch, storage, stripe_api, syndication, translate,
-               watchdog)
+               geocode, hazards, home, ingest, langdetect, mailer, passwords,
+               ratelimit, repair, safefetch, storage, stripe_api, syndication,
+               translate, watchdog)
 from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
 from .clustering import assign_events, rebuild_events
 from .database import Base, SessionLocal, engine, get_db
 from .events import broadcaster
-from .geo import load_gazetteer, search_places
+from .geo import haversine_km, load_gazetteer, search_places
 from .matching import explain_text_match, query_articles
 from .models import (Alert, AlertEvent, Article, Device, DiscoveredDomain, Event,
                      FavoriteLocation, Feed, Hazard, Invite,
@@ -155,7 +155,12 @@ def _ensure_schema():
         "discovered_domains": {"sightings": "INTEGER DEFAULT 0"},
         "favorite_locations": {"place_name": "VARCHAR(120) DEFAULT ''",
                                "country": "VARCHAR(2) DEFAULT ''",
-                               "source_id": "INTEGER"},
+                               "source_id": "INTEGER",
+                               # Typhon's fire ring. Defaulted and unindexed,
+                               # which is all ADD COLUMN can do — see the
+                               # comment on the model.
+                               "fire_km": "FLOAT DEFAULT 0",
+                               "fire_email": "BOOLEAN DEFAULT 0"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -3249,7 +3254,87 @@ async def geo_search(q: str = Query(default=""), request: Request = None,
             "attribution": geocode.ATTRIBUTION if remote else ""}
 
 
-def _location_json(loc: FavoriteLocation, mine: bool = True) -> dict:
+# How the air at a watched place is worked out. Deliberately not an alert:
+# air quality is a continuous field with a value everywhere, so a ring around a
+# place holds a dozen stations nearly all reading Good, and notifying on them
+# would be a dozen messages saying nothing is wrong. It is a property of the
+# place, and the thing to do with a property is show it.
+AIR_NEAR_KM = 5.0     # inside this, average everything and say how many
+AIR_MAX_KM = 100.0    # beyond this, say nothing rather than something wrong
+
+
+def air_readings(db: Session, locs: list[FavoriteLocation]) -> dict[int, dict]:
+    """The air at each of these places, from the nearest monitors.
+
+    The rule, which is the whole of the feature:
+
+        stations within AIR_NEAR_KM   → average their AQI, and say how many
+        none that close               → the single nearest, and say how far
+        none within AIR_MAX_KM        → no reading at all
+
+    Averaging is over the AQI itself and the category is derived from the
+    average afterwards, so the label always agrees with the number shown. The
+    hundred-kilometre ceiling is there because a monitor four hundred
+    kilometres away tells you nothing about your air, and a confident wrong
+    number is worse than a blank.
+
+    One query for the stations and then arithmetic — they are a few hundred
+    rows at most, and a handful of watched places, so this is microseconds
+    rather than anything worth caching into a column that could go stale.
+    """
+    if not locs:
+        return {}
+    stations = list(db.scalars(select(Hazard).where(Hazard.kind == "air_quality")))
+    if not stations:
+        return {}
+
+    out: dict[int, dict] = {}
+    for loc in locs:
+        near, nearest, nearest_km = [], None, None
+        for st in stations:
+            km = haversine_km(loc.lat, loc.lon, st.lat, st.lon)
+            if km <= AIR_NEAR_KM:
+                near.append(st)
+            if nearest_km is None or km < nearest_km:
+                nearest, nearest_km = st, km
+        if near:
+            values = [int((st.raw or {}).get("aqi") or 0) for st in near]
+            aqi = round(sum(values) / len(values))
+            out[loc.id] = {
+                "aqi": aqi, "category": hazards.aqi_label(aqi),
+                "basis": "average", "stations": len(near),
+                "within_km": AIR_NEAR_KM,
+            }
+        elif nearest is not None and nearest_km is not None \
+                and nearest_km <= AIR_MAX_KM:
+            aqi = int((nearest.raw or {}).get("aqi") or 0)
+            out[loc.id] = {
+                "aqi": aqi, "category": hazards.aqi_label(aqi),
+                "basis": "nearest", "stations": 1,
+                "station": nearest.name, "distance_km": round(nearest_km, 1),
+            }
+    return out
+
+
+def _fire_km(value) -> float:
+    """The fire ring, validated. Zero is off and is the default.
+
+    Capped at 500km because past that "near here" stops meaning anything — a
+    ring that wide would notify a reader in Oregon about a fire in Arizona.
+    """
+    if value in (None, "", False):
+        return 0.0
+    try:
+        km = float(value)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "The wildfire distance must be a number of kilometres")
+    if km < 0 or km > 500:
+        raise HTTPException(422, "The wildfire distance must be between 0 (off) and 500 km")
+    return km
+
+
+def _location_json(loc: FavoriteLocation, mine: bool = True,
+                   air: dict | None = None) -> dict:
     return {
         "id": loc.id, "name": loc.name,
         # What it was picked as, so editing round-trips it rather than losing
@@ -3260,6 +3345,11 @@ def _location_json(loc: FavoriteLocation, mine: bool = True) -> dict:
         # Whether this place has news of its own being gathered, or is only
         # filtering what the catalog happens to bring in.
         "has_source": bool(loc.source_id),
+        # Typhon's fire ring, and whether it also emails. Zero is off.
+        "fire_km": loc.fire_km or 0.0, "fire_email": bool(loc.fire_email),
+        # What the air is like here, or absent when no monitor is near enough
+        # to say. Never stored — worked out per request from the stations.
+        "air": air,
         "pantheon_id": loc.pantheon_id, "shared_by": loc.shared_by,
         "mine": mine,
     }
@@ -3465,8 +3555,13 @@ def _consolidate_location_feeds(db: Session) -> int:
 
 @app.get("/api/locations")
 def list_locations(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
-    return [_location_json(loc, mine=loc.user_id == user_id)
-            for loc in _visible_locations(db, user_id)]
+    locs = _visible_locations(db, user_id)
+    # Worked out once for the whole list rather than per location, so the
+    # stations are read from the database a single time however many places
+    # the account watches.
+    air = air_readings(db, locs)
+    return [_location_json(loc, mine=loc.user_id == user_id, air=air.get(loc.id))
+            for loc in locs]
 
 
 @app.post("/api/locations", status_code=201)
@@ -3494,6 +3589,8 @@ def create_location(body: dict, user_id: str = Depends(user_id_header),
     loc = FavoriteLocation(user_id=user_id, name=name, lat=lat, lon=lon,
                            radius_km=radius, color=(body.get("color") or "gold")[:16],
                            place_name=place_name,
+                           fire_km=_fire_km(body.get("fire_km")),
+                           fire_email=bool(body.get("fire_email")),
                            country=(body.get("country") or "").strip().upper()[:2])
     db.add(loc)
     db.flush()
@@ -3530,6 +3627,10 @@ def update_location(loc_id: int, body: dict, user_id: str = Depends(user_id_head
         loc.place_name = (body["place_name"] or "").strip()[:120]
     if "country" in body:
         loc.country = (body["country"] or "").strip().upper()[:2]
+    if "fire_km" in body:
+        loc.fire_km = _fire_km(body["fire_km"])
+    if "fire_email" in body:
+        loc.fire_email = bool(body["fire_email"])
     # Move the source with it rather than leaving the old one polling forever.
     _sync_location_source(db, loc)
     # Keep the locations feed pointing at the areas it now covers.

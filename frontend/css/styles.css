@@ -597,6 +597,30 @@ body.map-board .pillar { display: none; }
 /* The rail is for the boards made of columns. On Atlas the pane is the rail's
    job, and a pop-out over a map is a pop-out over the thing being read. */
 
+/* The fire ring's switches, sitting under the radius slider in the same form. */
+.loc-fire { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.loc-fire input { margin: 0; }
+.loc-radius em { font-style: normal; margin-left: 5px; }
+
+/* What the air is like at a watched place: its own line under the name, so a
+   long "average of 3 stations within 5 km" never fights the row's buttons for
+   width. The row has to be allowed to wrap for that — and only this row, since
+   .pn-row is shared with the Pantheons panel where a single line is the point. */
+.loc-row { flex-wrap: wrap; }
+.loc-air {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1 0 100%; min-width: 0; margin-top: 3px;
+}
+/* Wraps rather than ellipsises. "…average of 3 stations withi…" loses exactly
+   the half that matters: an averaged reading from next door and a single one
+   from forty kilometres away are different claims, and the whole point of
+   printing the basis is that the reader can tell which they have. */
+.loc-air span:last-child { min-width: 0; line-height: 1.45; }
+.loc-air-dot {
+  flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+}
+
 /* Typhon: what a hazard says when you press its dot. Leaflet's popup provides
    the frame; this is only the contents. */
 .haz-popup strong { display: block; font-size: 14px; margin-bottom: 4px; }

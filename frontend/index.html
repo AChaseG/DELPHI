@@ -1507,6 +1507,24 @@
               <span>Radius <strong id="loc-radius-val">25 km</strong></span>
               <input type="range" id="loc-radius" min="1" max="500" step="1" value="25">
             </label>
+            <!-- Typhon's fire ring. Separate from the radius above on purpose:
+                 that one decides what counts as local news, this one decides
+                 how close a wildfire has to be before we interrupt you. Off
+                 until asked for; air quality has no ring at all — it is shown
+                 on the place rather than notified about. -->
+            <label class="loc-fire">
+              <input type="checkbox" id="loc-fire-on">
+              <span>🔥 Tell me about wildfires near here</span>
+            </label>
+            <label class="loc-radius" id="loc-fire-row" hidden>
+              <span>Within <strong id="loc-fire-val">75 km</strong>
+                <em class="s-meta">of the reported incident point</em></span>
+              <input type="range" id="loc-fire-km" min="5" max="300" step="5" value="75">
+            </label>
+            <label class="loc-fire" id="loc-fire-email-row" hidden>
+              <input type="checkbox" id="loc-fire-email">
+              <span>Email me as well</span>
+            </label>
             <span id="loc-coords" class="s-meta"></span>
             <span class="spacer"></span>
             <button class="btn" id="btn-loc-cancel" hidden>Cancel</button>

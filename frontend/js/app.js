@@ -3752,6 +3752,21 @@ const LocationsPanel = {
 
   radiusKm() { return Number(el("loc-radius").value) || 25; },
 
+  /* The fire ring: zero when the switch is off, which is how the server reads
+     "do not notify about this place". */
+  fireKm() {
+    return el("loc-fire-on").checked ? (Number(el("loc-fire-km").value) || 75) : 0;
+  },
+
+  /* Show the distance and the email option only once the ring is on. */
+  syncFireRow() {
+    const on = el("loc-fire-on").checked;
+    el("loc-fire-row").hidden = !on;
+    el("loc-fire-email-row").hidden = !on;
+    if (!on) el("loc-fire-email").checked = false;
+    el("loc-fire-val").textContent = `${Number(el("loc-fire-km").value) || 75} km`;
+  },
+
   _drawPending() {
     if (!this.map) return;
     if (this.marker) this.marker.remove();
@@ -3815,15 +3830,21 @@ const LocationsPanel = {
     let inView = 0;
     for (const loc of LOCATIONS) {
       const row = document.createElement("div");
-      row.className = "pn-row";
+      // `loc-row` only adds wrapping. `pn-row` is shared with the Pantheons
+      // panel, which is a single line by design and must not start wrapping
+      // because a location grew a second one.
+      row.className = "pn-row loc-row";
       const name = document.createElement("span");
       name.className = "pn-name";
       name.textContent = `📍 ${loc.name}`;
       const meta = document.createElement("span");
       meta.className = "s-meta";
       meta.textContent = `${loc.radius_km} km`
+        + (loc.fire_km ? ` · 🔥 ${loc.fire_km} km` : "")
         + (loc.pantheon_id ? ` · shared by ${loc.shared_by || "a member"}` : "");
       row.append(name, meta);
+      const air = airLine(loc.air);
+      if (air) row.appendChild(air);
 
       const show = document.createElement("button");
       show.className = "btn small";
@@ -3873,6 +3894,12 @@ const LocationsPanel = {
     el("loc-name").value = loc.name;
     el("loc-radius").value = loc.radius_km;
     el("loc-radius-val").textContent = `${loc.radius_km} km`;
+    // The ring has to come back as it was saved, or editing a name would
+    // quietly switch somebody's wildfire notifications off.
+    el("loc-fire-on").checked = !!loc.fire_km;
+    if (loc.fire_km) el("loc-fire-km").value = loc.fire_km;
+    el("loc-fire-email").checked = !!loc.fire_email;
+    this.syncFireRow();
     el("btn-loc-save").textContent = "Save changes";
     el("btn-loc-cancel").hidden = false;
     this.setPoint(loc.lat, loc.lon, loc.place_name, loc.country);
@@ -3897,6 +3924,11 @@ const LocationsPanel = {
     el("btn-loc-save").disabled = true;
     el("btn-loc-cancel").hidden = true;
     el("loc-create").hidden = true;
+    // Back to off, so the next place created does not silently inherit the
+    // ring of the one just edited.
+    el("loc-fire-on").checked = false;
+    el("loc-fire-email").checked = false;
+    this.syncFireRow();
     this.clearError();
     this._drawPending();
   },
@@ -3913,6 +3945,8 @@ const LocationsPanel = {
       // which has no name to carry.
       place_name: this.point.place || "",
       country: this.point.country || "",
+      fire_km: this.fireKm(),
+      fire_email: el("loc-fire-on").checked && el("loc-fire-email").checked,
     };
     try {
       if (this.editing) {
@@ -3961,6 +3995,13 @@ function wireLocations() {
   el("loc-radius").addEventListener("input", () => {
     el("loc-radius-val").textContent = `${LocationsPanel.radiusKm()} km`;
     LocationsPanel._drawPending();
+  });
+
+  // The fire ring's two extra controls only exist once it is switched on —
+  // a distance slider for notifications nobody asked for is furniture.
+  el("loc-fire-on").addEventListener("change", () => LocationsPanel.syncFireRow());
+  el("loc-fire-km").addEventListener("input", () => {
+    el("loc-fire-val").textContent = `${LocationsPanel.fireKm()} km`;
   });
 
   wirePlaceSearch();
@@ -4817,6 +4858,31 @@ function hazardStyle(h) {
   };
 }
 
+/* What the air is like at a watched place, and — just as importantly — on what
+   authority. An average of three monitors down the road and a single reading
+   from forty kilometres away are different claims, and a reader deciding
+   whether to open a window is entitled to know which one they have. */
+function airLine(air) {
+  if (!air) return null;
+  const wrap = document.createElement("span");
+  wrap.className = "s-meta loc-air";
+  const dot = document.createElement("span");
+  dot.className = "loc-air-dot";
+  dot.style.background = AQI_COLORS[Math.min(AQI_COLORS.length - 1,
+                                             aqiCategory({ raw: air }))];
+  const text = document.createElement("span");
+  text.textContent = `AQI ${air.aqi} · ${air.category} — ` + (
+    air.basis === "average"
+      ? `average of ${air.stations} station${air.stations === 1 ? "" : "s"} `
+        + `within ${air.within_km} km`
+      : `nearest station, ${air.distance_km} km away`);
+  wrap.append(dot, text);
+  wrap.title = air.basis === "average"
+    ? "Averaged from every monitor close enough to speak for this place"
+    : `Reported by ${air.station || "the nearest monitor"}`;
+  return wrap;
+}
+
 /* The EPA category, from the AQI itself rather than the shared severity —
    the number is what the colour has to agree with. */
 function aqiCategory(h) {
@@ -5472,6 +5538,19 @@ async function connectStream() {
       alertSound();
       desktopNotify(`D.E.L.P.H.I. alert: ${msg.alert_name}`, `${t.label} — ${msg.title}`);
       refreshAlerts();
+    } else if (msg.type === "hazard" && (msg.user_id === Session.userKey()
+               || (msg.pantheon_id && PANTHEONS.some(p => p.id === msg.pantheon_id)))) {
+      // Same ownership guard as an alert, and it has to be: the stream is one
+      // connection carrying everybody's events, and this one names a place
+      // somebody watches.
+      const grew = msg.again ? " has grown" : "";
+      const body = `${msg.name}${grew} — reported ${msg.distance_km} km away`;
+      toast(`🔥 Wildfire near ${msg.location_name}`, body, true);
+      alertSound();
+      desktopNotify(`D.E.L.P.H.I.: wildfire near ${msg.location_name}`, body);
+      // The pane's list of places carries the air reading and the ring, both
+      // of which this may have changed.
+      if (VIEW === "map") LocationsPanel.refresh();
     }
   };
   es.onerror = () => {
