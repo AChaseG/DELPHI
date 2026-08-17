@@ -233,20 +233,46 @@ async def fetch_wfigs(client: httpx.AsyncClient) -> list[dict] | None:
 
 # ---------- AirNow: what the air is actually like ----------
 #
-# The EPA's own service, and the reason it is here rather than the crowdsourced
-# sensor network Wildfire Command used: these are regulatory monitors, run by
-# the agencies whose numbers get quoted when a county tells people to stay
-# indoors. One dot per station, at the station's real coordinate.
+# The EPA's own service: regulatory monitors run by the agencies whose numbers
+# get quoted when a county tells people to stay indoors. One dot per station,
+# at the station's real coordinate.
 #
 # Needs a key. Without one the provider is simply absent — no error, no empty
 # layer, nothing to explain to somebody who never asked for air quality.
+#
+# **Why this layer is thinner than the map on fire.airnow.gov**, since the
+# question will be asked again and the answer is not in any parameter here:
+#
+# That is the EPA's *Fire and Smoke Map*, which is a different product from
+# the AirNow API. It draws three networks on one canvas — AirNow's own
+# regulatory monitors, temporary monitors, and tens of thousands of
+# **PurpleAir** low-cost sensors, the last put through a correction equation
+# EPA publishes for exactly that purpose. Only the first two come out of
+# airnowapi.org. PurpleAir sensors are a separate company's network with a
+# separate (paid) API, and no combination of arguments to this endpoint will
+# ever return one. Matching that map's density means integrating PurpleAir
+# directly — a decision about money and about trusting consumer hardware, not
+# something to quietly bolt on here.
+#
+# What *was* ours to fix, and now is: this asked for permanent monitors only
+# and a two-hour window over the lower 48, which dropped the mobile units
+# agencies deploy into smoke, anything reporting late, and Alaska and Hawaii
+# entirely.
 
 AIRNOW_URL = "https://www.airnowapi.org/aq/data/"
-# Continental US. Alaska and Hawaii would each need a call of their own, which
-# is two more requests for two more places the incident feed does not cover
-# either; when that changes, this becomes a list.
-AIRNOW_BBOX = os.environ.get("NEWS_AIRNOW_BBOX", "-125,24,-66,50")
+# Wide enough for Alaska and Hawaii as well as the lower 48. This was CONUS
+# only, which quietly meant an Anchorage reader had no air layer at all and no
+# way to find out why.
+AIRNOW_BBOX = os.environ.get("NEWS_AIRNOW_BBOX", "-180,15,-65,72")
 AIRNOW_PARAMETERS = "PM25,OZONE,PM10"
+# Permanent *and* mobile monitors ("2"). This asked for permanent only, which
+# is the single biggest reason our map was thinner than AirNow's own: the
+# temporary units are exactly what agencies wheel out during a fire, so the
+# monitors missing from our layer were the ones nearest the smoke.
+AIRNOW_MONITOR_TYPE = os.environ.get("NEWS_AIRNOW_MONITORS", "2")
+# Three hours, not two. A monitor that reports hourly but lands late was being
+# dropped for the sake of an hour's freshness it does not have anyway.
+AIRNOW_WINDOW_HOURS = float(os.environ.get("NEWS_AIRNOW_WINDOW_H", "3"))
 KIND_AIR = "air_quality"
 
 # The EPA's six categories, as (floor, label). These are not Delphi's opinion —
@@ -336,11 +362,11 @@ async def fetch_airnow(client: httpx.AsyncClient) -> list[dict] | None:
     key = os.environ.get("AIRNOW_API_KEY", "").strip()
     if not key:
         return None                        # not configured: no layer, no noise
-    # A two-hour window rather than "now". Stations report on their own clock
-    # and the service lags them; asking for the current hour alone routinely
-    # comes back empty, which this module is required to treat as a failure.
+    # A window rather than "now". Stations report on their own clock and the
+    # service lags them; asking for the current hour alone routinely comes back
+    # empty, which this module is required to treat as a failure.
     end = datetime.utcnow()
-    start = end - timedelta(hours=2)
+    start = end - timedelta(hours=AIRNOW_WINDOW_HOURS)
     params = {
         "startDate": start.strftime("%Y-%m-%dT%H"),
         "endDate": end.strftime("%Y-%m-%dT%H"),
@@ -349,7 +375,7 @@ async def fetch_airnow(client: httpx.AsyncClient) -> list[dict] | None:
         "dataType": "A",                   # the index itself, not raw concentrations
         "format": "application/json",
         "verbose": "1",                    # station name and agency
-        "monitorType": "0",                # permanent regulatory monitors
+        "monitorType": AIRNOW_MONITOR_TYPE,
         "API_KEY": key,
     }
     try:

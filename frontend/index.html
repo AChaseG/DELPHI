@@ -1465,14 +1465,10 @@
        before they open it. The ids stay descriptive (map-view, MapBoard) so the
        code says what the thing is; the name is what the reader is told. -->
   <section id="map-view" class="map-view" hidden>
-    <div id="world-map" class="world-map">
-      <!-- Why a Typhon layer is empty, when it is. An empty layer used to look
-           identical whether it was switched off at the server, missing an API
-           key, unreachable, or simply over a quiet stretch of map — and only
-           one of those is worth anybody's evening. Shown while a Typhon layer
-           is ticked and there is something to say; hidden otherwise. -->
-      <div id="map-note" class="map-note" role="status" hidden></div>
-    </div>
+    <!-- Reading order across the board: what has been found, then the map it
+         was found on, then the controls that decide what the map draws. The
+         feed is the thing being read, so it leads; the switches are furniture
+         and sit at the far edge, out of the way of the eye. -->
     <aside id="map-side" class="map-side" aria-label="What is on the map right now">
       <!-- Two tabs, and each one is the whole of its subject: what is on the
            map right now, what else there is, and the way to make another. Both
@@ -1558,6 +1554,26 @@
              the watched places the map is showing. -->
         <div id="loc-feed" class="map-feed"></div>
       </div>
+    </aside>
+
+    <div id="world-map" class="world-map"></div>
+
+    <!-- What the map draws, as a panel rather than the pop-out square Leaflet
+         puts in a corner. The ground it is read on and the two Typhon layers
+         are the same kind of choice and belong in the same place, and a panel
+         has room to say why a layer is empty right under the switch that turns
+         it on — which a floating control never did. -->
+    <aside id="map-layers" class="map-layers" aria-label="Map layers">
+      <h3 class="set-h">Base map</h3>
+      <div id="layer-bases" class="layer-group" role="radiogroup"
+           aria-label="Base map"></div>
+
+      <h3 class="set-h">🐉 Typhon</h3>
+      <div id="layer-overlays" class="layer-group"></div>
+      <!-- Why a layer is empty, when it is. Off at the server, no API key,
+           unreachable, or simply a quiet stretch of map all used to look
+           identical — a ticked box and nothing else. -->
+      <p id="map-note" class="map-note" role="status" hidden></p>
     </aside>
   </section>
   <!-- Custom horizontal scrollbar for the board: the native one is an overlay

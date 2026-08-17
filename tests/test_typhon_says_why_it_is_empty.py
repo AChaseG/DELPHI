@@ -114,12 +114,34 @@ def test_the_note_says_nothing_when_there_is_nothing_to_say():
     assert NOTE.rstrip().endswith('return "";')
 
 
-def test_the_note_is_in_the_page_and_is_not_interactive():
-    assert 'id="map-note"' in HTML
+def test_markers_on_screen_beat_any_explanation():
+    """Caught in a browser: a failed poll while the previous poll's rows were
+    still inside their retention window produced "Typhon has no data right
+    now" printed over three visible markers. Anything drawn means the map is
+    already answering, and a caption contradicting it is worse than none."""
+    assert "if (rows.length) return \"\";" in NOTE
+    assert NOTE.index("rows.length") < NOTE.index("s.enabled === false")
+
+
+def test_a_missing_key_is_still_said_when_fires_are_drawing():
+    """The air layer can be empty for a reason of its own while wildfires draw
+    perfectly well — and that reason is the one an operator can fix, so it is
+    not allowed to be swallowed by the rule above."""
+    assert NOTE.index("no_key") < NOTE.index("if (rows.length)")
+    assert 'h.kind === "air_quality"' in NOTE, (
+        "it has to check for air rows specifically, not rows in general")
+
+
+def test_the_note_sits_under_the_switches_it_explains():
+    """It began as a card floating over the map, which meant covering the very
+    thing it was explaining. Now that the layer toggles are a panel of their
+    own, the explanation belongs directly beneath them — beside the checkbox
+    somebody has just ticked, which is where they are looking."""
     assert 'role="status"' in HTML
-    rule = re.search(r"\.map-note\s*\{[^}]*\}", (FRONTEND / "css" / "styles.css")
-                     .read_text(encoding="utf-8")).group(0)
-    assert "pointer-events: none" in rule, "it explains; it is not a control"
+    panel = HTML[HTML.index('id="map-layers"'):HTML.index("</aside>",
+                                                          HTML.index('id="map-layers"'))]
+    assert 'id="map-note"' in panel
+    assert panel.index('id="layer-overlays"') < panel.index('id="map-note"')
 
 
 def test_a_refreshed_status_updates_the_map_too():

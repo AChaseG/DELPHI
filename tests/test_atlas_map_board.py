@@ -311,10 +311,50 @@ def test_none_of_them_needs_a_key():
 
 
 def test_the_choice_is_remembered():
+    """Which map somebody reads best on is a fact about their eyes and their
+    screen, so it is remembered per browser. The control moved out of Leaflet's
+    floating box and into the panel on the right; the remembering did not."""
     init = _block("  async _init()")
     assert 'localStorage.getItem("gnd_basemap")' in init
-    assert "L.control.layers(" in init
-    assert 'localStorage.setItem("gnd_basemap"' in init
+    panel = _block("  renderLayerPanel()")
+    assert 'localStorage.setItem("gnd_basemap"' in panel
+    assert 'input.type = "radio"' in panel, "one ground at a time"
+
+
+def test_the_board_reads_left_to_right_feed_map_switches():
+    """Three columns, in the order somebody uses them: what was found, the map
+    it was found on, then the controls deciding what the map draws. The feed
+    leads because it is the thing being read; the switches are furniture and
+    sit at the far edge."""
+    view = HTML[HTML.index('id="map-view"'):HTML.index("</section>",
+                                                        HTML.index('id="map-view"'))]
+    order = [m for m in re.findall(r'id="(map-side|world-map|map-layers)"', view)]
+    assert order == ["map-side", "world-map", "map-layers"], order
+
+
+def test_the_layers_panel_offers_the_grounds_and_the_overlays():
+    view = HTML[HTML.index('id="map-layers"'):]
+    view = view[:view.index("</aside>")]
+    assert 'id="layer-bases"' in view and 'id="layer-overlays"' in view
+    assert 'role="radiogroup"' in view, "one ground at a time"
+
+
+def test_the_flanks_narrow_before_anything_wraps():
+    """A wrapped flex row divides the container's height between its lines,
+    which turned the map into a two-pixel sliver the first time this was tried.
+    So the intermediate breakpoint only takes width off the two flanks."""
+    rule = re.search(r"@media \(max-width: 1180px\) \{.*?\n\}", CSS, re.S)
+    assert rule, "no intermediate breakpoint for the three-column board"
+    assert "flex-wrap" not in rule.group(0)
+    assert ".map-layers" in rule.group(0) and ".map-side" in rule.group(0)
+
+
+def test_when_it_stacks_the_switches_go_last():
+    """The container is a column at this width, which is what makes `order` do
+    the obvious thing rather than merely reshuffling a row."""
+    rule = re.search(r"@media \(max-width: 820px\) \{.*?\n\}", CSS, re.S).group(0)
+    assert "flex-direction: column" in rule
+    assert "order: 3" in rule, "the switches are the one that can be a strip"
 
 
 def test_nothing_floats_over_the_map_any_more():

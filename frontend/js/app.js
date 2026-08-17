@@ -5176,29 +5176,24 @@ const MapBoard = {
       [TYPHON_LAYER]: { group: this.hazards, key: "gnd_overlay_hazards" },
       [TYPHON_AIR_LAYER]: { group: this.airquality, key: "gnd_overlay_air" },
     };
-    const overlays = {};
-    for (const [label, o] of Object.entries(this._overlays)) overlays[label] = o.group;
-    L.control.layers(bases, overlays, { position: "topright" }).addTo(this.map);
+    this._bases = bases;
     // Off unless it was left on. They cover the United States and most readers
     // here are not there; a layer that shows an empty map by default reads as
     // a broken feature rather than an absent one.
     for (const o of Object.values(this._overlays))
       if (localStorage.getItem(o.key) === "1") o.group.addTo(this.map);
-    // Remembered per browser: which map somebody reads best on is a preference
-    // about their eyes and their screen, not about their account.
-    this.map.on("baselayerchange", (e) => {
-      try { localStorage.setItem("gnd_basemap", e.name); } catch (err) { /* ok */ }
-    });
-    this.map.on("overlayadd", (e) => {
-      this._rememberOverlay(e.name, "1");
-      this._hazKey = "";                    // it was off; nothing was fetched
-      this.refreshHazards();
-      this.renderHazardNote();              // even when there is nothing to fetch
-    });
-    this.map.on("overlayremove", (e) => {
-      this._rememberOverlay(e.name, "0");
-      this.renderHazardNote();
-    });
+    // No L.control.layers. The choices live in the panel on the right, where
+    // there is room to explain an empty layer next to the switch that turns it
+    // on, and where they are not a square floating over the thing being read.
+    //
+    // *After* the loop above, and that ordering is the whole of it: the panel
+    // draws each box from whether its layer is on the map, so rendering first
+    // showed every remembered layer as unticked — and then a reader's click to
+    // "turn it on" turned the layer it was already showing back off.
+    this.renderLayerPanel();
+    // Leaflet's baselayerchange / overlayadd / overlayremove events are fired
+    // only by L.control.layers, which this board no longer uses — the panel's
+    // own inputs do the remembering. Handlers for them here would never run.
     this.locations = L.featureGroup().addTo(this.map);
     this.alerts = L.featureGroup().addTo(this.map);
     // Clicking empty map starts a new watched place, exactly as the old panel
@@ -5251,6 +5246,67 @@ const MapBoard = {
      which fires moveend continuously, does not re-ask for the same rectangle;
      and a generation counter so a slow answer for somewhere the reader has
      already left cannot repaint the layer under them. */
+  /* The layers panel: the ground, and what is drawn on it.
+
+     Built here rather than taken from Leaflet because the two halves want
+     different things. Leaflet's control is a floating square that collapses to
+     an icon and has nowhere to put a sentence; this has room to say *why* a
+     Typhon layer is empty directly under its checkbox, which is where somebody
+     who just ticked it is looking.
+
+     Base maps stay radio buttons and overlays stay checkboxes — one ground at
+     a time, any number of things on it — because that is what the shapes mean
+     and Leaflet was right about it. */
+  renderLayerPanel() {
+    const bases = el("layer-bases");
+    const overlays = el("layer-overlays");
+    if (!bases || !overlays || !this._bases) return;
+    bases.replaceChildren();
+    overlays.replaceChildren();
+
+    for (const [name, layer] of Object.entries(this._bases)) {
+      const row = document.createElement("label");
+      row.className = "layer-row";
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "basemap";
+      input.checked = this.map.hasLayer(layer);
+      input.onchange = () => {
+        for (const other of Object.values(this._bases))
+          if (other !== layer) this.map.removeLayer(other);
+        layer.addTo(this.map);
+        try { localStorage.setItem("gnd_basemap", name); } catch (e) { /* ok */ }
+      };
+      const text = document.createElement("span");
+      text.textContent = name;
+      row.append(input, text);
+      bases.appendChild(row);
+    }
+
+    for (const [label, o] of Object.entries(this._overlays)) {
+      const row = document.createElement("label");
+      row.className = "layer-row";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = this.map.hasLayer(o.group);
+      input.onchange = () => {
+        if (input.checked) {
+          o.group.addTo(this.map);
+          this._hazKey = "";              // it was off; nothing was fetched
+          this.refreshHazards();
+        } else {
+          this.map.removeLayer(o.group);
+        }
+        this._rememberOverlay(label, input.checked ? "1" : "0");
+        this.renderHazardNote();
+      };
+      const text = document.createElement("span");
+      text.textContent = label;
+      row.append(input, text);
+      overlays.appendChild(row);
+    }
+  },
+
   /* Why a Typhon layer is empty, when it is.
 
      The bug this exists for: a layer switched off at the server, a provider
@@ -5267,14 +5323,27 @@ const MapBoard = {
     if (!on) return "";
     const s = (META && META.ingest && META.ingest.hazards) || null;
     if (!s) return "";
+    const rows = this._hazRows || [];
+
+    // The air layer can be empty for a reason of its own while fires are
+    // drawing perfectly well, and that reason is the one an operator can
+    // actually fix — so it is checked before the general cases.
+    if (this.map.hasLayer(this.airquality)
+        && !rows.some(h => h.kind === "air_quality")
+        && (s.no_key || []).includes("airnow"))
+      return "🌫 Air quality needs an AirNow API key on this instance.";
+
+    // Anything on screen means the map is already answering. A caption saying
+    // "no data right now" over three visible markers is worse than no caption
+    // — it was doing exactly that whenever a poll failed while the last
+    // poll's rows were still inside their retention window.
+    if (rows.length) return "";
+
     if (s.enabled === false)
       return "🐉 Typhon is switched off on this instance.";
     if (s.ok === false && s.reason)
       return `🐉 Typhon has no data right now — ${s.reason}.`;
-    if ((s.no_key || []).includes("airnow")
-        && this.map.hasLayer(this.airquality))
-      return "🌫 Air quality needs an AirNow API key on this instance.";
-    if (this._hazRows && !this._hazRows.length)
+    if (this._hazRows)
       return "🐉 Nothing reported in this view. Typhon covers the United States.";
     return "";
   },

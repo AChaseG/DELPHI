@@ -44,11 +44,22 @@ INIT = _fn("  async _init()")
 
 # ---------- it is an overlay ----------
 
-def test_the_overlays_argument_is_no_longer_empty():
-    """`L.control.layers(bases, {}, …)` was the state of things until Typhon."""
-    assert not re.search(r"L\.control\.layers\(bases,\s*\{\}", APP), (
-        "the overlays argument is still empty")
-    assert "L.control.layers(bases, overlays" in INIT
+PANEL = _fn("  renderLayerPanel()")
+
+
+def test_the_layers_live_in_a_panel_not_a_floating_box():
+    """Both Typhon layers began as entries in Leaflet's own control, whose
+    overlays argument had been an empty object since Atlas was built. They are
+    in the board's own panel now — which has room to explain an empty layer
+    next to the switch that turns it on, and does not float over the map."""
+    # Comments still name it, because explaining why it went is worth more
+    # than never mentioning it. What must not survive is a call.
+    code = "\n".join(line for line in APP.splitlines()
+                     if not line.strip().startswith(("//", "*", "/*")))
+    assert "L.control.layers(" not in code, (
+        "the floating control is gone; the panel replaces it")
+    assert 'id="map-layers"' in HTML
+    assert 'input.type = "checkbox"' in PANEL
 
 
 def test_the_layer_is_named_typhon_and_says_where_it_covers():
@@ -89,17 +100,24 @@ def test_neither_is_added_to_the_map_unless_it_was_left_on():
 
 def test_each_layer_is_remembered_under_its_own_name():
     """One key for both would mean switching the air on switched fires on too."""
-    assert 'this.map.on("overlayadd"' in INIT
-    assert 'this.map.on("overlayremove"' in INIT
     keys = set(re.findall(r'key:\s*"(gnd_overlay_\w+)"', INIT))
     assert len(keys) == 2, keys
+    assert "this._rememberOverlay(label," in PANEL
+
+
+def test_no_handler_waits_on_an_event_leaflet_no_longer_fires():
+    """baselayerchange, overlayadd and overlayremove are fired *only* by
+    L.control.layers. With that gone, a handler for one would never run — the
+    same class of silent breakage as a listener bound to a deleted element."""
+    for dead in ('on("baselayerchange"', 'on("overlayadd"', 'on("overlayremove"'):
+        assert dead not in APP, f"{dead} can no longer fire"
 
 
 def test_switching_it_on_fetches_immediately():
     """Nothing was fetched while it was off, so the cached-rectangle guard
     would otherwise hold the layer empty until the reader panned."""
-    assert 'this._hazKey = ""' in INIT
-    assert "this.refreshHazards()" in INIT
+    assert 'this._hazKey = ""' in PANEL
+    assert "this.refreshHazards()" in PANEL
 
 
 # ---------- what it costs while nobody is looking ----------

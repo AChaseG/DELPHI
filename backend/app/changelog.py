@@ -13,6 +13,33 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-28",
+        "title": "Atlas reads left to right, and the air layer sees more",
+        "items": [
+            "🗺 <b>Atlas is three columns now</b>, in the order you use them: "
+            "🔔 Alerts and 📍 Locations on the <b>left</b>, the map in the "
+            "middle, and a <b>layers panel on the right</b> holding the five "
+            "base maps and both Typhon layers. The feed leads because it is "
+            "the thing being read; the switches are furniture and sit at the "
+            "far edge.",
+            "🎛 Those switches were a floating square in the map's corner "
+            "before. As a panel they have room to say <i>why</i> a layer is "
+            "empty directly under the checkbox that turns it on — and they no "
+            "longer sit on top of the thing they are describing.",
+            "🌫 <b>The air-quality layer was thinner than it should have "
+            "been.</b> It asked AirNow for permanent monitors only, over a "
+            "two-hour window, across the lower 48 — so it missed the mobile "
+            "units agencies wheel out during a fire, anything reporting "
+            "late, and Alaska and Hawaii entirely. It now asks for both kinds "
+            "of monitor, a three-hour window, and the whole country.",
+            "🔍 Worth knowing if you have compared us with EPA's <b>Fire and "
+            "Smoke Map</b>: that map is denser because it also draws tens of "
+            "thousands of <b>PurpleAir</b> consumer sensors, which are a "
+            "different company's network with its own API. They are not in "
+            "AirNow's data and no setting here can pull them in.",
+        ],
+    },
+    {
         "date": "2026-09-27",
         "title": "An empty Typhon layer now tells you why it is empty",
         "items": [
