@@ -971,6 +971,18 @@ function wireSettings() {
   el("set-vol-val").textContent = vol.value + (vol.value === "0" ? " (off)" : "");
   desktop.checked = !!Settings.get("desktop_notif");
 
+  const units = el("set-units");
+  units.value = Settings.get("units");
+  units.onchange = async () => {
+    Settings.set("units", units.value);
+    // Distances are printed in a dozen places and none of them re-render on
+    // their own. Nothing is refetched — the numbers are already here and only
+    // their wording changed.
+    await renderBoard();
+    if (LOCATIONS.length || VIEW === "map") await LocationsPanel.refresh();
+    if (alertsPaneShowing()) renderAlertsPanel();
+  };
+
   theme.onchange = () => { Settings.set("theme", theme.value); applySettings(); };
   compact.onchange = () => { Settings.set("compact", compact.checked); applySettings(); };
   timefmt.onchange = async () => {
@@ -1558,6 +1570,33 @@ const feedCacheKey = (feed) => (feed.home ? "home:" + feed.home : "feed:" + feed
    did while this ran server-side. */
 
 const EARTH_KM = 6371;
+
+/* ---------- distance, as the reader wants to read it ----------
+
+   Kilometres are the only unit that exists below this line. Everything is
+   stored, sent, compared and geofenced in km — the API, the database, the
+   haversine, the radius on a saved place. Miles happen at the point of
+   printing and nowhere else, so there is no path by which a converted number
+   can be written back or compared against an unconverted one. That is the
+   whole discipline, and it is worth stating plainly: unit bugs are not
+   arithmetic mistakes, they are the same number meaning two things in two
+   places. Here it means one thing everywhere and is translated on the way
+   out. */
+const KM_PER_MILE = 1.609344;
+
+const useMiles = () => Settings.get("units") === "mi";
+
+/* A distance, in whichever unit the reader chose.
+
+   `decimals` follows the value rather than the unit: 60.1 km is a measurement
+   and 75 km is a setting, and rounding the first or padding the second both
+   read as wrong. Callers say which they have. */
+function fmtKm(km, decimals = 0) {
+  const n = Number(km) || 0;
+  return useMiles()
+    ? `${(n / KM_PER_MILE).toFixed(decimals)} mi`
+    : `${n.toFixed(decimals)} km`;
+}
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const rad = Math.PI / 180;
@@ -3825,7 +3864,7 @@ const LocationsPanel = {
     el("loc-fire-row").hidden = !on;
     el("loc-fire-email-row").hidden = !on;
     if (!on) el("loc-fire-email").checked = false;
-    el("loc-fire-val").textContent = `${Number(el("loc-fire-km").value) || 75} km`;
+    el("loc-fire-val").textContent = fmtKm(Number(el("loc-fire-km").value) || 75);
   },
 
   _drawPending() {
@@ -3868,7 +3907,7 @@ const LocationsPanel = {
         riseOnHover: true,
         keyboard: false,
       }).bindTooltip(
-        `${loc.name} · ${loc.radius_km} km`
+        `${loc.name} · ${fmtKm(loc.radius_km)}`
         + (loc.pantheon_id ? ` · shared by ${loc.shared_by || "a member"}` : ""),
         { direction: "top", offset: [0, -12] },
       ).addTo(this.saved);
@@ -3903,8 +3942,8 @@ const LocationsPanel = {
       name.textContent = `📍 ${loc.name}`;
       const meta = document.createElement("span");
       meta.className = "s-meta";
-      meta.textContent = `${loc.radius_km} km`
-        + (loc.fire_km ? ` · 🔥 ${loc.fire_km} km` : "")
+      meta.textContent = fmtKm(loc.radius_km)
+        + (loc.fire_km ? ` · 🔥 ${fmtKm(loc.fire_km)}` : "")
         + (loc.pantheon_id ? ` · shared by ${loc.shared_by || "a member"}` : "");
       row.append(name, meta);
       const air = airLine(loc.air);
@@ -3957,7 +3996,7 @@ const LocationsPanel = {
     this.editing = loc;
     el("loc-name").value = loc.name;
     el("loc-radius").value = loc.radius_km;
-    el("loc-radius-val").textContent = `${loc.radius_km} km`;
+    el("loc-radius-val").textContent = fmtKm(loc.radius_km);
     // The ring has to come back as it was saved, or editing a name would
     // quietly switch somebody's wildfire notifications off.
     el("loc-fire-on").checked = !!loc.fire_km;
@@ -4015,10 +4054,10 @@ const LocationsPanel = {
     try {
       if (this.editing) {
         await API.updateLocation(this.editing.id, body);
-        toast("Location updated", `“${name}” now covers ${body.radius_km} km.`);
+        toast("Location updated", `“${name}” now covers ${fmtKm(body.radius_km)}.`);
       } else {
         await API.createLocation(body);
-        toast("Location saved", `News within ${body.radius_km} km of “${name}” is now `
+        toast("Location saved", `News within ${fmtKm(body.radius_km)} of “${name}” is now `
               + "flagged, and appears in your 📍 Favourite Locations feed.");
       }
       this.cancelEdit();
@@ -4057,7 +4096,7 @@ function wireLocations() {
   el("btn-loc-cancel").onclick = () => LocationsPanel.cancelEdit();
 
   el("loc-radius").addEventListener("input", () => {
-    el("loc-radius-val").textContent = `${LocationsPanel.radiusKm()} km`;
+    el("loc-radius-val").textContent = fmtKm(LocationsPanel.radiusKm());
     LocationsPanel._drawPending();
   });
 
@@ -4065,7 +4104,7 @@ function wireLocations() {
   // a distance slider for notifications nobody asked for is furniture.
   el("loc-fire-on").addEventListener("change", () => LocationsPanel.syncFireRow());
   el("loc-fire-km").addEventListener("input", () => {
-    el("loc-fire-val").textContent = `${LocationsPanel.fireKm()} km`;
+    el("loc-fire-val").textContent = fmtKm(LocationsPanel.fireKm());
   });
 
   wirePlaceSearch();
@@ -4938,8 +4977,8 @@ function airLine(air) {
   text.textContent = `AQI ${air.aqi} · ${air.category} — ` + (
     air.basis === "average"
       ? `average of ${air.stations} station${air.stations === 1 ? "" : "s"} `
-        + `within ${air.within_km} km`
-      : `nearest station, ${air.distance_km} km away`);
+        + `within ${fmtKm(air.within_km)}`
+      : `nearest station, ${fmtKm(air.distance_km, 1)} away`);
   wrap.append(dot, text);
   wrap.title = air.basis === "average"
     ? "Averaged from every monitor close enough to speak for this place"
@@ -4969,7 +5008,7 @@ function hazardPopup(h, near) {
   if (near) {
     const line = document.createElement("div");
     line.className = "haz-near";
-    line.textContent = `📍 Reported ${near.km.toFixed(1)} km from ${near.loc.name}`
+    line.textContent = `📍 Reported ${fmtKm(near.km, 1)} from ${near.loc.name}`
       + (near.others ? ` and ${near.others} other watched `
                        + `place${near.others === 1 ? "" : "s"}` : "");
     wrap.appendChild(line);
@@ -5637,7 +5676,7 @@ async function connectStream() {
       // connection carrying everybody's events, and this one names a place
       // somebody watches.
       const grew = msg.again ? " has grown" : "";
-      const body = `${msg.name}${grew} — reported ${msg.distance_km} km away`;
+      const body = `${msg.name}${grew} — reported ${fmtKm(msg.distance_km, 1)} away`;
       toast(`🔥 Wildfire near ${msg.location_name}`, body, true);
       alertSound();
       desktopNotify(`D.E.L.P.H.I.: wildfire near ${msg.location_name}`, body);

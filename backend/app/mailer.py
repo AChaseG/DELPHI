@@ -179,7 +179,24 @@ def send_alert_digest(to: str, alert_name: str, hits: list[dict]) -> bool:
     )
 
 
-def send_hazard_digest(to: str, place_name: str, hits: list[dict]) -> bool:
+KM_PER_MILE = 1.609344
+
+
+def format_km(km: float, units: str = "km") -> str:
+    """A distance in whichever unit the account reads in.
+
+    The server stores and compares kilometres and always will; this converts on
+    the way into a sentence, the same discipline the client follows. An email
+    is the one place the reader cannot flip a toggle to reinterpret, so it has
+    to arrive in the unit they chose.
+    """
+    value = float(km or 0)
+    return (f"{value / KM_PER_MILE:.1f} miles" if units == "mi"
+            else f"{value:.1f} km")
+
+
+def send_hazard_digest(to: str, place_name: str, hits: list[dict],
+                       units: str = "km") -> bool:
     """One email per watched place per hazard poll, listing the fires near it.
 
     Worded carefully about distance. WFIGS reports an incident *point*, not a
@@ -198,7 +215,8 @@ def send_hazard_digest(to: str, place_name: str, hits: list[dict]) -> bool:
         detail = f" — {', '.join(facts)}" if facts else ""
         grew = " (grown since we last told you)" if h.get("again") else ""
         lines.append(f"{h['name']}{detail}\n"
-                     f"  reported {h['distance_km']} km from {place_name}{grew}")
+                     f"  reported {format_km(h['distance_km'], units)} "
+                     f"from {place_name}{grew}")
     n = len(hits)
     return send(
         to, f"🔥 D.E.L.P.H.I.: {n} wildfire{'' if n == 1 else 's'} near {place_name}",

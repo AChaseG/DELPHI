@@ -26,6 +26,7 @@ rather than failing, so an instance that never sets one simply has no layer.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -580,6 +581,20 @@ def evaluate_fire_ring(db: Session, changed: list[Hazard]) -> list[dict]:
     return hits
 
 
+def _units_of(user: User) -> str:
+    """Kilometres or miles, from the account's own display preferences.
+
+    The reader chose one in Settings and an email is the one place they cannot
+    flip a toggle to reinterpret, so it has to arrive in the unit they picked.
+    Anything unreadable falls back to km, which is what everything is stored in
+    anyway.
+    """
+    try:
+        return "mi" if (json.loads(user.settings or "{}") or {}).get("units") == "mi" else "km"
+    except (ValueError, TypeError, AttributeError):
+        return "km"
+
+
 async def deliver(db: Session, hits: list[dict]) -> int:
     """Email whoever asked to be emailed, batched one message per place.
 
@@ -606,7 +621,8 @@ async def deliver(db: Session, hits: list[dict]) -> int:
         try:
             # smtplib blocks; keep it off the loop, exactly as alerts do.
             await asyncio.to_thread(mailer.send_hazard_digest,
-                                    user.email, first["location_name"], items)
+                                    user.email, first["location_name"], items,
+                                    _units_of(user))
             sent += 1
         except Exception:
             log.exception("hazard email delivery failed")

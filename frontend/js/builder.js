@@ -185,7 +185,7 @@ const Builder = {
     const areas = [...(c.geos || []), ...(c.geo ? [c.geo] : [])];
     if (areas.length) {
       const describe = (g) => (g.type === "Circle"
-        ? `circle, ${g.radius_km.toFixed(0)} km radius` : g.type.toLowerCase());
+        ? `circle, ${fmtKm(g.radius_km)} radius` : g.type.toLowerCase());
       lines.push([areas.length > 1 ? `Map areas (any of ${areas.length})` : "Map area",
                   areas.map(describe).join(" · ")]);
     }
@@ -639,7 +639,7 @@ const Builder = {
     const s = el("geo-summary");
     if (!this.geos.length) { s.textContent = "No area set"; el("btn-clear-geo").hidden = true; return; }
     const describe = (g) => (g.type === "Circle"
-      ? `circle ${g.radius_km.toFixed(0)} km` : g.type.toLowerCase());
+      ? `circle ${fmtKm(g.radius_km)}` : g.type.toLowerCase());
     s.textContent = this.geos.length === 1
       ? `1 area — ${describe(this.geos[0])}`
       : `${this.geos.length} areas — ${this.geos.map(describe).join(", ")}`;

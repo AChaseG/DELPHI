@@ -10,6 +10,11 @@ const Settings = {
   defaults: {
     theme: "dark",        // dark | light | system
     timefmt: "relative",  // relative | local | utc | dtg
+    // Display only. Every distance is stored, sent and compared in kilometres
+    // — the API, the database and the geo maths never see a mile. Converting
+    // at the edge is the difference between a preference and a whole class of
+    // unit bug, which is a lesson aerospace paid more for than we would.
+    units: "km",          // km | mi
     toast_pos: "br",      // br | bl | tr | tl
     volume: 40,           // 0-100 alert sound volume (0 = silent)
     desktop_notif: false, // browser notifications when tab is hidden

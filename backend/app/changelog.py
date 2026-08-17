@@ -13,6 +13,26 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-26",
+        "title": "Miles, if you think in miles",
+        "items": [
+            "📏 <b>⚙ Settings → Distances</b> switches every distance in "
+            "Delphi between kilometres and miles: the radius on a watched "
+            "place, the wildfire distance, the air-quality reading, what a "
+            "fire's popup says, the feed builder's summary of a circle you "
+            "drew, and the wildfire emails.",
+            "🔗 It lives on your account rather than in this browser, so it "
+            "follows you to your phone instead of resetting on a new device — "
+            "and the email is the one place you cannot flip a switch to "
+            "reinterpret, so it now leaves in the unit you picked.",
+            "🔒 Under the surface nothing moved: every distance is still "
+            "stored, sent and measured in kilometres, and the conversion "
+            "happens on the way to the screen and nowhere else. The number in "
+            "your settings means one thing everywhere, which is how a units "
+            "toggle avoids becoming a units bug.",
+        ],
+    },
+    {
         "date": "2026-09-25",
         "title": "The fires that concern you look different",
         "items": [
