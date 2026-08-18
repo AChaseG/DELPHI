@@ -62,7 +62,33 @@ AIR_RETENTION_HOURS = float(os.environ.get("NEWS_AIR_RETENTION_H", "6"))
 # subtler than the volume filling: storage.over_ceiling() measures the whole
 # database file while prune_to_fit() only ever deletes *articles*, so a hazard
 # table left to grow would quietly push news out of the archive instead.
-MAX_HAZARDS = int(os.environ.get("NEWS_MAX_HAZARDS", "5000"))
+#
+# **Per provider, and that is a correction rather than a refinement.** This was
+# one global cap that deleted the lowest-severity rows in the whole table until
+# the total fitted, and it was wrong in two ways that only became visible once
+# there were enough providers to reach it:
+#
+#   · It let one talkative provider evict another's rows. The module already
+#     refuses to let a provider that is *down* delete anybody else's rows (see
+#     _prune); a provider that is merely chatty must not either. With OpenAQ
+#     able to return eight thousand stations and PurpleAir three thousand, the
+#     table crossed a five-thousand-row cap on the first poll and everything
+#     after it was eviction.
+#   · It compared severities across kinds, and those are not one scale. They
+#     share a range and nothing else. A fire in the smallest band scores 5 and
+#     a station reading Good scores 10 — so the cap that exists to protect the
+#     news archive was sorting *wildfires* to the front of the queue and
+#     deleting them to make room for clean-air readings.
+#
+# Within one provider the severity ordering is meaningful, so a provider over
+# its own cap still sheds its least important rows first. Across providers
+# nothing is compared at all. The total is bounded by construction: this many
+# rows times however many providers are configured.
+MAX_PER_PROVIDER = int(os.environ.get("NEWS_MAX_HAZARDS_PER_PROVIDER", "4000"))
+# The whole-table figure is now a tripwire rather than a deleter. If per-provider
+# capping is working this is unreachable, so reaching it means something is
+# wrong in a way that deleting rows would hide rather than fix.
+MAX_HAZARDS = int(os.environ.get("NEWS_MAX_HAZARDS", "40000"))
 FETCH_TIMEOUT = 30.0
 
 KIND_WILDFIRE = "wildfire"
@@ -1659,20 +1685,36 @@ def _prune(db: Session, answered: set[str]) -> int:
                 Hazard.provider == provider, Hazard.kind == kind,
                 Hazard.last_seen_at < now - timedelta(days=days))).rowcount or 0
 
-    # The backstop. Only reachable if a provider returns far more than it is
-    # supposed to; keep the worst, since a table this size is read by a map and
-    # the severe ones are what anybody is looking for.
-    total = db.scalar(select(func.count(Hazard.id))) or 0
-    if total > MAX_HAZARDS:
+    # The backstop, applied to each provider separately. Keep that provider's
+    # worst, since a table this size is read by a map and the severe ones are
+    # what anybody is looking for — but never weigh one provider's rows against
+    # another's, and never weigh a fire's severity against a station's. Those
+    # numbers share a range and mean different things.
+    for provider in answered:
+        count = db.scalar(select(func.count(Hazard.id)).where(
+            Hazard.provider == provider)) or 0
+        if count <= MAX_PER_PROVIDER:
+            continue
         doomed = db.scalars(
-            select(Hazard.id).order_by(Hazard.severity.asc(),
-                                       Hazard.last_seen_at.asc())
-            .limit(total - MAX_HAZARDS)).all()
+            select(Hazard.id).where(Hazard.provider == provider)
+            .order_by(Hazard.severity.asc(), Hazard.last_seen_at.asc())
+            .limit(count - MAX_PER_PROVIDER)).all()
         if doomed:
             removed += db.execute(sa_delete(Hazard).where(
                 Hazard.id.in_(doomed))).rowcount or 0
-            log.warning("hazards: capped the table at %s, dropped %s",
-                        MAX_HAZARDS, len(doomed))
+            log.warning("hazards: %s is over its cap of %s, dropped %s",
+                        provider, MAX_PER_PROVIDER, len(doomed))
+
+    # Nothing is deleted for this one. Per-provider capping bounds the total by
+    # construction, so passing this means a provider is writing rows that the
+    # cap above is not seeing — a kind nobody prunes, or a provider name that
+    # changes between polls. Deleting rows would paper over exactly the bug the
+    # number exists to surface.
+    total = db.scalar(select(func.count(Hazard.id))) or 0
+    if total > MAX_HAZARDS:
+        log.error("hazards: %s rows, past the %s tripwire — per-provider caps "
+                  "are not holding; check for a provider writing under a name "
+                  "that never appears in a poll's answered set", total, MAX_HAZARDS)
     if removed:
         db.commit()
     return removed

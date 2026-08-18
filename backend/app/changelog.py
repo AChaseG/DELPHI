@@ -13,6 +13,32 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-10-02",
+        "title": "One busy source could push the others off the map",
+        "items": [
+            "🟣 <b>PurpleAir sensors were being written and then deleted "
+            "again</b> within the same poll, so the layer stayed empty however "
+            "the key was set. The hazard table had a single size limit for "
+            "everything on it, filled by dropping the lowest-scoring rows "
+            "anywhere in the table — and the air networks are large enough to "
+            "reach that limit on their own, so almost everything they wrote "
+            "was evicted immediately.",
+            "🔥 <b>Worse, it could evict wildfires.</b> Scores run 0–100 for "
+            "every kind of hazard so one colour scale can serve the whole map, "
+            "but they are not the same scale: a small fire scores below a "
+            "reading of clean air. A limit that sorted the whole table by "
+            "score therefore put <i>fires</i> at the front of the queue and "
+            "deleted them to make room for stations reporting that the air was "
+            "fine.",
+            "🧱 Each source now has its own limit and is trimmed on its own "
+            "count, so a busy one can only ever shed its own least important "
+            "rows — never anybody else's, and never a hazard of a different "
+            "kind. The whole-table figure has become a warning in the log "
+            "rather than something that deletes, because reaching it now means "
+            "a fault that deleting rows would hide.",
+        ],
+    },
+    {
         "date": "2026-10-01",
         "title": "Help moves to the corner, and community sensors fill the gaps",
         "items": [

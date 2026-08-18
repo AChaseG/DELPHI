@@ -22,7 +22,7 @@ network, and a test that needs one is a test that fails on a Sunday for reasons
 nobody can see.
 """
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from backend.app import hazards
 from backend.app.models import Hazard
@@ -268,11 +268,11 @@ def test_a_fire_the_feed_stopped_listing_ages_out(client, db, monkeypatch):
     assert [h.external_id for h in db.scalars(select(Hazard))] == ["here"]
 
 
-def test_the_table_has_a_ceiling(client, db, monkeypatch):
+def test_a_provider_has_a_ceiling(client, db, monkeypatch):
     """Only reachable through a provider bug — but the failure it prevents is
     not disk space. prune_to_fit only ever deletes *articles*, so a hazard
     table left to grow would quietly push news out of the archive."""
-    monkeypatch.setattr(hazards, "MAX_HAZARDS", 3)
+    monkeypatch.setattr(hazards, "MAX_PER_PROVIDER", 3)
     rows = hazards.normalize_wfigs(_payload(*[
         _feature(f"f{i}", f"Fire {i}", 40.0 + i / 100, -122.0, acres=100 * (i + 1))
         for i in range(10)]))
@@ -282,6 +282,85 @@ def test_the_table_has_a_ceiling(client, db, monkeypatch):
     kept = db.scalars(select(Hazard).order_by(Hazard.severity.desc())).all()
     assert len(kept) == 3
     assert kept[0].external_id == "f9", "the worst ones are what a map is for"
+
+
+def test_a_talkative_provider_cannot_evict_a_quiet_one(client, db, monkeypatch):
+    """Reported from a live instance: PurpleAir was configured, deployed, and
+    drew nothing at all.
+
+    The cap used to be one number for the whole table, filled by deleting the
+    lowest-severity rows anywhere in it. OpenAQ can return eight thousand
+    stations and PurpleAir three thousand, so the table crossed the old
+    five-thousand-row ceiling on its first poll and everything after that was
+    eviction — of whichever rows happened to score lowest, regardless of who
+    wrote them.
+
+    The module already refuses to let a provider that is *down* delete another
+    provider's rows. A provider that is merely chatty must not either.
+    """
+    monkeypatch.setattr(hazards, "MAX_PER_PROVIDER", 5)
+    fires = hazards.normalize_wfigs(_payload(*[
+        _feature(f"f{i}", f"Fire {i}", 40.0 + i / 100, -122.0, acres=5000)
+        for i in range(3)]))
+    stations = [{
+        "kind": "air_quality", "provider": "purpleair",
+        "external_id": f"pa{i}", "name": f"Sensor {i}",
+        "lat": 47.0 + i / 100, "lon": -122.0, "country": "US",
+        "severity": 10, "started_at": None,
+        "raw": {"aqi": 20, "category": "Good"},
+    } for i in range(40)]
+
+    _run(monkeypatch, db, {"wfigs": fires, "purpleair": stations})
+
+    kept = db.scalars(select(Hazard)).all()
+    assert len([h for h in kept if h.provider == "wfigs"]) == 3, (
+        "every fire survives — the chatty provider's overflow is its own problem")
+    assert len([h for h in kept if h.provider == "purpleair"]) == 5, (
+        "and it is capped on its own count, not on the table's")
+
+
+def test_a_fire_is_never_weighed_against_a_reading(client, db, monkeypatch):
+    """The other half of the same bug, and the worse half.
+
+    Severities are normalised to 0-100 per kind so one colour ramp can serve
+    the whole map. They share a range and nothing else. A fire in the smallest
+    band scores 5 and a station reading Good scores 10 — so a cap that sorted
+    the whole table by severity put *wildfires* at the front of the delete
+    queue and cleared them to make room for clean-air readings. The number
+    exists to protect the news archive; it was deleting the most important rows
+    in the table.
+    """
+    monkeypatch.setattr(hazards, "MAX_PER_PROVIDER", 4)
+    small = hazards.normalize_wfigs(_payload(
+        _feature("tiny", "Roadside fire", 40.0, -122.0, acres=2)))
+    assert small[0]["severity"] < 10, "the premise: it scores below Good air"
+    stations = [{
+        "kind": "air_quality", "provider": "airnow",
+        "external_id": f"st{i}", "name": f"Station {i}",
+        "lat": 47.0 + i / 100, "lon": -122.0, "country": "US",
+        "severity": 10, "started_at": None, "raw": {"aqi": 20},
+    } for i in range(20)]
+
+    _run(monkeypatch, db, {"wfigs": small, "airnow": stations})
+
+    assert db.scalars(select(Hazard).where(
+        Hazard.external_id == "tiny")).first() is not None, (
+        "a fire must not be evicted to make room for readings of clean air")
+
+
+def test_the_whole_table_figure_warns_rather_than_deletes(client, db, monkeypatch):
+    """Per-provider caps bound the total by construction, so passing the
+    whole-table number means a provider is writing rows the caps are not
+    seeing. Deleting would paper over exactly the bug it exists to surface."""
+    monkeypatch.setattr(hazards, "MAX_HAZARDS", 2)
+    monkeypatch.setattr(hazards, "MAX_PER_PROVIDER", 100)
+    rows = hazards.normalize_wfigs(_payload(*[
+        _feature(f"f{i}", f"Fire {i}", 40.0 + i / 100, -122.0, acres=500)
+        for i in range(6)]))
+
+    _run(monkeypatch, db, {"wfigs": rows})
+
+    assert db.scalar(select(func.count(Hazard.id))) == 6
 
 
 # ---------- the endpoint ----------
