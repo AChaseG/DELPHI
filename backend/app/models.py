@@ -452,6 +452,29 @@ class Hazard(Base):
     # containment and cause straight out of here, so a provider offering one
     # more useful number is not a migration.
     raw: Mapped[dict] = mapped_column(JSON, default=dict)
+    # The hazard's actual shape, as GeoJSON, when anybody publishes one — a
+    # mapped fire perimeter, the polygon on a tornado warning. Null is the
+    # normal case and always will be: perimeters are flown for fires big
+    # enough to be worth flying, and most weather alerts are issued against
+    # zone codes with no outline at all.
+    #
+    # It lives on the hazard rather than in a table of its own because it is
+    # 1:1, it is replaced wholesale on every poll exactly as `raw` is, and it
+    # is deleted by the prune that already exists. A separate table would mean
+    # a join, a second delete path to forget, and nothing gained.
+    #
+    # Generalised at the provider before it is ever stored (see
+    # hazards.MAX_GEOMETRY_BYTES): a raw federal perimeter can be tens of
+    # thousands of vertices, and none of them survive a map at the zoom a
+    # reader is actually looking at.
+    geometry: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+    # When the shape was drawn, which is not when the hazard was last updated.
+    # A large fire's acreage moves with every situation report; its perimeter
+    # moves when somebody flies it, which is roughly nightly. Presenting the
+    # second as though it had the first's freshness is the whole reason this
+    # is a separate column.
+    geometry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True,
+                                                         default=None)
 
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True,
                                                         default=None)

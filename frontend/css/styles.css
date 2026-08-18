@@ -604,9 +604,41 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   background: var(--surface);
   overflow-y: auto;
 }
-.map-layers .set-h { padding: 0; margin: 12px 0 6px; }
-.map-layers .set-h:first-child { margin-top: 0; }
-.layer-group { display: flex; flex-direction: column; gap: 2px; }
+.map-layers .set-h { padding: 0; margin: 0; }
+
+/* Two folders, because eight hazard kinds and five base maps flat would be a
+   thirteen-row wall beside the map they describe — worst on a phone, where
+   this panel stacks underneath. <details> gives the disclosure behaviour,
+   including keyboard and screen reader, without a line of JavaScript. */
+.layer-folder { border-top: 1px solid var(--border); padding: 10px 0; }
+.layer-folder:first-of-type { border-top: 0; padding-top: 4px; }
+.layer-folder > summary {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; user-select: none;
+  padding: 3px 6px; margin: 0 -6px; border-radius: 6px;
+  list-style: none;                 /* the default marker sits badly here */
+}
+.layer-folder > summary:hover { background: var(--surface-2); }
+.layer-folder > summary::-webkit-details-marker { display: none; }
+/* A disclosure triangle of our own, so it points the right way in both themes
+   and stays put whatever else is on the row. */
+.layer-folder > summary::before {
+  content: "▸"; color: var(--ink-2); font-size: 11px;
+  transition: transform 0.12s ease;
+}
+.layer-folder[open] > summary::before { transform: rotate(90deg); }
+.layer-folder > summary:focus-visible {
+  outline: 2px solid var(--gold-soft); outline-offset: 1px;
+}
+/* The all/some/none switch lives in the summary, so pressing it must not also
+   open or close the folder — the click handler stops that, and this keeps the
+   target from feeling like part of the heading. */
+.layer-parent { display: inline-flex; align-items: center; }
+.layer-parent input { margin: 0; cursor: pointer; }
+.layer-group {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: 6px; padding-left: 16px;   /* children sit under their parent */
+}
 .layer-row {
   display: flex; align-items: center; gap: 8px;
   padding: 4px 6px; margin: 0 -6px;
@@ -656,6 +688,19 @@ body.map-board .pillar { display: none; }
   border-left: 3px solid var(--gold-soft);
   border-radius: 6px;
   font-size: 12px; line-height: 1.45;
+}
+
+/* One glyph per kind of disaster: a coloured disc with the same character the
+   layers panel uses, so the switch that was ticked and the marks that appeared
+   are visibly the same thing. Severity keeps the colour; the glyph carries the
+   kind. */
+.haz-glyph { background: none; border: 0; }
+.haz-glyph-dot {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.55);
+  font-size: 13px; line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
 /* A fire inside a watched place's ring. Same treatment as the saved-place
@@ -757,7 +802,15 @@ body.map-board .pillar { display: none; }
     padding: 8px 14px;
   }
   .map-layers .set-h { margin: 0; }
-  .layer-group { flex-direction: row; flex-wrap: wrap; gap: 0 14px; }
+  /* Stacked under the map, the folders keep their disclosure but each takes a
+     full line and its switches lay out sideways — the vertical list that reads
+     well in a column would push the map off the screen here. */
+  .layer-folder { flex: 1 0 100%; border-top: 0; padding: 4px 0; }
+  .layer-folder:first-of-type { padding-top: 0; }
+  .layer-group {
+    flex-direction: row; flex-wrap: wrap; gap: 0 14px;
+    margin-top: 4px; padding-left: 14px;
+  }
   .map-note { flex: 1 0 100%; margin-top: 6px; }
 }
 

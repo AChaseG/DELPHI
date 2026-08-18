@@ -574,8 +574,16 @@ const API = {
   adminDeleteUser: (id) => api(`/api/admin/users/${id}`, { method: "DELETE" }),
 
   // Typhon: whatever is burning inside the rectangle the map is showing.
-  hazards: (bbox, limit = 300) =>
-    api(`/api/hazards?bbox=${encodeURIComponent(bbox)}&limit=${limit}`),
+  // `geometry` is opt-in: a fire perimeter is far larger than the row that
+  // carries it and is sub-pixel below about zoom 6, so the map asks for shapes
+  // only when it is close enough for one to mean anything.
+  hazards: (bbox, limit = 300, geometry = false, kinds = null) =>
+    api(`/api/hazards?bbox=${encodeURIComponent(bbox)}&limit=${limit}`
+        + (geometry ? "&geometry=1" : "")
+        // Only the kinds currently switched on. Somebody watching earthquakes
+        // alone should not be shipped every air-quality station in view.
+        + (kinds && kinds.length
+           ? `&kind=${encodeURIComponent(kinds.join(","))}` : "")),
 
   locations: () => api("/api/locations"),
   createLocation: (body) => api("/api/locations", { method: "POST", body: JSON.stringify(body) }),

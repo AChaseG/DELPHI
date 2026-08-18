@@ -188,6 +188,52 @@ def point_in_geo(lat: float, lon: float, geo: dict) -> bool:
     return False
 
 
+def _rings_of(geo: dict):
+    """Every coordinate ring in a Polygon or MultiPolygon, holes included."""
+    gtype = (geo or {}).get("type", "")
+    coords = (geo or {}).get("coordinates") or []
+    if gtype == "Polygon":
+        yield from (ring for ring in coords if isinstance(ring, list))
+    elif gtype == "MultiPolygon":
+        for poly in coords:
+            if isinstance(poly, list):
+                yield from (ring for ring in poly if isinstance(ring, list))
+    elif gtype == "Feature":
+        yield from _rings_of(geo.get("geometry") or {})
+    elif gtype in ("FeatureCollection", "GeometryCollection"):
+        for part in (geo.get("features") or geo.get("geometries") or []):
+            yield from _rings_of(part or {})
+
+
+def nearest_edge_km(lat: float, lon: float, geo: dict) -> float | None:
+    """Roughly how far a point is from the outline of a shape. 0.0 if inside.
+
+    Measured to the nearest *vertex* rather than to the nearest point on the
+    nearest segment, which is the more obvious reading of "edge". The
+    difference is bounded by how far apart the vertices are, and the shapes
+    this is used on arrive generalised to about 200 m — so the error is
+    smaller than the uncertainty in the shape itself, and the simpler code is
+    the one that stays right.
+
+    Returns None when the shape carries no usable ring, so a caller can tell
+    "no answer" from "you are standing in it".
+    """
+    if point_in_geo(lat, lon, geo or {}):
+        return 0.0
+    best = None
+    for ring in _rings_of(geo or {}):
+        for point in ring:
+            if not isinstance(point, (list, tuple)) or len(point) < 2:
+                continue
+            try:                       # GeoJSON order is [lon, lat]
+                km = haversine_km(lat, lon, float(point[1]), float(point[0]))
+            except (TypeError, ValueError):
+                continue
+            if best is None or km < best:
+                best = km
+    return best
+
+
 def search_places(query: str, limit: int = 12) -> list[dict]:
     """Look up a place name in the built-in gazetteer.
 

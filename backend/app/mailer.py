@@ -204,6 +204,12 @@ def send_hazard_digest(to: str, place_name: str, hits: list[dict],
     kilometres inside its own edge — so this says "reported N km away" rather
     than "N km away", which would be a claim about the fire's nearest flame
     that nobody here is in a position to make.
+
+    Where a perimeter *has* been flown, that claim can be made, and it is: the
+    edge distance goes in beside the point distance. That is the number the
+    caveat was standing in for all along, and a reader who is inside a
+    perimeter should be told so in those words rather than left to work it out
+    from a distance to a dot.
     """
     lines = []
     for h in hits:
@@ -214,17 +220,26 @@ def send_hazard_digest(to: str, place_name: str, hits: list[dict],
             facts.append(f"{h['containment']}% contained")
         detail = f" — {', '.join(facts)}" if facts else ""
         grew = " (grown since we last told you)" if h.get("again") else ""
-        lines.append(f"{h['name']}{detail}\n"
-                     f"  reported {format_km(h['distance_km'], units)} "
-                     f"from {place_name}{grew}")
+        edge = h.get("edge_km")
+        if edge == 0:
+            where = f"  {place_name} is inside the mapped perimeter"
+        elif edge is not None:
+            where = (f"  reported {format_km(h['distance_km'], units)} from "
+                     f"{place_name}; its mapped edge is about "
+                     f"{format_km(edge, units)} away")
+        else:
+            where = (f"  reported {format_km(h['distance_km'], units)} "
+                     f"from {place_name}")
+        lines.append(f"{h['name']}{detail}\n{where}{grew}")
     n = len(hits)
     return send(
         to, f"🔥 D.E.L.P.H.I.: {n} wildfire{'' if n == 1 else 's'} near {place_name}",
         f"{'A wildfire is' if n == 1 else f'{n} wildfires are'} burning within the "
         f"distance you set for “{place_name}”:\n\n" + "\n\n".join(lines) +
         "\n\nDistances are to the incident point the agency reported, which for a "
-        "large fire can be well inside its own perimeter. Open D.E.L.P.H.I. and "
-        "switch on Typhon to see them on the map.\n\n"
+        "large fire can be well inside its own perimeter — so where a perimeter "
+        "has been mapped, the distance to its edge is given as well. Open "
+        "D.E.L.P.H.I. and switch on Typhon to see them on the map.\n\n"
         "To stop these, turn off the wildfire distance on that place.\n",
     )
 

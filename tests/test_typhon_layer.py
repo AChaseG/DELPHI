@@ -25,6 +25,8 @@ Three things here are load-bearing rather than cosmetic:
 import pathlib
 import re
 
+from backend.app import hazards
+
 FRONTEND = pathlib.Path(__file__).resolve().parent.parent / "frontend"
 HTML = (FRONTEND / "index.html").read_text(encoding="utf-8")
 APP = (FRONTEND / "js" / "app.js").read_text(encoding="utf-8")
@@ -87,22 +89,28 @@ def test_both_layers_are_offered():
     wants the air, somebody watching a fire line wants the incidents, and one
     combined toggle would serve neither."""
     assert "TYPHON_LAYER" in APP and "TYPHON_AIR_LAYER" in APP
-    assert re.search(r'TYPHON_AIR_LAYER\s*=\s*"[^"]*\(US\)"', APP), (
-        "the air layer covers one country too and has to say so")
-    assert "this.airquality = L.featureGroup();" in INIT
+    assert re.search(r'TYPHON_LAYER\s*=\s*"[^"]*\(US\)"', APP), (
+        "WFIGS really is United States only, and a reader in Lyon who switches "
+        "it on and finds nothing is owed the reason in the label")
+    assert not re.search(r'TYPHON_AIR_LAYER\s*=\s*"[^"]*\(US\)"', APP), (
+        "the air layer stopped being US-only when OpenAQ landed, and a label "
+        "that still says otherwise would send a reader in Lyon looking for a "
+        "fault that is not there")
+    assert "this.airquality = this._overlays.air_quality.group;" in INIT
 
 
 def test_neither_is_added_to_the_map_unless_it_was_left_on():
     assert 'if (localStorage.getItem(o.key) === "1") o.group.addTo(this.map);' in INIT
-    assert "this.hazards = L.featureGroup();" in INIT, (
-        "built, but not .addTo(this.map) like locations and alerts are")
+    assert "this.hazards = this._overlays.wildfire.group;" in INIT, (
+        "an alias onto the per-kind group, built but not .addTo(this.map) the "
+        "way locations and alerts are")
 
 
 def test_each_layer_is_remembered_under_its_own_name():
     """One key for both would mean switching the air on switched fires on too."""
-    keys = set(re.findall(r'key:\s*"(gnd_overlay_\w+)"', INIT))
-    assert len(keys) == 2, keys
-    assert "this._rememberOverlay(label," in PANEL
+    keys = set(re.findall(r'key:\s*"(gnd_overlay_\w+)"', APP))
+    assert len(keys) == len(hazards.KINDS), keys
+    assert "this._rememberOverlay(kind, on ? \"1\" : \"0\");" in APP
 
 
 def test_no_handler_waits_on_an_event_leaflet_no_longer_fires():
@@ -116,7 +124,7 @@ def test_no_handler_waits_on_an_event_leaflet_no_longer_fires():
 def test_switching_it_on_fetches_immediately():
     """Nothing was fetched while it was off, so the cached-rectangle guard
     would otherwise hold the layer empty until the reader panned."""
-    assert 'this._hazKey = ""' in PANEL
+    assert 'this._hazKey = ""' in APP
     assert "this.refreshHazards()" in PANEL
 
 
@@ -126,19 +134,20 @@ REFRESH = _fn("  async refreshHazards()")
 
 
 def test_switched_off_layers_cost_nothing():
-    assert "this.map.hasLayer(o.group)" in REFRESH
-    assert "if (!wanted.length) return;" in REFRESH, (
-        "with both layers off there is nobody to fetch for")
+    assert "const kinds = this.activeKinds();" in REFRESH
+    assert "if (!kinds.length) return;" in REFRESH, (
+        "with every layer off there is nobody to fetch for")
 
 
 DRAW = _fn("  drawHazards()")
 
 
-def test_one_request_serves_both_layers():
-    """The rows say which kind they are. Asking twice for the same rectangle
-    to sort them out on the client is a second round trip for an if."""
+def test_one_request_serves_every_layer():
+    """The rows say which kind they are, and the request names the kinds it
+    wants. Asking once per layer would be eight round trips for a filter the
+    server can apply in one."""
     assert len(re.findall(r"API\.hazards\(", REFRESH)) == 1
-    assert 'h.kind === "air_quality"' in DRAW
+    assert "const owner = this._overlays[h.kind];" in DRAW
 
 
 def test_drawing_is_separate_from_fetching():
@@ -161,7 +170,12 @@ def test_a_reading_is_never_credited_to_the_wrong_agency():
 
 def test_panning_does_not_reask_for_the_same_rectangle():
     """`moveend` fires continuously through a pan."""
-    assert "if (bbox === this._hazKey) return;" in REFRESH
+    assert "if (key === this._hazKey) return;" in REFRESH
+    assert "const key = `${bbox}|${kinds.join(\",\")}" in REFRESH, (
+        "the key is the rectangle plus the kinds asked for plus whether shapes "
+        "were asked for, so that ticking a layer or zooming past the shape "
+        "threshold re-fetches instead of being suppressed by the guard that "
+        "exists only to stop redundant panning")
     assert "Math.round" in REFRESH, "an unrounded bbox never matches twice"
 
 
@@ -248,4 +262,4 @@ def test_the_layer_asks_for_a_rectangle():
 def test_it_is_bounded():
     """A map zoomed out to the whole country must not try to draw everything."""
     assert re.search(r"TYPHON_MAX\s*=\s*\d+", APP)
-    assert "API.hazards(bbox, TYPHON_MAX)" in REFRESH
+    assert "API.hazards(bbox, TYPHON_MAX, wantShapes, kinds)" in REFRESH

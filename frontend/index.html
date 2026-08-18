@@ -1564,16 +1564,36 @@
          has room to say why a layer is empty right under the switch that turns
          it on — which a floating control never did. -->
     <aside id="map-layers" class="map-layers" aria-label="Map layers">
-      <h3 class="set-h">Base map</h3>
-      <div id="layer-bases" class="layer-group" role="radiogroup"
-           aria-label="Base map"></div>
+      <!-- Two folders rather than a flat wall of switches. Typhon knows eight
+           kinds of hazard and there are five base maps; thirteen rows beside a
+           map, on a phone especially, would eat the thing they are describing.
 
-      <h3 class="set-h">🐉 Typhon</h3>
-      <div id="layer-overlays" class="layer-group"></div>
-      <!-- Why a layer is empty, when it is. Off at the server, no API key,
-           unreachable, or simply a quiet stretch of map all used to look
-           identical — a ticked box and nothing else. -->
-      <p id="map-note" class="map-note" role="status" hidden></p>
+           <details>/<summary> rather than a JS state machine: native
+           disclosure, keyboard and screen-reader behaviour for free, and
+           `open` is one attribute to remember. -->
+      <details id="layer-folder-bases" class="layer-folder">
+        <summary class="set-h">🗺 Base map</summary>
+        <div id="layer-bases" class="layer-group" role="radiogroup"
+             aria-label="Base map"></div>
+      </details>
+
+      <details id="layer-folder-typhon" class="layer-folder" open>
+        <summary class="set-h">
+          <span class="layer-parent">
+            <!-- All, some, or none. The partial state is a real checkbox
+                 state (indeterminate), so this needs no third control
+                 invented for it. -->
+            <input type="checkbox" id="layer-all" aria-label="All Typhon layers">
+          </span>
+          <span>🐉 Typhon</span>
+        </summary>
+        <div id="layer-overlays" class="layer-group"></div>
+        <!-- Why a layer is empty, when it is. Off at the server, no API key,
+             unreachable, or simply a quiet stretch of map all used to look
+             identical — a ticked box and nothing else. Inside the folder,
+             directly under the switches it explains. -->
+        <p id="map-note" class="map-note" role="status" hidden></p>
+      </details>
     </aside>
   </section>
   <!-- Custom horizontal scrollbar for the board: the native one is an overlay

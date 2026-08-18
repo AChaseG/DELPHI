@@ -63,10 +63,18 @@ def test_the_flag_and_the_reason_never_disagree(monkeypatch):
 
 def test_a_missing_key_is_named_not_swallowed(monkeypatch):
     """The one failure an operator can fix in a minute, and would otherwise
-    never learn about — the air layer would simply be empty for good."""
+    never learn about — the air layer would simply be empty for good.
+
+    Named one by one rather than as a count, because the two air providers
+    cover different halves of the world: an operator who sets AirNow still has
+    a blank layer everywhere outside the United States, and "1 key missing"
+    would not tell them which half."""
     monkeypatch.delenv("AIRNOW_API_KEY", raising=False)
-    assert "airnow" in hazards.idle_status("x")["no_key"]
+    monkeypatch.delenv("OPENAQ_API_KEY", raising=False)
+    assert set(hazards.idle_status("x")["no_key"]) == {"airnow", "openaq"}
     monkeypatch.setenv("AIRNOW_API_KEY", "sk-whatever")
+    assert hazards.idle_status("x")["no_key"] == ["openaq"]
+    monkeypatch.setenv("OPENAQ_API_KEY", "sk-whatever")
     assert hazards.idle_status("x")["no_key"] == []
 
 

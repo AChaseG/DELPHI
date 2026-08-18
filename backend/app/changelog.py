@@ -13,6 +13,80 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-09-30",
+        "title": "Typhon covers the world, and folds up when you want the map",
+        "items": [
+            "🌍 <b>Typhon is no longer two American layers.</b> Earthquakes, "
+            "cyclones, floods, volcanoes and droughts now draw worldwide, from "
+            "<b>GDACS</b> (the UN and European Commission's global disaster "
+            "alert system) and <b>USGS</b> for earthquakes. Delphi is read in "
+            "twenty-three languages and its hazard map covered one country; "
+            "that was the gap, and this is the correction.",
+            "⛈ <b>United States severe weather</b> is in too, from the "
+            "National Weather Service — tornado, severe thunderstorm and flash "
+            "flood warnings, drawn as the <b>actual warning polygon</b> rather "
+            "than a dot, so you can see which side of the line you are on. "
+            "Filtered to Severe and Extreme: unfiltered it is thousands of "
+            "frost advisories, and a map showing everything shows nothing.",
+            "🗂 <b>The layers panel is two folders now.</b> 🗺 Base map and 🐉 "
+            "Typhon, each collapsible — and Typhon has one switch above the "
+            "rest, so you can take <b>all</b> the hazards at once or tick "
+            "exactly the ones you want. Eight kinds and five base maps as a "
+            "flat list would have been thirteen rows beside the map they "
+            "describe. Both folders remember whether you left them open.",
+            "⚖ <b>Severity means one thing across all of them.</b> GDACS's "
+            "red/orange/green and USGS's impact estimate are judgements about "
+            "what an event <i>did to people</i>, not raw magnitudes — a "
+            "magnitude 6 under a city and one under an ocean are not the same "
+            "event, and the colour on the map now knows that.",
+            "⏱ Warnings disappear when they expire, whatever else is "
+            "happening — a lapsed tornado warning comes off the map even if "
+            "the weather service cannot be reached. Earthquakes clear after a "
+            "day rather than lingering for a week.",
+        ],
+    },
+    {
+        "date": "2026-09-29",
+        "title": "Fires have a shape, and the air layer leaves the US",
+        "items": [
+            "🔥 <b>Wildfires draw their actual outline.</b> Typhon showed "
+            "every fire as one dot at the point the agency reported — which "
+            "for a hundred-thousand-acre fire can sit twenty kilometres "
+            "inside its own edge. Where the federal agencies have mapped a "
+            "perimeter, Atlas now draws it: the real, flown boundary, "
+            "refreshed as they refly it.",
+            "⭕ <b>Fires without a mapped perimeter get a dashed circle</b> "
+            "showing the approximate <i>area</i> burned, worked out from the "
+            "reported acreage. It is deliberately drawn differently from a "
+            "real perimeter, and it says so when you press it — it tells you "
+            "how much has burned and nothing at all about which way the fire "
+            "has run. Most fires are never flown, so without this the only "
+            "fires with a shape would be the ones already impossible to miss.",
+            "📧 <b>Wildfire emails now give the distance to the edge</b> as "
+            "well as to the reported point, wherever a perimeter exists — and "
+            "if your watched place is <i>inside</i> a perimeter, it says so "
+            "in those words.",
+            "🔎 Outlines load from about the zoom of a large state and in. "
+            "Further out they would be smaller than the dot on top of them, "
+            "so they are not fetched at all and your map stays quick.",
+            "🌍 <b>Air quality is no longer United States only.</b> AirNow is "
+            "the EPA and the EPA stops at the border, so most of you had an "
+            "empty layer. <b>OpenAQ</b> now covers everywhere else — "
+            "government and research monitors worldwide, under an open "
+            "licence.",
+            "🔬 One honest caveat, and you will see it written on every "
+            "reading outside the US. AirNow publishes a finished AQI; OpenAQ "
+            "publishes a raw measurement, so we work the category out "
+            "ourselves against the EPA's thresholds. Those thresholds are "
+            "defined over a 24-hour average and what we have is one recent "
+            "reading — so the category is meaningful and the number is "
+            "<b>not an official AQI</b>, and it says so wherever it appears.",
+            "🧭 The two never mix. AirNow answers for the United States and "
+            "OpenAQ for the rest, so no watched place ever averages two "
+            "different scales into a figure that is neither.",
+        ],
+    },
+    {
         "date": "2026-09-28",
         "title": "Atlas reads left to right, and the air layer sees more",
         "items": [

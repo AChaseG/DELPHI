@@ -90,7 +90,8 @@ def test_the_flame_still_carries_severity():
     Dropping the colour to gain the shape would trade one signal for another
     rather than adding one."""
     draw = _fn("  drawHazards()", "\n  },\n")
-    assert "fireFlame(hazardStyle(h).color)" in draw
+    assert "fireFlame(style.color)" in draw
+    assert "const style = hazardStyle(h);" in draw
 
 
 def test_the_icons_are_made_once():

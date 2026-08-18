@@ -161,6 +161,11 @@ def _ensure_schema():
                                # comment on the model.
                                "fire_km": "FLOAT DEFAULT 0",
                                "fire_email": "BOOLEAN DEFAULT 0"},
+        # A hazard's own shape, where a provider publishes one: a mapped fire
+        # perimeter, the polygon on a tornado warning. Nullable because most
+        # hazards will never have one — create_all gives these to a fresh
+        # database, and this gives them to one that made the table earlier.
+        "hazards": {"geometry": "TEXT", "geometry_at": "DATETIME"},
     }
     with engine.begin() as conn:
         for table, columns in wanted.items():
@@ -3191,6 +3196,7 @@ def _reject_invalid_query(criteria):
 @app.get("/api/hazards")
 def list_hazards(bbox: str = Query(default=""), kind: str = Query(default=""),
                  limit: int = Query(default=300, ge=1, le=1000),
+                 geometry: bool = Query(default=False),
                  user_id: str = Depends(user_id_header),
                  db: Session = Depends(get_db)):
     """Hazards inside a map rectangle, worst first.
@@ -3199,10 +3205,21 @@ def list_hazards(bbox: str = Query(default=""), kind: str = Query(default=""),
     past the antimeridian hands back longitudes beyond ±180 — clamped here
     rather than trusted, since the alternative is a query that matches nothing
     and a layer that looks broken.
+
+    Shapes are opt-in. A fire perimeter is orders of magnitude larger than the
+    row that carries it, and below about zoom 6 it is smaller than a pixel —
+    so `geometry=1` is sent only when the map is close enough for an outline
+    to mean anything. `has_geometry` is always there regardless, which is what
+    lets the client draw the approximate-area circle for a fire that has no
+    published perimeter without asking twice.
     """
     query = select(Hazard)
     if kind:
-        query = query.where(Hazard.kind == kind)
+        # A comma list, because the map's layers are per-kind now: a reader
+        # watching earthquakes alone should not be shipped every air-quality
+        # station in the rectangle to throw away.
+        kinds = [k.strip() for k in kind.split(",") if k.strip()]
+        query = query.where(Hazard.kind.in_(kinds))
     if bbox:
         try:
             west, south, east, north = (float(p) for p in bbox.split(",", 3))
@@ -3218,6 +3235,9 @@ def list_hazards(bbox: str = Query(default=""), kind: str = Query(default=""),
         "id": h.id, "kind": h.kind, "provider": h.provider,
         "name": h.name, "lat": h.lat, "lon": h.lon, "country": h.country,
         "severity": h.severity, "raw": h.raw or {},
+        "has_geometry": bool(h.geometry),
+        **({"geometry": h.geometry} if geometry and h.geometry else {}),
+        "geometry_at": h.geometry_at.isoformat() + "Z" if h.geometry_at else None,
         "started_at": h.started_at.isoformat() + "Z" if h.started_at else None,
         "updated_at": h.updated_at.isoformat() + "Z" if h.updated_at else None,
     } for h in rows]
@@ -3278,6 +3298,15 @@ def air_readings(db: Session, locs: list[FavoriteLocation]) -> dict[int, dict]:
     kilometres away tells you nothing about your air, and a confident wrong
     number is worse than a blank.
 
+    **The averaging never crosses providers.** An AirNow figure is a real,
+    NowCast-smoothed AQI; an OpenAQ figure is a category estimated from one
+    recent concentration reading (see hazards.concentration_to_aqi). They are
+    not the same measurement, and an average of the two would be neither. In
+    practice the provider rule already keeps them geographically apart — AirNow
+    owns the United States and OpenAQ owns everywhere else — so this is the
+    belt to that braces: if the separation ever slips, the reading is still
+    coherent and still says whose it is.
+
     One query for the stations and then arithmetic — they are a few hundred
     rows at most, and a handful of watched places, so this is microseconds
     rather than anything worth caching into a column that could go stale.
@@ -3287,6 +3316,20 @@ def air_readings(db: Session, locs: list[FavoriteLocation]) -> dict[int, dict]:
     stations = list(db.scalars(select(Hazard).where(Hazard.kind == "air_quality")))
     if not stations:
         return {}
+
+    def _reading(rows: list, provider: str, **extra) -> dict:
+        values = [int((st.raw or {}).get("aqi") or 0) for st in rows]
+        aqi = round(sum(values) / len(values))
+        return {"aqi": aqi, "category": hazards.aqi_label(aqi),
+                "provider": provider,
+                # Whether this number is the published index or our reading of
+                # a concentration. It drives one clause of one sentence, and
+                # that clause is the difference between a fact and an estimate.
+                "estimated": bool((rows[0].raw or {}).get("estimated")),
+                "pollutant": str((rows[0].raw or {}).get("parameter") or ""),
+                "value": (rows[0].raw or {}).get("value"),
+                "unit": str((rows[0].raw or {}).get("unit") or ""),
+                **extra}
 
     out: dict[int, dict] = {}
     for loc in locs:
@@ -3298,21 +3341,19 @@ def air_readings(db: Session, locs: list[FavoriteLocation]) -> dict[int, dict]:
             if nearest_km is None or km < nearest_km:
                 nearest, nearest_km = st, km
         if near:
-            values = [int((st.raw or {}).get("aqi") or 0) for st in near]
-            aqi = round(sum(values) / len(values))
-            out[loc.id] = {
-                "aqi": aqi, "category": hazards.aqi_label(aqi),
-                "basis": "average", "stations": len(near),
-                "within_km": AIR_NEAR_KM,
-            }
+            # One provider's worth, chosen by whose station is closest, so a
+            # place on a border reports the network it actually sits in rather
+            # than a blend of two scales.
+            best = min(near, key=lambda st: haversine_km(loc.lat, loc.lon,
+                                                         st.lat, st.lon))
+            same = [st for st in near if st.provider == best.provider]
+            out[loc.id] = _reading(same, best.provider, basis="average",
+                                   stations=len(same), within_km=AIR_NEAR_KM)
         elif nearest is not None and nearest_km is not None \
                 and nearest_km <= AIR_MAX_KM:
-            aqi = int((nearest.raw or {}).get("aqi") or 0)
-            out[loc.id] = {
-                "aqi": aqi, "category": hazards.aqi_label(aqi),
-                "basis": "nearest", "stations": 1,
-                "station": nearest.name, "distance_km": round(nearest_km, 1),
-            }
+            out[loc.id] = _reading([nearest], nearest.provider, basis="nearest",
+                                   stations=1, station=nearest.name,
+                                   distance_km=round(nearest_km, 1))
     return out
 
 

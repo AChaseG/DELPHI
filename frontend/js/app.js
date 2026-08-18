@@ -1340,8 +1340,11 @@ function renderHazardStatus() {
   }
   // The one an operator can fix in a minute, and would otherwise never learn
   // about — the air layer would just be empty for good.
-  if ((h.no_key || []).includes("airnow"))
-    bits.push("air quality needs AIRNOW_API_KEY");
+  // Named individually: they cover different halves of the world, and an
+  // operator who sets one still has a blank layer over the other.
+  const missing = h.no_key || [];
+  if (missing.includes("airnow")) bits.push("US air quality needs AIRNOW_API_KEY");
+  if (missing.includes("openaq")) bits.push("world air quality needs OPENAQ_API_KEY");
   box.textContent = bits.join(" · ");
 }
 
@@ -1710,6 +1713,40 @@ function fireFlame(colour) {
     tooltipAnchor: [0, 0],
   });
   _FLAME_ICONS.set(colour, icon);
+  return icon;
+}
+
+/* One glyph per kind of disaster, memoised the way the flame is.
+
+   Shape says what sort of thing it is; colour stays severity, exactly as the
+   flame does — an earthquake and a flood at the same alert level should read
+   as equally serious and obviously different. The glyph is the same character
+   the layers panel uses for that kind, so the switch a reader ticked and the
+   marks that appeared are visibly the same thing.
+
+   Wildfires and air-quality stations keep what they already have: a fire is a
+   dot sized by acreage or a flame when it is inside a ring, and a station is a
+   dot whose colour is the whole of its meaning. Neither gains anything from a
+   glyph, and changing them would be churn for its own sake. */
+const _KIND_GLYPHS = { earthquake: "🌍", storm: "🌀", flood: "🌊",
+                       volcano: "🌋", drought: "🏜", severe_weather: "⛈" };
+const _KIND_ICONS = new Map();
+
+function hazardIcon(kind, colour) {
+  const glyph = _KIND_GLYPHS[kind];
+  if (!glyph) return null;
+  const cacheKey = `${kind}|${colour}`;
+  if (_KIND_ICONS.has(cacheKey)) return _KIND_ICONS.get(cacheKey);
+  // Built as a string only from values this file controls: the glyph comes
+  // from the table above and the colour from hazardStyle, never from a
+  // provider. Nothing third-party reaches innerHTML here.
+  const html = `<span class="haz-glyph-dot" style="background:${colour}">`
+    + `${glyph}</span>`;
+  const icon = L.divIcon({
+    className: "haz-glyph", html, iconSize: [24, 24], iconAnchor: [12, 12],
+    tooltipAnchor: [0, 0],
+  });
+  _KIND_ICONS.set(cacheKey, icon);
   return icon;
 }
 
@@ -4962,8 +4999,45 @@ const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenS
    why rather than left to conclude it is broken. GDACS, in the source catalog,
    is what carries worldwide disasters, and it arrives as ordinary news. */
 const TYPHON_LAYER = "🐉 Typhon · Wildfires (US)";
-const TYPHON_AIR_LAYER = "🌫 Typhon · Air quality (US)";
+/* No extent in the air label any more: AirNow covers the United States and
+   OpenAQ covers the rest, so the honest label is the one without a country in
+   it. Wildfires keep theirs — WFIGS really is US-only. */
+const TYPHON_AIR_LAYER = "🌫 Typhon · Air quality";
+
+/* Every kind Typhon draws, in the order the panel lists them: the two it
+   started with, then the global ones, then the United States one.
+
+   Keyed by `kind` and not by label, which is the fix as much as the addition.
+   `drawHazards` has always branched on `h.kind`, and the panel used to be
+   keyed by its own display string — so the two agreed only by coincidence and
+   a renamed label was a silent bug. The storage key is separate again, so
+   rewording a label never forgets somebody's choice.
+
+   An extent in parentheses wherever there is one. A reader in Lyon who ticks
+   a box and finds nothing is owed the reason in the label rather than left to
+   conclude the feature is broken. */
+const TYPHON_KINDS = [
+  { kind: "wildfire", label: "🔥 Wildfires (US)", key: "gnd_overlay_hazards" },
+  { kind: "air_quality", label: "🌫 Air quality", key: "gnd_overlay_air" },
+  { kind: "earthquake", label: "🌍 Earthquakes", key: "gnd_overlay_quake" },
+  { kind: "storm", label: "🌀 Storms & cyclones", key: "gnd_overlay_storm" },
+  { kind: "flood", label: "🌊 Floods", key: "gnd_overlay_flood" },
+  { kind: "volcano", label: "🌋 Volcanoes", key: "gnd_overlay_volcano" },
+  { kind: "drought", label: "🏜 Droughts", key: "gnd_overlay_drought" },
+  { kind: "severe_weather", label: "⛈ Severe weather (US)", key: "gnd_overlay_wx" },
+];
 const TYPHON_MAX = 600;
+/* Below this zoom a fire perimeter is smaller than the dot drawn on top of it,
+   so the map does not ask the server for one. Chosen rather than tuned: z6 is
+   roughly a large US state across the viewport, which is where a
+   hundred-thousand-acre outline first becomes more than a smudge. */
+const TYPHON_SHAPE_ZOOM = 6;
+/* Acres to square metres, for the approximate-area circle below. */
+const SQM_PER_ACRE = 4046.8564224;
+/* Under this, the equal-area circle comes out smaller than the marker that
+   would sit inside it, so it draws nothing and says nothing. A thousand acres
+   is about a 1.1 km radius. */
+const MIN_CIRCLE_ACRES = 1000;
 
 /* The EPA's own six colours. Normally this file would reach for the theme's
    status tokens, which are reserved for exactly this and never reused as
@@ -4993,6 +5067,50 @@ function hazardStyle(h) {
   };
 }
 
+/* The radius, in metres, of a circle with the same area as the reported burn.
+
+   This is arithmetic on one number and it is offered as exactly that. It is
+   worth having because most fires will never be flown for a perimeter — the
+   agencies map the ones big enough to be worth the flight — so without it the
+   only fires that ever get a shape are the ones already impossible to miss. */
+function acreCircleM(acres) {
+  return Math.sqrt((Number(acres) || 0) * SQM_PER_ACRE / Math.PI);
+}
+
+/* The fire's outline: measured if anybody has flown it, estimated if not.
+
+   The two are drawn so that they can never be confused. A mapped perimeter is
+   a solid stroke over a light fill — it is a fact about where the fire's edge
+   is. The acreage circle is dashed and hollow, because it is a statement about
+   how much has burned and says nothing whatever about the shape or which way
+   the fire has run. Presenting the second in the styling of the first would be
+   a confident wrong answer to the only question the shape is there to answer.
+
+   Returns null for anything that is neither — every air-quality station, and
+   every fire too small for either treatment. */
+function hazardShape(h, colour) {
+  if (h.kind === "air_quality") return null;
+  // Fire perimeters were the first outline; a tornado warning is the second,
+  // and it arrives through the same column for the same reason — somebody
+  // published an edge and the reader needs to know which side of it they are
+  // on. Anything carrying one draws it.
+  if (h.geometry) {
+    return L.geoJSON({ type: "Feature", geometry: h.geometry }, {
+      style: { color: colour, weight: 2, opacity: 0.9,
+               fillColor: colour, fillOpacity: 0.18 },
+    });
+  }
+  // The acreage circle is wildfire-only: it is arithmetic on reported acres,
+  // and no other kind reports an area to do arithmetic on.
+  if (h.kind !== "wildfire") return null;
+  const acres = Number((h.raw || {}).acres) || 0;
+  if (acres < MIN_CIRCLE_ACRES) return null;
+  return L.circle([h.lat, h.lon], {
+    radius: acreCircleM(acres), color: colour, weight: 1.5,
+    dashArray: "6 6", fill: false, opacity: 0.75,
+  });
+}
+
 /* What the air is like at a watched place, and — just as importantly — on what
    authority. An average of three monitors down the road and a single reading
    from forty kilometres away are different claims, and a reader deciding
@@ -5006,15 +5124,27 @@ function airLine(air) {
   dot.style.background = AQI_COLORS[Math.min(AQI_COLORS.length - 1,
                                              aqiCategory({ raw: air }))];
   const text = document.createElement("span");
-  text.textContent = `AQI ${air.aqi} · ${air.category} — ` + (
-    air.basis === "average"
-      ? `average of ${air.stations} station${air.stations === 1 ? "" : "s"} `
-        + `within ${fmtKm(air.within_km)}`
-      : `nearest station, ${fmtKm(air.distance_km, 1)} away`);
+  // An AirNow figure is the published index. An OpenAQ figure is our own
+  // reading of one recent concentration against the EPA's breakpoints, which
+  // are defined over a 24-hour average — so the category is meaningful and
+  // the number is not the official AQI, and saying so is not optional
+  // politeness. That parenthesis is the honesty in the whole provider.
+  const head = air.estimated
+    ? `${air.pollutant || "Air"} ${air.value ?? ""} ${air.unit || ""}`.trim()
+      + ` · ${air.category}`
+    : `AQI ${air.aqi} · ${air.category}`;
+  const basis = air.basis === "average"
+    ? `average of ${air.stations} station${air.stations === 1 ? "" : "s"} `
+      + `within ${fmtKm(air.within_km)}`
+    : `nearest station, ${fmtKm(air.distance_km, 1)} away`;
+  text.textContent = `${head} — ${basis}`
+    + (air.estimated ? " (estimated from one recent reading, not an "
+                     + "official AQI)" : "");
   wrap.append(dot, text);
-  wrap.title = air.basis === "average"
+  wrap.title = (air.basis === "average"
     ? "Averaged from every monitor close enough to speak for this place"
-    : `Reported by ${air.station || "the nearest monitor"}`;
+    : `Reported by ${air.station || "the nearest monitor"}`)
+    + (air.estimated ? " · via OpenAQ, from participating agencies" : "");
   return wrap;
 }
 
@@ -5051,10 +5181,39 @@ function hazardPopup(h, near) {
   if (h.kind === "air_quality") {
     // The number, then what it means. An AQI on its own is a figure most
     // people cannot place; the category is the part that says stay indoors.
-    facts.push(`AQI ${raw.aqi} — ${raw.category || ""}`.trim());
-    if (raw.parameter) facts.push(`Worst pollutant: ${raw.parameter}`);
+    facts.push(raw.estimated
+      ? `${raw.category || ""} — estimated ${raw.aqi} from one recent reading`.trim()
+      : `AQI ${raw.aqi} — ${raw.category || ""}`.trim());
+    if (raw.parameter) facts.push(raw.value != null
+      ? `Worst pollutant: ${raw.parameter} ${raw.value} ${raw.unit || ""}`.trim()
+      : `Worst pollutant: ${raw.parameter}`);
     if (raw.agency) facts.push(raw.agency);
+    if (raw.estimated) facts.push("Via OpenAQ. Not an official AQI: the EPA "
+      + "scale is defined over a 24-hour average and this is one reading.");
     if (raw.observed_utc) facts.push(`Observed ${raw.observed_utc} UTC`);
+  } else if (h.kind === "earthquake") {
+    if (raw.magnitude != null) facts.push(`Magnitude ${raw.magnitude}`);
+    // Through fmtKm like every other distance here: a reader who set miles
+    // gets miles, and the units toggle has a test that catches exactly this.
+    if (raw.depth_km != null) facts.push(`${fmtKm(raw.depth_km, 1)} deep`);
+    if (raw.place) facts.push(raw.place);
+    // USGS's own estimate of what the shaking did to people, which is a
+    // better answer to "how bad is this" than the magnitude alone.
+    if (raw.pager) facts.push(`USGS impact estimate: ${raw.pager}`);
+    if (raw.tsunami) facts.push("⚠ A tsunami message was issued for this event");
+  } else if (h.kind === "severe_weather") {
+    if (raw.headline) facts.push(raw.headline);
+    if (raw.area) facts.push(raw.area);
+    if (raw.severity) facts.push(`Severity: ${raw.severity}`);
+    if (raw.expires) facts.push(`Expires ${raw.expires}`);
+    if (raw.office) facts.push(raw.office);
+  } else if (h.provider === "gdacs") {
+    // GDACS's alert level is an assessment of likely impact, not a
+    // measurement, and reading it as one is the mistake to head off.
+    if (raw.alert_level)
+      facts.push(`GDACS alert level: ${raw.alert_level}`);
+    if (raw.detail) facts.push(raw.detail);
+    if (raw.country_name) facts.push(raw.country_name);
   } else {
     const where = [raw.county ? `${raw.county} County` : "", raw.state || ""]
       .filter(Boolean).join(", ");
@@ -5062,6 +5221,21 @@ function hazardPopup(h, near) {
     if (raw.containment != null) facts.push(`${raw.containment}% contained`);
     if (where) facts.push(where);
     if (raw.cause) facts.push(`Cause: ${raw.cause}`);
+    // Which of the two shapes is on the map, and how old it is. A perimeter
+    // is flown, not streamed: the acreage beside it may be hours newer than
+    // the outline, and a reader judging an edge deserves to know that. When
+    // there is no perimeter, saying so is the whole point — otherwise a
+    // circle drawn from acreage reads as a mapped boundary.
+    if (h.geometry) {
+      facts.push(h.geometry_at
+        ? `Perimeter mapped ${timeAgo(h.geometry_at)}`
+        : "Perimeter as mapped by the agency");
+    } else if (h.has_geometry) {
+      facts.push("A perimeter has been mapped — zoom in to see it");
+    } else if (Number(raw.acres) >= MIN_CIRCLE_ACRES) {
+      facts.push("Circle shows the approximate area burned, not the fire's "
+                 + "shape — no perimeter has been mapped");
+    }
   }
   for (const line of facts) {
     const p = document.createElement("div");
@@ -5168,14 +5342,16 @@ const MapBoard = {
     (bases[wanted] || bases[DEFAULT_BASEMAP]).addTo(this.map);
     // Typhon: live hazards, as an overlay rather than a pane. The layers
     // control's second argument was always {} until now.
-    this.hazards = L.featureGroup();
-    this.airquality = L.featureGroup();
-    // Keyed by the storage name each one is remembered under, so switching a
-    // layer on and off is one handler rather than one per layer.
-    this._overlays = {
-      [TYPHON_LAYER]: { group: this.hazards, key: "gnd_overlay_hazards" },
-      [TYPHON_AIR_LAYER]: { group: this.airquality, key: "gnd_overlay_air" },
-    };
+    // One feature group per kind, keyed by kind. "Off" is then a group that
+    // was never added to the map rather than a filter applied at draw time,
+    // which is what makes the request able to ask for only the kinds on show.
+    this._overlays = {};
+    for (const entry of TYPHON_KINDS)
+      this._overlays[entry.kind] = { ...entry, group: L.featureGroup() };
+    // The two the rest of this file has always known by name. Aliases, not
+    // copies — LocationsPanel and the empty-state note both reach for them.
+    this.hazards = this._overlays.wildfire.group;
+    this.airquality = this._overlays.air_quality.group;
     this._bases = bases;
     // Off unless it was left on. They cover the United States and most readers
     // here are not there; a layer that shows an empty map by default reads as
@@ -5283,27 +5459,72 @@ const MapBoard = {
       bases.appendChild(row);
     }
 
-    for (const [label, o] of Object.entries(this._overlays)) {
+    for (const entry of TYPHON_KINDS) {
+      const o = this._overlays[entry.kind];
+      if (!o) continue;
       const row = document.createElement("label");
       row.className = "layer-row";
       const input = document.createElement("input");
       input.type = "checkbox";
       input.checked = this.map.hasLayer(o.group);
       input.onchange = () => {
-        if (input.checked) {
-          o.group.addTo(this.map);
-          this._hazKey = "";              // it was off; nothing was fetched
-          this.refreshHazards();
-        } else {
-          this.map.removeLayer(o.group);
-        }
-        this._rememberOverlay(label, input.checked ? "1" : "0");
+        this.setOverlay(entry.kind, input.checked);
+        this.refreshHazards();
+        this.renderParentSwitch();
         this.renderHazardNote();
       };
       const text = document.createElement("span");
-      text.textContent = label;
+      text.textContent = entry.label;
       row.append(input, text);
       overlays.appendChild(row);
+    }
+    this.renderParentSwitch();
+    this.rememberFolders();
+  },
+
+  /* The one switch above the eight: all, some, or none.
+
+     `indeterminate` is a genuine checkbox state and the browser draws it, so
+     "some of them are on" needs no third control and no icon of its own. It is
+     also not a value the form submits — it exists purely to be looked at,
+     which is exactly what this is for. */
+  renderParentSwitch() {
+    const all = el("layer-all");
+    if (!all || !this.map) return;
+    const on = this.activeKinds().length;
+    all.checked = on === TYPHON_KINDS.length;
+    all.indeterminate = on > 0 && on < TYPHON_KINDS.length;
+    all.onclick = (e) => e.stopPropagation();   // the summary would toggle
+    all.onchange = () => {
+      // Ticking a partial state fills it rather than clearing it: somebody who
+      // has three on and presses the parent wants everything, not nothing.
+      const wanted = all.checked;
+      for (const entry of TYPHON_KINDS) this.setOverlay(entry.kind, wanted);
+      this.renderLayerPanel();
+      this.refreshHazards();
+      this.renderHazardNote();
+    };
+  },
+
+  /* Whether each folder is open, kept per browser beside the layer choices.
+
+     A reader who collapsed Typhon to get the map back should not find it
+     expanded again on the next visit — the panel sits beside the thing they
+     came to look at. */
+  rememberFolders() {
+    for (const [id, key] of [["layer-folder-bases", "gnd_folder_bases"],
+                             ["layer-folder-typhon", "gnd_folder_typhon"]]) {
+      const box = el(id);
+      if (!box || box._wired) continue;
+      const saved = localStorage.getItem(key);
+      // Base maps default closed and Typhon default open: a ground is chosen
+      // once and the hazards are switched constantly.
+      if (saved !== null) box.open = saved === "1";
+      box.addEventListener("toggle", () => {
+        try { localStorage.setItem(key, box.open ? "1" : "0"); }
+        catch (err) { /* private mode */ }
+      });
+      box._wired = true;
     }
   },
 
@@ -5329,9 +5550,21 @@ const MapBoard = {
     // drawing perfectly well, and that reason is the one an operator can
     // actually fix — so it is checked before the general cases.
     if (this.map.hasLayer(this.airquality)
-        && !rows.some(h => h.kind === "air_quality")
-        && (s.no_key || []).includes("airnow"))
-      return "🌫 Air quality needs an AirNow API key on this instance.";
+        && !rows.some(h => h.kind === "air_quality")) {
+      // Two providers, two halves of the world, and which key is missing
+      // decides which half is blank. Saying "needs a key" without saying
+      // which one puts an operator back where they started.
+      const missing = s.no_key || [];
+      if (missing.includes("airnow") && missing.includes("openaq"))
+        return "🌫 Air quality needs an AirNow API key (United States) or an "
+             + "OpenAQ API key (everywhere else) on this instance.";
+      if (missing.includes("airnow"))
+        return "🌫 Air quality in the United States needs an AirNow API key "
+             + "on this instance.";
+      if (missing.includes("openaq"))
+        return "🌫 Air quality outside the United States needs an OpenAQ API "
+             + "key on this instance.";
+    }
 
     // Anything on screen means the map is already answering. A caption saying
     // "no data right now" over three visible markers is worse than no caption
@@ -5356,31 +5589,70 @@ const MapBoard = {
     box.hidden = !text;
   },
 
-  _rememberOverlay(label, value) {
-    const o = this._overlays && this._overlays[label];
+  _rememberOverlay(kind, value) {
+    const o = this._overlays && this._overlays[kind];
     if (!o) return;
     try { localStorage.setItem(o.key, value); } catch (err) { /* private mode */ }
   },
 
+  /* Switch one kind on or off, from wherever the instruction came.
+
+     The parent checkbox drives the children through here rather than through
+     a path of its own, so remembering, the empty-state note and the fetch all
+     stay one piece of code no matter which control was pressed. */
+  setOverlay(kind, on) {
+    const o = this._overlays && this._overlays[kind];
+    if (!o || !this.map) return;
+    if (on) {
+      o.group.addTo(this.map);
+      this._hazKey = "";                  // it was off; nothing was fetched
+    } else {
+      this.map.removeLayer(o.group);
+      // The kind set is part of the request now, so switching one off means
+      // the next fetch asks for less — which the guard would otherwise skip.
+      this._hazKey = "";
+    }
+    this._rememberOverlay(kind, on ? "1" : "0");
+  },
+
+  /* Which kinds are currently drawn, in a stable order so it can be a key. */
+  activeKinds() {
+    if (!this.map) return [];
+    return TYPHON_KINDS
+      .filter(e => this._overlays[e.kind]
+                && this.map.hasLayer(this._overlays[e.kind].group))
+      .map(e => e.kind);
+  },
+
   async refreshHazards() {
     if (!this.map || !this.hazards) return;
-    // One request serves both layers — the rows say which kind they are, and
-    // asking twice for the same rectangle to sort them out here would be a
-    // second round trip for an if-statement.
-    const wanted = Object.values(this._overlays || {})
-      .filter(o => this.map.hasLayer(o.group));
-    if (!wanted.length) return;                     // both off; nobody is looking
+    // One request serves every layer that is on. The rows say which kind they
+    // are and the request names the kinds it wants, so a reader watching
+    // earthquakes alone is not shipped every air-quality station in view —
+    // and asking once per layer would be eight round trips for a filter the
+    // server applies in one.
+    const kinds = this.activeKinds();
+    if (!kinds.length) return;                      // all off; nobody is looking
     const b = this.map.getBounds();
     const round = (n) => Math.round(n * 20) / 20;   // ~5km, finer than any pan
     const bbox = [round(b.getWest()), round(b.getSouth()),
                   round(b.getEast()), round(b.getNorth())].join(",");
-    if (bbox === this._hazKey) return;
-    this._hazKey = bbox;
+    // Shapes only when one would be visible. Below TYPHON_SHAPE_ZOOM a fire
+    // perimeter is smaller than the dot drawn on top of it, so asking for it
+    // is pure payload. The flag is part of the key: crossing the threshold has
+    // to re-fetch, and this guard exists precisely to stop re-fetching, so
+    // leaving it out would mean zooming in and never getting an outline.
+    const wantShapes = this.map.getZoom() >= TYPHON_SHAPE_ZOOM;
+    // The kind set belongs in the key too: switching a layer on has to fetch
+    // the rows it needs even though the rectangle has not moved.
+    const key = `${bbox}|${kinds.join(",")}${wantShapes ? "|g" : ""}`;
+    if (key === this._hazKey) return;
+    this._hazKey = key;
     const generation = ++this._hazSeq;
 
     let rows;
     try {
-      rows = await API.hazards(bbox, TYPHON_MAX);
+      rows = await API.hazards(bbox, TYPHON_MAX, wantShapes, kinds);
     } catch (e) {
       this._hazKey = "";                            // let the next pan retry
       return;
@@ -5400,15 +5672,28 @@ const MapBoard = {
      until they panned. So the guard keeps doing only the job it was written
      for, and this redraws from what is already in hand. */
   drawHazards() {
-    if (!this.hazards || !this._hazRows) return;
-    this.hazards.clearLayers();
-    this.airquality.clearLayers();
+    if (!this._overlays || !this._hazRows) return;
+    for (const o of Object.values(this._overlays)) o.group.clearLayers();
     for (const h of this._hazRows) {
-      const group = h.kind === "air_quality" ? this.airquality : this.hazards;
+      const owner = this._overlays[h.kind];
+      if (!owner) continue;               // a kind this build has no layer for
+      const group = owner.group;
       const near = fireRingHit(h);
+      const style = hazardStyle(h);
+      // The shape first, so the dot lands on top of it. Two of them, and they
+      // are emphatically not interchangeable: a perimeter is a measured
+      // outline and gets a solid stroke with a fill, while the acreage circle
+      // is arithmetic on a reported number and is drawn dashed and hollow so
+      // it can never be mistaken for one. Whichever is drawn, the popup says
+      // which it is — see hazardPopup.
+      const shape = hazardShape(h, style.color);
+      if (shape) shape.bindPopup(hazardPopup(h, near)).addTo(group);
+      const glyph = near ? null : hazardIcon(h.kind, style.color);
       const marker = near
-        ? L.marker([h.lat, h.lon], { icon: fireFlame(hazardStyle(h).color) })
-        : L.circleMarker([h.lat, h.lon], hazardStyle(h));
+        ? L.marker([h.lat, h.lon], { icon: fireFlame(style.color) })
+        : glyph
+          ? L.marker([h.lat, h.lon], { icon: glyph })
+          : L.circleMarker([h.lat, h.lon], style);
       marker.bindPopup(hazardPopup(h, near)).addTo(group);
     }
     this.renderHazardNote();
