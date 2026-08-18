@@ -140,10 +140,11 @@ button { font: inherit; }
   vertical-align: 1px;
 }
 
-/* Ends with the two that are about you: settings, then the account itself in
-   the corner, which is where every application has taught people to look. */
+/* Ends with help, then the account itself in the corner, which is where every
+   application has taught people to look — and where Settings now opens from,
+   since both are about the same person. */
 .topbar-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
-.topbar-actions #btn-settings,
+.topbar-actions #btn-help,
 .topbar-actions #btn-profile { font-size: 16px; line-height: 1; padding: 6px 10px; }
 
 /* The Pantheons board.

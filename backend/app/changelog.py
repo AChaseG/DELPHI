@@ -13,6 +13,39 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-10-01",
+        "title": "Help moves to the corner, and community sensors fill the gaps",
+        "items": [
+            "❓ <b>Help is now one press away.</b> The <b>❓</b> button in the "
+            "top-right corner opens <b>How to &amp; FAQ</b> directly — it sits "
+            "where the gear used to be. You need help most on the days you "
+            "have not built up any habits yet, and a corner slot should hold "
+            "that rather than a panel you open on purpose twice a month.",
+            "👤 <b>Settings opens from your account button</b>, the <b>👤</b> "
+            "in the corner. Both were about you, and two buttons for one "
+            "subject was one too many.",
+            "🚪 <b>Signing out moved inside</b>, to <b>👤 → Account security → "
+            "Sign out</b>, directly above <b>Sign out everywhere</b>. It used "
+            "to be the single thing the corner button did, which put a "
+            "destructive action one stray click away; now it needs a "
+            "deliberate step, and both ways of signing out sit together where "
+            "you would look for either.",
+            "🟣 <b>PurpleAir community sensors are supported</b>, if the "
+            "operator supplies a key. These are the sensors that make the "
+            "EPA's own Fire and Smoke Map so much denser than ours, and they "
+            "fill in the wide gaps between regulatory monitors — which is "
+            "exactly where smoke goes unmeasured.",
+            "🧪 They are treated with care, because a consumer sensor is not a "
+            "reference monitor: readings get the <b>EPA's published humidity "
+            "correction</b> rather than being shown raw, sensors the network "
+            "itself doubts and sensors indoors are dropped, and the popup "
+            "shows the raw figure beside the corrected one so you can see the "
+            "working. <b>Where a regulatory monitor is in range, it always "
+            "wins</b> — the community network's value is coverage between the "
+            "good instruments, not a rival reading beside one.",
+        ],
+    },
+    {
         "date": "2026-09-30",
         "title": "Typhon covers the world, and folds up when you want the map",
         "items": [

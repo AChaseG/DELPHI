@@ -124,10 +124,47 @@ def test_the_pantheons_tab_stays_lit_inside_one():
 
 # ---------- the corner ----------
 
-def test_the_header_ends_with_settings_then_the_account():
+def test_the_header_ends_with_help_then_the_account():
+    """The corner's two slots, and neither holds what it used to.
+
+    ❓ took the gear's place because help is what somebody needs on the days
+    they have built up no habits yet, while Settings is wanted rarely and on
+    purpose — a slot costing one click should hold the first. Settings then
+    moved onto 👤, because both are about the same person and two corner
+    buttons for one subject was one too many.
+    """
     actions = HEADER[HEADER.index('class="topbar-actions"'):]
     ids = re.findall(r'id="([\w-]+)"', actions)
-    assert ids[-2:] == ["btn-settings", "btn-profile"], ids
+    assert ids[-2:] == ["btn-help", "btn-profile"], ids
+    assert "btn-settings" not in ids, "the gear is gone, not renamed in place"
+
+
+def test_the_account_button_opens_settings_rather_than_signing_out():
+    """It used to sign out on one click in a corner. Sign-out is destructive
+    and now sits behind a deliberate step, inside the panel this opens."""
+    src = APP[APP.index("function wireAuth"):]
+    src = src[:src.index("\n}\n")]
+    assert 'el("btn-profile").onclick = () => { el("settings-panel").hidden = false; };' in src
+    assert "Session.clear()" not in src, (
+        "signing out moved to signOutThisBrowser, called from the Settings row")
+
+
+def test_signing_out_kept_a_home_and_kept_its_confirm():
+    src = APP[APP.index("async function signOutThisBrowser"):]
+    src = src[:src.index("\n}\n")]
+    assert "confirm(" in src
+    assert "Store.clear()" in src, (
+        "the cached news is a reading history on a disk that may not be this "
+        "person's alone")
+    assert 'el("btn-signout").onclick = signOutThisBrowser;' in APP
+    assert 'id="btn-signout"' in HEADER or 'id="btn-signout"' in HTML
+
+
+def test_no_gear_survives_in_the_live_chrome():
+    """Every "⚙ Settings" in the help copy pointed at a glyph that is no longer
+    anywhere on screen. The changelog is dated history and keeps its own."""
+    assert "⚙" not in HTML
+    assert "⚙" not in APP
 
 
 def test_search_and_create_kept_a_home():

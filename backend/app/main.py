@@ -3326,6 +3326,11 @@ def air_readings(db: Session, locs: list[FavoriteLocation]) -> dict[int, dict]:
                 # a concentration. It drives one clause of one sentence, and
                 # that clause is the difference between a fact and an estimate.
                 "estimated": bool((rows[0].raw or {}).get("estimated")),
+                # A consumer sensor, corrected but still a consumer sensor.
+                # Distinct from `estimated`, which only says the index was
+                # derived rather than published — this says the instrument
+                # itself is not a regulatory one.
+                "low_cost": bool((rows[0].raw or {}).get("low_cost")),
                 "pollutant": str((rows[0].raw or {}).get("parameter") or ""),
                 "value": (rows[0].raw or {}).get("value"),
                 "unit": str((rows[0].raw or {}).get("unit") or ""),
@@ -3341,16 +3346,24 @@ def air_readings(db: Session, locs: list[FavoriteLocation]) -> dict[int, dict]:
             if nearest_km is None or km < nearest_km:
                 nearest, nearest_km = st, km
         if near:
-            # One provider's worth, chosen by whose station is closest, so a
-            # place on a border reports the network it actually sits in rather
-            # than a blend of two scales.
-            best = min(near, key=lambda st: haversine_km(loc.lat, loc.lon,
-                                                         st.lat, st.lon))
+            # One provider's worth. Which one is decided by the class of
+            # instrument first and the distance second: a reference monitor two
+            # kilometres away is a better answer than a consumer sensor at the
+            # end of the road, and averaging the two would produce a figure
+            # neither of them made. Between two monitors of the same class the
+            # nearer wins, so a place on a border still reports the network it
+            # actually sits in.
+            best = min(near, key=lambda st: (
+                hazards.AIR_PROVIDER_RANK.get(st.provider, 9),
+                haversine_km(loc.lat, loc.lon, st.lat, st.lon)))
             same = [st for st in near if st.provider == best.provider]
             out[loc.id] = _reading(same, best.provider, basis="average",
                                    stations=len(same), within_km=AIR_NEAR_KM)
         elif nearest is not None and nearest_km is not None \
                 and nearest_km <= AIR_MAX_KM:
+            # Nothing close enough to choose between, so the nearest anything
+            # speaks — a corrected consumer reading forty kilometres away is
+            # still more use than a blank, and it says what it is.
             out[loc.id] = _reading([nearest], nearest.provider, basis="nearest",
                                    stations=1, station=nearest.name,
                                    distance_km=round(nearest_km, 1))

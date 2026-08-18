@@ -910,10 +910,19 @@ async function runOnboarding() {
 }
 
 function wireSettings() {
-  el("btn-settings").onclick = () => { el("settings-panel").hidden = false; };
+  // The corner's two buttons, and neither is the one it used to be. ❓ took the
+  // gear's slot because help is what a reader needs on the days they have no
+  // habits yet, and Settings is what they need rarely and on purpose; and
+  // Settings moved onto 👤 because both are about the account and two buttons
+  // for one subject was one too many.
+  el("btn-help").onclick = () => openHelp("howto");
   el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
   el("btn-open-faq").onclick = () => openHelp("howto");
   el("btn-open-trouble").onclick = () => openHelp("trouble");
+  // Signing out was the whole of what 👤 did. That button now opens Settings,
+  // so the action itself moves inside — beside "sign out everywhere", which is
+  // where somebody looking for either one will look for both.
+  el("btn-signout").onclick = signOutThisBrowser;
   wireChangePassword();
   el("btn-signout-all").onclick = async () => {
     if (!confirm("Sign out of every device?\n\nEvery signed-in browser and phone, "
@@ -1012,25 +1021,37 @@ function wireSettings() {
   };
 }
 
+/* End this browser's session, from wherever it was asked for.
+
+   Lifted out of the 👤 handler when that button became the way into Settings.
+   The confirm stays: it is one click in a corner, and the cost of an accidental
+   one is re-authenticating and losing the cached news. */
+async function signOutThisBrowser() {
+  if (!confirm(`Signed in as ${Session.username()}. Sign out of this browser?`))
+    return;
+  // The cached news is a reading history sitting on a disk that may not be
+  // this person's alone. Signing out erases it.
+  try { await Store.clear(); } catch (e) { /* nothing to clear */ }
+  Session.clear();
+  location.reload();
+}
+
 function wireAuth() {
-  // The button is the 👤 glyph alone now, in the corner: the name goes in the
+  // The button is the 👤 glyph alone, in the corner: the name goes in the
   // tooltip rather than the label, because a username of any length would push
   // everything else along the header. (It used to set a `.rail-label` span,
   // which the rail carried and nothing does now — that threw, and the throw
   // took the rest of the header's wiring with it.)
+  //
+  // It opens Settings now rather than signing out. Sign-out is one row inside,
+  // under Account security — a destructive action behind a deliberate step,
+  // instead of the single thing a corner button did.
   const who = Session.username() || "account";
   el("btn-profile").title = who === "account"
     ? "Sign in — your feeds and alerts are private to your account"
-    : `Signed in as ${who} — click to sign out`;
-  el("btn-profile").setAttribute("aria-label", `Account: ${who}`);
-  el("btn-profile").onclick = async () => {
-    if (!confirm(`Signed in as ${Session.username()}. Sign out?`)) return;
-    // The cached news is a reading history sitting on a disk that may not be
-    // this person's alone. Signing out erases it.
-    try { await Store.clear(); } catch (e) { /* nothing to clear */ }
-    Session.clear();
-    location.reload();
-  };
+    : `Signed in as ${who} — your account and settings`;
+  el("btn-profile").setAttribute("aria-label", `Account and settings: ${who}`);
+  el("btn-profile").onclick = () => { el("settings-panel").hidden = false; };
   feedback(el("btn-profile"));
 }
 
@@ -1345,6 +1366,8 @@ function renderHazardStatus() {
   const missing = h.no_key || [];
   if (missing.includes("airnow")) bits.push("US air quality needs AIRNOW_API_KEY");
   if (missing.includes("openaq")) bits.push("world air quality needs OPENAQ_API_KEY");
+  if (missing.includes("purpleair"))
+    bits.push("community sensors need PURPLEAIR_API_KEY");
   box.textContent = bits.join(" · ");
 }
 
@@ -2162,7 +2185,7 @@ function renderFeedItems(body, feed, allItems) {
     body.replaceChildren(feedEmpty(
       `All ${allItems.length} matching event${plural(allItems.length)} have had no `
       + "update recently, and this feed hides those (🕰). Raise or clear "
-      + "“Hide events with no updates for” in ⚙ Settings to see them."));
+      + "“Hide events with no updates for” in 👤 Settings to see them."));
     return;
   }
   if (!items.length) {
@@ -5138,13 +5161,19 @@ function airLine(air) {
       + `within ${fmtKm(air.within_km)}`
     : `nearest station, ${fmtKm(air.distance_km, 1)} away`;
   text.textContent = `${head} — ${basis}`
-    + (air.estimated ? " (estimated from one recent reading, not an "
-                     + "official AQI)" : "");
+    + (air.low_cost
+        ? " (community sensor, EPA-corrected — not an official AQI)"
+        : air.estimated
+          ? " (estimated from one recent reading, not an official AQI)"
+          : "");
   wrap.append(dot, text);
   wrap.title = (air.basis === "average"
     ? "Averaged from every monitor close enough to speak for this place"
     : `Reported by ${air.station || "the nearest monitor"}`)
-    + (air.estimated ? " · via OpenAQ, from participating agencies" : "");
+    + (air.low_cost
+        ? " · a PurpleAir community sensor, with the EPA's humidity correction "
+          + "applied. Used only where no regulatory monitor is in range."
+        : air.estimated ? " · via OpenAQ, from participating agencies" : "");
   return wrap;
 }
 
@@ -5188,8 +5217,15 @@ function hazardPopup(h, near) {
       ? `Worst pollutant: ${raw.parameter} ${raw.value} ${raw.unit || ""}`.trim()
       : `Worst pollutant: ${raw.parameter}`);
     if (raw.agency) facts.push(raw.agency);
-    if (raw.estimated) facts.push("Via OpenAQ. Not an official AQI: the EPA "
-      + "scale is defined over a 24-hour average and this is one reading.");
+    if (raw.low_cost) {
+      facts.push(`Raw sensor reading ${raw.raw_value} µg/m³ at ${raw.humidity}% `
+                 + "humidity, corrected using the EPA's published equation.");
+      facts.push("A community sensor, not a regulatory monitor. Useful for "
+                 + "seeing where smoke is; not an official AQI.");
+    } else if (raw.estimated) {
+      facts.push("Via OpenAQ. Not an official AQI: the EPA scale is defined "
+                 + "over a 24-hour average and this is one reading.");
+    }
     if (raw.observed_utc) facts.push(`Observed ${raw.observed_utc} UTC`);
   } else if (h.kind === "earthquake") {
     if (raw.magnitude != null) facts.push(`Magnitude ${raw.magnitude}`);
@@ -5555,6 +5591,9 @@ const MapBoard = {
       // decides which half is blank. Saying "needs a key" without saying
       // which one puts an operator back where they started.
       const missing = s.no_key || [];
+      // PurpleAir is deliberately not named here. It adds density where the
+      // regulatory networks are thin; its absence is not a hole a reader can
+      // see, and listing every optional key would bury the two that matter.
       if (missing.includes("airnow") && missing.includes("openaq"))
         return "🌫 Air quality needs an AirNow API key (United States) or an "
              + "OpenAQ API key (everywhere else) on this instance.";
@@ -6207,7 +6246,7 @@ function feedback(btn, label = "") {
       toast(`“${buttonName(btn, text)}” didn't go through`,
             (e && e.message)
             || "The browser reported no reason. Reload and try again; if it "
-               + "keeps happening, note what you clicked and check ⚙ Settings "
+               + "keeps happening, note what you clicked and check 👤 Settings "
                + "→ 🛠 Troubleshooting.");
     } finally {
       // The handler often re-renders the list this button lives in, which

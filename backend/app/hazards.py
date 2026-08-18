@@ -900,6 +900,204 @@ async def fetch_openaq(client: httpx.AsyncClient) -> list[dict] | None:
 
 
 
+# ---------- PurpleAir: the density the Fire and Smoke Map has ----------
+#
+# The comment above AirNow explains at length why our air layer is thinner than
+# the EPA's own Fire and Smoke Map: that map draws tens of thousands of
+# PurpleAir consumer sensors alongside the regulatory monitors, and no argument
+# to airnowapi.org will ever return one. This is the other half of that
+# sentence — PurpleAir's own API, which needs its own key.
+#
+# **These are not regulatory monitors and are never presented as though they
+# were.** A PurpleAir unit is a light-scattering sensor on somebody's fence. It
+# reads high in humidity, it can be pointed at a barbecue, and its two channels
+# can disagree. Three things follow, and all three are load-bearing:
+#
+#   · the EPA's published correction is applied rather than the raw number,
+#     because the raw number is wrong in a known direction;
+#   · sensors the network itself doubts, and sensors indoors, are dropped;
+#   · every row is flagged `estimated`, exactly as OpenAQ's are, so the reading
+#     shown at a watched place says what it rests on.
+#
+# And where a regulatory monitor is also in range, it wins — see
+# main.air_readings. The crowd's value is *coverage between* the good
+# instruments, not a second opinion next to one.
+
+PURPLEAIR_URL = "https://api.purpleair.com/v1/sensors"
+# Where to look. The whole world is available and would be about thirty
+# thousand sensors, most of them clustered in a few countries — enough to
+# crowd every other hazard out of a table this size. The default is North
+# America, which is where the density exists and where the smoke question gets
+# asked; an operator elsewhere sets their own rectangle.
+PURPLEAIR_BBOX = os.environ.get("NEWS_PURPLEAIR_BBOX", "-170,15,-50,72")
+# The network's own confidence in a sensor's reading, 0-100, mostly a measure
+# of whether its two channels agree. EPA excludes disagreeing sensors from the
+# Fire and Smoke Map and so does this.
+PURPLEAIR_MIN_CONFIDENCE = int(os.environ.get("NEWS_PURPLEAIR_MIN_CONF", "70"))
+# A sensor that has not reported for an hour is not telling you about now.
+PURPLEAIR_MAX_AGE_S = int(os.environ.get("NEWS_PURPLEAIR_MAX_AGE_S", "3600"))
+# The cap that keeps this from eating the table. Kept by worst reading, because
+# the entire reason anybody turns on a smoke layer is to find the smoke.
+PURPLEAIR_MAX = int(os.environ.get("NEWS_PURPLEAIR_MAX", "3000"))
+PURPLEAIR_FIELDS = ("name,latitude,longitude,pm2.5_cf_1,humidity,confidence,"
+                    "location_type,last_seen")
+
+
+def purpleair_correct(pm_cf1: float, humidity: float) -> float:
+    """The EPA's US-wide correction for PurpleAir PM2.5.
+
+    A light-scattering sensor over-reads, and it over-reads more in damp air.
+    The correction is Barkjohn's, as adopted for the Fire and Smoke Map, in its
+    extended piecewise form so that heavy smoke is handled rather than
+    extrapolated:
+
+        PA < 30            0.524·PA − 0.0862·RH + 5.75
+        30 <= PA < 50      blended between the two slopes
+        50 <= PA < 210     0.786·PA − 0.0862·RH + 5.75
+        210 <= PA < 260    blended into the high-concentration curve
+        PA >= 260          0.69·PA + 8.84e-4·PA² + 2.97
+
+    Publishing the raw number instead would put a clear day into Moderate on
+    nothing but the morning's humidity, which is the single most common way
+    consumer air data misleads people.
+    """
+    pa = max(0.0, float(pm_cf1))
+    rh = max(0.0, min(100.0, float(humidity or 0.0)))
+    if pa < 30:
+        out = 0.524 * pa - 0.0862 * rh + 5.75
+    elif pa < 50:
+        blend = pa / 20.0 - 1.5
+        out = ((0.786 * blend + 0.524 * (1 - blend)) * pa
+               - 0.0862 * rh * blend - 0.0862 * rh * (1 - blend) + 5.75)
+    elif pa < 210:
+        out = 0.786 * pa - 0.0862 * rh + 5.75
+    elif pa < 260:
+        blend = pa / 50.0 - 4.2
+        out = ((0.69 * blend + 0.786 * (1 - blend)) * pa
+               - 0.0862 * rh * (1 - blend) + 2.966 * blend
+               + 5.75 * (1 - blend) + 8.84e-4 * blend * pa ** 2)
+    else:
+        out = 0.69 * pa + 8.84e-4 * pa ** 2 + 2.97
+    return max(0.0, out)
+
+
+def normalize_purpleair(payload) -> list[dict] | None:
+    """Sensors out of PurpleAir's column-oriented answer.
+
+    The response is `{"fields": [...], "data": [[...], ...]}` — a header row and
+    then bare arrays, so the column order is discovered from `fields` rather
+    than assumed. Assuming it is how a provider reordering its output turns
+    latitude into humidity without anything raising.
+    """
+    if not isinstance(payload, dict):
+        return None
+    fields, data = payload.get("fields"), payload.get("data")
+    if not isinstance(fields, list) or not isinstance(data, list):
+        return None
+    index = {str(name): position for position, name in enumerate(fields)}
+    needed = ("latitude", "longitude", "pm2.5_cf_1", "confidence", "sensor_index")
+    if not all(name in index for name in needed if name != "sensor_index"):
+        return None
+
+    def value(row, name, fallback=None):
+        position = index.get(name)
+        if position is None or position >= len(row):
+            return fallback
+        return row[position]
+
+    rows = []
+    for row in data:
+        if not isinstance(row, list):
+            continue
+        lat, lon = value(row, "latitude"), value(row, "longitude")
+        pm = value(row, "pm2.5_cf_1")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        if not isinstance(pm, (int, float)) or isinstance(pm, bool) or pm < 0:
+            continue
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            continue
+        confidence = value(row, "confidence", 100)
+        if isinstance(confidence, (int, float)) and confidence < PURPLEAIR_MIN_CONFIDENCE:
+            continue                       # the network does not trust it either
+        if value(row, "location_type", 0) == 1:
+            continue                       # indoors: nothing to do with the air outside
+        humidity = value(row, "humidity", 0) or 0
+        corrected = purpleair_correct(float(pm), float(humidity))
+        aqi = concentration_to_aqi("pm25", corrected, "ug/m3")
+        if aqi is None:
+            continue
+        sensor = value(row, "sensor_index")
+        key = str(sensor if sensor is not None
+                  else f"{round(float(lat), 5)},{round(float(lon), 5)}")
+        rows.append({
+            "kind": KIND_AIR,
+            "provider": "purpleair",
+            "external_id": f"purpleair:{key}"[:120],
+            "name": str(value(row, "name", "") or "").strip()[:200] or "PurpleAir sensor",
+            "lat": float(lat), "lon": float(lon), "country": "",
+            "severity": _AQI_SEVERITY[aqi_category(aqi)],
+            "started_at": None,
+            "raw": {
+                "aqi": int(aqi),
+                "category": aqi_label(aqi),
+                "parameter": "PM2.5",
+                "value": round(corrected, 1),
+                "raw_value": round(float(pm), 1),
+                "unit": "µg/m³",
+                "humidity": round(float(humidity)),
+                "confidence": confidence if isinstance(confidence, (int, float)) else None,
+                "agency": "PurpleAir (community sensor)",
+                # Same flag OpenAQ sets, and it means more here: this is a
+                # corrected reading from a consumer sensor, not an index any
+                # agency stands behind.
+                "estimated": True,
+                "low_cost": True,
+            },
+        })
+    # Worst first, then cut. The whole reason for a smoke layer is the smoke.
+    rows.sort(key=lambda r: r["raw"]["aqi"], reverse=True)
+    return rows[:PURPLEAIR_MAX]
+
+
+async def fetch_purpleair(client: httpx.AsyncClient) -> list[dict] | None:
+    key = os.environ.get("PURPLEAIR_API_KEY", "").strip()
+    if not key:
+        return None                        # not configured: no layer, no noise
+    try:
+        west, south, east, north = (float(p) for p in PURPLEAIR_BBOX.split(","))
+    except ValueError:
+        log.warning("purpleair: NEWS_PURPLEAIR_BBOX is not west,south,east,north")
+        return None
+    params = {
+        "fields": PURPLEAIR_FIELDS,
+        "location_type": "0",              # outdoors only
+        "max_age": str(PURPLEAIR_MAX_AGE_S),
+        "nwlng": str(west), "nwlat": str(north),
+        "selng": str(east), "selat": str(south),
+    }
+    try:
+        resp = await client.get(PURPLEAIR_URL, params=params,
+                                headers={"X-API-Key": key})
+    except (httpx.HTTPError, safefetch.BlockedURL) as exc:
+        log.warning("purpleair: could not reach the sensor API: %s", exc)
+        return None
+    if resp.status_code != 200:
+        log.warning("purpleair: HTTP %s%s", resp.status_code,
+                    " — check PURPLEAIR_API_KEY is a *read* key"
+                    if resp.status_code in (401, 403) else "")
+        return None
+    try:
+        rows = normalize_purpleair(resp.json())
+    except ValueError as exc:
+        log.warning("purpleair: response was not JSON: %s", exc)
+        return None
+    if rows is None:
+        log.warning("purpleair: response was not a fields/data table")
+    return rows
+
+
+
 # ---------- the rest of what makes a place dangerous ----------
 #
 # Fires and air were the two Typhon started with, and they are two of maybe
@@ -1281,8 +1479,8 @@ async def fetch_nws(client: httpx.AsyncClient) -> list[dict] | None:
 
 
 PROVIDERS = {"wfigs": fetch_wfigs, "airnow": fetch_airnow,
-             "openaq": fetch_openaq, "gdacs": fetch_gdacs,
-             "usgs": fetch_usgs, "nws": fetch_nws}
+             "openaq": fetch_openaq, "purpleair": fetch_purpleair,
+             "gdacs": fetch_gdacs, "usgs": fetch_usgs, "nws": fetch_nws}
 
 
 # ---------- the poll ----------
@@ -1638,7 +1836,27 @@ def _missing_keys() -> set[str]:
         missing.add("airnow")
     if not os.environ.get("OPENAQ_API_KEY", "").strip():
         missing.add("openaq")
+    if not os.environ.get("PURPLEAIR_API_KEY", "").strip():
+        missing.add("purpleair")
     return missing
+
+
+# What class of instrument each air provider represents, best first. Two tiers,
+# and only two, because only one distinction here is real: AirNow and OpenAQ
+# both carry **reference-grade monitors** run by agencies, while PurpleAir
+# carries **consumer sensors** on people's fences.
+#
+# Deliberately *not* a ranking of AirNow against OpenAQ. They are the same tier
+# and they never meet anyway — AirNow owns the United States and OpenAQ owns
+# everywhere else — so ordering them would only decide border cases, and there
+# the right answer is the monitor that is actually nearer rather than the
+# aggregator this project happens to have listed first.
+#
+# Used when several are in range of one watched place, and then to pick *which*
+# rather than to blend: two scales averaged together is a number neither of
+# them made. The community network's value is coverage *between* the good
+# instruments, not a rival reading beside one.
+AIR_PROVIDER_RANK = {"airnow": 0, "openaq": 0, "purpleair": 1}
 
 
 async def poll(db: Session) -> dict:

@@ -71,10 +71,13 @@ def test_a_missing_key_is_named_not_swallowed(monkeypatch):
     would not tell them which half."""
     monkeypatch.delenv("AIRNOW_API_KEY", raising=False)
     monkeypatch.delenv("OPENAQ_API_KEY", raising=False)
-    assert set(hazards.idle_status("x")["no_key"]) == {"airnow", "openaq"}
+    monkeypatch.delenv("PURPLEAIR_API_KEY", raising=False)
+    assert set(hazards.idle_status("x")["no_key"]) == {"airnow", "openaq",
+                                                       "purpleair"}
     monkeypatch.setenv("AIRNOW_API_KEY", "sk-whatever")
-    assert hazards.idle_status("x")["no_key"] == ["openaq"]
+    assert "airnow" not in hazards.idle_status("x")["no_key"]
     monkeypatch.setenv("OPENAQ_API_KEY", "sk-whatever")
+    monkeypatch.setenv("PURPLEAIR_API_KEY", "sk-whatever")
     assert hazards.idle_status("x")["no_key"] == []
 
 
