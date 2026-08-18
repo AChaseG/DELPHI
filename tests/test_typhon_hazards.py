@@ -122,8 +122,12 @@ def _run(monkeypatch, db, answers):
     async def fake(name):
         return answers[name]
 
+    # *args because place-aware providers are handed the watched-place boxes as
+    # a second argument, and a fake that refused them would fail as an
+    # exception rather than as an answer — which is a different thing entirely
+    # and would quietly turn a cap test into a no-op.
     monkeypatch.setattr(hazards, "PROVIDERS",
-                        {name: (lambda _c, n=name: fake(n)) for name in answers})
+                        {name: (lambda *_a, n=name: fake(n)) for name in answers})
     import asyncio
     return asyncio.run(hazards.poll(db))
 

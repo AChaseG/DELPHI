@@ -133,120 +133,141 @@ def test_the_reading_carries_the_raw_number_alongside_the_corrected_one():
     assert raw["humidity"] == 60
 
 
-def test_thinning_is_geographic_not_national(monkeypatch):
-    """Reported from a live instance, with two screenshots side by side.
+def test_only_the_places_somebody_watches_are_asked_about():
+    """The design this arrived at after two failed attempts at thinning.
 
-    AirNow's Fire and Smoke Map showed about thirty sensors along the twenty
-    miles of the Columbia around Wenatchee. Delphi showed three. The cause was
-    this cap: it sorted every sensor in North America by AQI and kept the worst
-    three thousand of roughly twenty thousand, so about eighty-five percent
-    were discarded — and *which* ones survived depended on where the smoke was
-    in the country that afternoon rather than on where the reader was looking.
+    PurpleAir has roughly twenty thousand active outdoor sensors in North
+    America — far more than this table should hold — so the first two versions
+    fetched them all and threw most away. Every rule for choosing which to keep
+    was wrong in some direction; the worst of them cut a stretch of river with
+    thirty sensors on it down to three.
 
-    "Keep the worst" is the right answer to a question nobody asks. Nobody
-    reads this map nationally; they read it over one town, and what that town
-    needs is its own sensors.
+    The question the thinning kept failing to answer was which sensors matter,
+    and the answer was in the feature all along. A PurpleAir reading is used in
+    exactly one place: air_readings, when no reference monitor is within five
+    kilometres of a saved location. So the fetch is a small box around each
+    saved location and nothing else — which makes the volume problem disappear
+    rather than requiring a rule to manage it.
     """
-    # Two towns, one smoky and one clear, at the density PurpleAir actually has
-    # — and a cap that binds, which is the condition the live instance was in.
-    # Without the cap biting, a global sort and a geographic one look alike and
-    # this test would pass under the bug it exists to catch.
-    monkeypatch.setattr(hazards, "PURPLEAIR_MAX", 20)
-    smoky = [_sensor(i, lat=34.05 + i * 0.02, lon=-118.2, pm=300.0)
-             for i in range(20)]
-    clear = [_sensor(100 + i, lat=47.4 + i * 0.02, lon=-120.3, pm=15.0)
-             for i in range(20)]
-    kept = hazards.normalize_purpleair(_payload(smoky + clear))
-    here = [r for r in kept if r["lat"] > 40]
-    # Not a fixed fraction — the grid coarsens until the total fits, so the
-    # clear town keeps roughly its share rather than all of it. What matters is
-    # that its share is not zero, which is what the national sort gave it.
-    assert len(here) >= 5, (
-        "the clear town keeps its coverage even while another state burns; "
-        f"kept {len(here)} of 20 there")
+    import inspect
+    src = inspect.getsource(hazards.fetch_purpleair)
+    assert "boxes" in inspect.signature(hazards.fetch_purpleair).parameters
+    assert "purpleair" in hazards.PLACE_AWARE
 
 
-def test_a_dense_street_collapses_to_its_worst_sensor():
-    """Three sensors on one block were never three pieces of information, and
-    the one worth keeping is the one that would raise the alarm."""
-    stacked = [_sensor(i, lat=34.05 + i * 0.0005, lon=-118.24, pm=20.0 * (i + 1))
-               for i in range(8)]
-    kept = hazards.normalize_purpleair(_payload(stacked))
-    assert len(kept) < len(stacked)
-    assert max(r["raw"]["raw_value"] for r in kept) == 160.0
+def test_watched_places_become_boxes(db):
+    from backend.app.models import FavoriteLocation
+    for lat, lon in ((47.6, -122.3), (34.05, -118.24)):
+        db.add(FavoriteLocation(user_id="u", name=f"{lat}", lat=lat, lon=lon))
+    db.commit()
+    boxes = hazards.air_watch_boxes(db)
+    assert len(boxes) == 2
+    assert (47.6, -122.3) in boxes
 
 
-def test_thinning_never_hides_the_smoke():
-    """The guarantee that makes geographic thinning safe: within a cell the
-    worst reading wins, so the sensor that would have raised the alarm is
-    exactly the one kept."""
-    rows = [{"lat": 40.0, "lon": -100.0, "raw": {"aqi": 20}},
-            {"lat": 40.001, "lon": -100.001, "raw": {"aqi": 300}},
-            {"lat": 40.002, "lon": -100.002, "raw": {"aqi": 55}}]
-    kept = hazards._thin_by_grid(rows, 0.015, 100)
-    assert len(kept) == 1
-    assert kept[0]["raw"]["aqi"] == 300
+def test_the_same_town_saved_twice_costs_one_request(db):
+    """Delphi is multi-user. Several people watching one city must not become
+    several calls every fifteen minutes."""
+    from backend.app.models import FavoriteLocation
+    for user in ("a", "b", "c"):
+        db.add(FavoriteLocation(user_id=user, name="Seattle",
+                                lat=47.6062, lon=-122.3321))
+    db.add(FavoriteLocation(user_id="d", name="Nearby",
+                            lat=47.6071, lon=-122.3330))
+    db.commit()
+    assert len(hazards.air_watch_boxes(db)) == 1
 
 
-def test_sparse_country_is_not_thinned_at_all():
-    """The common case outside a city, and it must cost nothing there."""
-    rows = [{"lat": 40.0 + i * 0.5, "lon": -100.0, "raw": {"aqi": 30}}
-            for i in range(10)]
-    assert len(hazards._thin_by_grid(rows, 0.015, 100)) == 10
+def test_the_number_of_requests_has_a_ceiling(db, monkeypatch):
+    """A hundred saved locations must not become a hundred API calls."""
+    from backend.app.models import FavoriteLocation
+    monkeypatch.setattr(hazards, "PURPLEAIR_MAX_BOXES", 5)
+    for i in range(30):
+        db.add(FavoriteLocation(user_id="u", name=f"p{i}",
+                                lat=10.0 + i, lon=20.0 + i))
+    db.commit()
+    assert len(hazards.air_watch_boxes(db)) == 5
 
 
-def test_a_binding_cap_coarsens_the_grid_rather_than_picking_favourites():
-    """The original bug wearing a different hat, and the one I shipped twice.
-
-    Thinning geographically fixes nothing if the cap underneath it still falls
-    back to a global sort — the moment it binds, the worst sensors in the
-    country take every remaining slot and whole states go dark again. Doubling
-    the cell degrades the map the way a map should degrade: evenly, everywhere,
-    into a sparser version of itself.
-    """
-    smoky = [{"lat": 34.0 + i * 0.02, "lon": -118.2, "raw": {"aqi": 300}}
-             for i in range(20)]
-    clear = [{"lat": 47.0 + i * 0.02, "lon": -120.3, "raw": {"aqi": 15}}
-             for i in range(20)]
-    kept = hazards._thin_by_grid(smoky + clear, 0.015, 20)
-    assert len(kept) <= 20
-    assert len([r for r in kept if r["lat"] > 40]) >= 5, (
-        "the clear region must survive a binding cap, not be outbid by smoke "
-        "four hundred miles away")
+def test_the_covered_set_is_stable_between_polls(db, monkeypatch):
+    """If the ceiling is reached, the same places are covered each time. A
+    reading that appears and vanishes between polls is worse than one that is
+    consistently absent."""
+    from backend.app.models import FavoriteLocation
+    monkeypatch.setattr(hazards, "PURPLEAIR_MAX_BOXES", 3)
+    for i in range(12):
+        db.add(FavoriteLocation(user_id="u", name=f"p{i}",
+                                lat=10.0 + i, lon=20.0 + i))
+    db.commit()
+    assert hazards.air_watch_boxes(db) == hazards.air_watch_boxes(db)
 
 
-def test_coarsening_terminates(monkeypatch):
-    """A cap of one against sensors spread across a continent still has to
-    return, and return something."""
-    rows = [{"lat": 30.0 + i, "lon": -100.0 + i, "raw": {"aqi": 50 + i}}
-            for i in range(30)]
-    kept = hazards._thin_by_grid(rows, 0.015, 1)
-    assert len(kept) == 1
+def test_an_instance_with_no_saved_places_spends_nothing():
+    import asyncio
+    import os
+    os.environ["PURPLEAIR_API_KEY"] = "sk-yes"
+    try:
+        assert asyncio.run(hazards.fetch_purpleair(None, [])) is None
+    finally:
+        os.environ.pop("PURPLEAIR_API_KEY", None)
 
 
-def test_the_per_provider_cap_sits_above_what_any_provider_produces():
-    """Otherwise the backstop is a limit reached on every poll, which is how
-    the last one came to be silently deleting most of this provider's rows."""
-    assert hazards.MAX_PER_PROVIDER > hazards.PURPLEAIR_MAX
-    assert hazards.MAX_PER_PROVIDER > hazards.OPENAQ_MAX_PAGES * hazards.OPENAQ_PAGE_SIZE
+def test_one_failed_box_fails_the_whole_poll(monkeypatch):
+    """Returning the boxes that answered would let the prune treat every sensor
+    near the ones that did not as retired, and the next good poll would put
+    them all back — the same partial-data trap the OpenAQ pagination avoids,
+    arriving by a different road."""
+    import asyncio
+    monkeypatch.setenv("PURPLEAIR_API_KEY", "sk-yes")
+
+    calls = []
+
+    async def flaky(client, key, lat, lon):
+        calls.append((lat, lon))
+        return None if lat > 40 else [_sensor_row()]
+
+    monkeypatch.setattr(hazards, "_purpleair_box", flaky)
+    out = asyncio.run(hazards.fetch_purpleair(None, [(47.6, -122.3), (34.0, -118.2)]))
+    assert out is None
+
+
+def _sensor_row():
+    return {"kind": "air_quality", "provider": "purpleair",
+            "external_id": "purpleair:1", "name": "s", "lat": 34.0,
+            "lon": -118.2, "country": "", "severity": 25, "started_at": None,
+            "raw": {"aqi": 40, "low_cost": True}}
+
+
+def test_overlapping_boxes_do_not_duplicate_a_sensor(monkeypatch):
+    """Two watched places a few kilometres apart draw overlapping boxes, and
+    the same sensor arrives twice."""
+    import asyncio
+    monkeypatch.setenv("PURPLEAIR_API_KEY", "sk-yes")
+
+    async def same(client, key, lat, lon):
+        return [_sensor_row()]
+
+    monkeypatch.setattr(hazards, "_purpleair_box", same)
+    out = asyncio.run(hazards.fetch_purpleair(None, [(34.0, -118.2), (34.02, -118.22)]))
+    assert len(out) == 1
+
+
+def test_the_box_is_wider_than_the_averaging_radius():
+    """A sensor just inside the five-kilometre radius must not be missed by a
+    box drawn too tight around the place."""
+    from backend.app.main import AIR_NEAR_KM
+    assert hazards.PURPLEAIR_BOX_DEG * 111.0 > AIR_NEAR_KM
 
 
 def test_no_key_means_no_provider_not_a_failure(monkeypatch):
     import asyncio
     monkeypatch.delenv("PURPLEAIR_API_KEY", raising=False)
-    assert asyncio.run(hazards.fetch_purpleair(None)) is None
-
-
-def test_a_bad_bounding_box_fails_loudly_rather_than_fetching_the_world(monkeypatch):
-    import asyncio
-    monkeypatch.setenv("PURPLEAIR_API_KEY", "sk-yes")
-    monkeypatch.setattr(hazards, "PURPLEAIR_BBOX", "not,a,box")
-    assert asyncio.run(hazards.fetch_purpleair(None)) is None
+    assert asyncio.run(hazards.fetch_purpleair(None, [(47.6, -122.3)])) is None
 
 
 def test_the_query_asks_only_for_outdoor_and_recent(monkeypatch):
     import inspect
-    src = inspect.getsource(hazards.fetch_purpleair)
+    src = inspect.getsource(hazards._purpleair_box)
     assert '"location_type": "0"' in src
     assert "max_age" in src
     assert "X-API-Key" in src

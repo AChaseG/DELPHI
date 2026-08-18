@@ -14,25 +14,27 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-10-03",
-        "title": "Community sensors now cover your town, not the loudest one",
+        "title": "Community sensors now follow your saved places",
         "items": [
-            "🟣 <b>Most PurpleAir sensors were being thrown away.</b> There are "
-            "far more of them than the map keeps, so they were thinned — but "
-            "thinned by <i>reading</i>, keeping the highest few thousand "
-            "anywhere in North America. That meant which sensors you could see "
-            "depended on where the smoke was in the country that afternoon "
-            "rather than on where you were looking. A stretch of river with "
-            "thirty sensors on it drew three.",
-            "🗺 <b>Thinning is by area now.</b> The map keeps the worst sensor "
-            "in each small patch of ground, so coverage is even everywhere "
-            "instead of piled onto whichever state is burning. Where sensors "
-            "are further apart than the patch — which is most places — nothing "
-            "is dropped at all, and a street with eight sensors on it keeps the "
-            "one reading highest, so nothing is ever hidden.",
-            "📉 If there are still too many after that, the patches grow and "
-            "the pass runs again. The map gets sparser evenly rather than "
-            "abandoning whole regions, which is what the old limit did the "
-            "moment it was reached.",
+            "🟣 <b>PurpleAir is asked about your places, not about a "
+            "continent.</b> There are around twenty thousand of these sensors "
+            "in North America — far too many to hold — so they were being "
+            "collected wholesale and then mostly thrown away, and every rule "
+            "for choosing which to keep was wrong in some direction. The worst "
+            "of them cut a stretch of river with thirty sensors on it down to "
+            "three.",
+            "📍 The sensors that matter are the ones near somewhere you watch, "
+            "because that is the only place their readings are ever used — on "
+            "your saved location, when no official monitor is close enough to "
+            "speak for it. So Delphi now asks only about a small area around "
+            "each saved place. <b>Your locations should show a community "
+            "reading wherever one exists</b>, and the volume problem simply "
+            "goes away rather than needing a rule to manage it.",
+            "🗺 The trade, stated plainly: there are no community sensors on "
+            "the map away from a saved place. A layer nobody could rely on, "
+            "thinned by a rule nobody could predict, was worth less than a "
+            "reading you can — and if you want the reading somewhere, saving "
+            "it as a location is now what asks for it.",
         ],
     },
     {

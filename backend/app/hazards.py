@@ -954,42 +954,59 @@ async def fetch_openaq(client: httpx.AsyncClient) -> list[dict] | None:
 # instruments, not a second opinion next to one.
 
 PURPLEAIR_URL = "https://api.purpleair.com/v1/sensors"
-# Where to look. The whole world is available and would be about thirty
-# thousand sensors, most of them clustered in a few countries — enough to
-# crowd every other hazard out of a table this size. The default is North
-# America, which is where the density exists and where the smoke question gets
-# asked; an operator elsewhere sets their own rectangle.
-PURPLEAIR_BBOX = os.environ.get("NEWS_PURPLEAIR_BBOX", "-170,15,-50,72")
+# **Only around the places somebody is actually watching.**
+#
+# This began as one request over the whole of North America, which is about
+# twenty thousand active outdoor sensors — far more than this table should hold
+# — and then thinned them down to a few thousand to fit. Every way of choosing
+# which few thousand was wrong in some direction, and the last one lost
+# Wenatchee's thirty sensors down to three.
+#
+# The question the thinning kept failing to answer is which sensors matter, and
+# the answer was in the feature all along: the ones near a watched place. A
+# PurpleAir reading is used in exactly one place — air_readings, when no
+# reference monitor is within five kilometres of somebody's saved location —
+# and it is never the authority anywhere else. So fetch a small box around each
+# watched place and nothing else.
+#
+# What that buys, all at once: the volume problem disappears (tens of rows, not
+# thousands), no thinning rule has to be invented, the sensors that do arrive
+# are by construction the ones that inform a reading, and an instance with no
+# saved locations spends nothing at all.
+#
+# What it costs, stated plainly: PurpleAir has no coverage on the map away from
+# a watched place. That is a real loss and it is the right trade — a layer
+# nobody could rely on, thinned by a rule nobody could predict, was worth less
+# than a reading somebody can.
+
+# Half-width of the box drawn around each watched place, in degrees. A little
+# over AIR_NEAR_KM so a sensor just inside the five-kilometre averaging radius
+# is never missed by a box drawn too tight.
+PURPLEAIR_BOX_DEG = float(os.environ.get("NEWS_PURPLEAIR_BOX_DEG", "0.07"))
+# Watched places sitting within this of each other share one request. Delphi is
+# multi-user and several people saving the same city should not cost several
+# calls.
+PURPLEAIR_MERGE_DEG = float(os.environ.get("NEWS_PURPLEAIR_MERGE_DEG", "0.05"))
+# A ceiling on requests per poll, so a hundred saved locations cannot turn into
+# a hundred API calls every fifteen minutes. Places beyond it are simply not
+# covered this cycle; nothing breaks, and the next poll starts from the same
+# ordering so the same ones are covered — deliberately stable rather than
+# rotating, because a reading that appears and vanishes between polls is worse
+# than one that is consistently absent.
+PURPLEAIR_MAX_BOXES = int(os.environ.get("NEWS_PURPLEAIR_MAX_BOXES", "40"))
+# How many of those requests are in flight at once. Polite to the API, and it
+# keeps a slow response from holding the cycle lock any longer than it must.
+PURPLEAIR_CONCURRENCY = 4
+# Per box, not per continent. A dense city block can hold dozens of sensors and
+# averaging all of them is the point; this is only a guard against a box over
+# somewhere extraordinary.
+PURPLEAIR_MAX_PER_BOX = int(os.environ.get("NEWS_PURPLEAIR_MAX_PER_BOX", "80"))
 # The network's own confidence in a sensor's reading, 0-100, mostly a measure
 # of whether its two channels agree. EPA excludes disagreeing sensors from the
 # Fire and Smoke Map and so does this.
 PURPLEAIR_MIN_CONFIDENCE = int(os.environ.get("NEWS_PURPLEAIR_MIN_CONF", "70"))
 # A sensor that has not reported for an hour is not telling you about now.
 PURPLEAIR_MAX_AGE_S = int(os.environ.get("NEWS_PURPLEAIR_MAX_AGE_S", "3600"))
-# The cap that keeps this from eating the table — and *how* it is applied is
-# the whole of it.
-#
-# This first shipped as "sort by AQI, keep the worst three thousand", on the
-# reasoning that the reason anybody turns on a smoke layer is to find the
-# smoke. That reasoning is right about a national view and wrong about every
-# other one, which is a bad trade because nobody reads this map nationally.
-# There are roughly twenty thousand active outdoor sensors in the default box,
-# so the rule discarded about eighty-five percent of them — and *which* ones
-# survived depended on where the smoke was in the country that afternoon rather
-# than on where the reader was looking. Wenatchee, with thirty sensors along a
-# twenty-mile stretch of river, drew three.
-#
-# So the thinning is geographic instead. One sensor — the worst — per grid
-# cell, which keeps an even spread everywhere rather than a dense cluster over
-# whichever state is burning. Where sensors are sparser than the cell, nothing
-# is dropped at all, which is the common case outside cities.
-PURPLEAIR_MAX = int(os.environ.get("NEWS_PURPLEAIR_MAX", "12000"))
-# Degrees, so about 1.7 km north-south. Chosen against the density that
-# actually exists: PurpleAir in a well-covered town runs about one sensor every
-# four or five kilometres, so a cell this size drops nothing there and only
-# bites in the few dense city blocks where three sensors on one street were
-# never three pieces of information.
-PURPLEAIR_CELL_DEG = float(os.environ.get("NEWS_PURPLEAIR_CELL_DEG", "0.015"))
 PURPLEAIR_FIELDS = ("name,latitude,longitude,pm2.5_cf_1,humidity,confidence,"
                     "location_type,last_seen")
 
@@ -1106,67 +1123,39 @@ def normalize_purpleair(payload) -> list[dict] | None:
                 "low_cost": True,
             },
         })
-    return _thin_by_grid(rows, PURPLEAIR_CELL_DEG, PURPLEAIR_MAX)
+    rows.sort(key=lambda r: r["raw"]["aqi"], reverse=True)
+    return rows[:PURPLEAIR_MAX_PER_BOX]
 
 
-def _thin_by_grid(rows: list[dict], cell: float, cap: int) -> list[dict]:
-    """Keep the worst reading in each cell of a grid, then cap what is left.
+def air_watch_boxes(db: Session) -> list[tuple[float, float]]:
+    """The places worth asking a community sensor about, deduplicated.
 
-    Geographic rather than global, because a global "keep the worst N" answers
-    the wrong question. A reader is looking at one town, and what they need is
-    that town's sensors — not the nation's most alarming ones, which on a bad
-    day are all in a single state four hundred miles away.
-
-    Within a cell the worst reading wins, so thinning never hides smoke: the
-    sensor that would have raised the alarm is exactly the one kept.
-
-    When the result is still over the cap the grid gets **coarser and the pass
-    runs again**, rather than falling back to a global sort. That fallback was
-    the original bug wearing a different hat: the moment the cap bound, the
-    worst sensors in the country took every remaining slot and whole states
-    went dark again. Doubling the cell degrades the map the way a map should
-    degrade — evenly, everywhere, into a sparser version of itself.
+    Every watched location on the instance, merged onto a coarse grid so that
+    several people saving the same city cost one request rather than several,
+    and ordered so the set is stable from poll to poll. Stability matters more
+    than fairness here: if the ceiling is reached, a reading that appears and
+    disappears between polls is worse than one that is consistently absent.
     """
-    if cell <= 0:
-        return sorted(rows, key=lambda r: r["raw"]["aqi"], reverse=True)[:cap]
-
-    kept = rows
-    # Ten doublings takes a 1.7 km cell past 1,700 km, which is coarser than
-    # any bbox this is pointed at — so the loop always terminates on the cap
-    # rather than on the counter, and the counter is only there so a caller
-    # passing something absurd cannot hang the poll.
-    for _ in range(10):
-        best: dict[tuple[int, int], dict] = {}
-        for row in rows:
-            key = (int(row["lat"] // cell), int(row["lon"] // cell))
-            held = best.get(key)
-            if held is None or row["raw"]["aqi"] > held["raw"]["aqi"]:
-                best[key] = row
-        kept = list(best.values())
-        if len(kept) <= cap:
-            return kept
-        cell *= 2
-    # Still over after ten doublings: something is very wrong with the data, so
-    # take the worst and let the size warning in _prune do the talking.
-    kept.sort(key=lambda r: r["raw"]["aqi"], reverse=True)
-    return kept[:cap]
+    seen: dict[tuple[int, int], tuple[float, float]] = {}
+    rows = db.execute(select(FavoriteLocation.lat, FavoriteLocation.lon)).all()
+    for lat, lon in rows:
+        if lat is None or lon is None:
+            continue
+        key = (int(lat // PURPLEAIR_MERGE_DEG), int(lon // PURPLEAIR_MERGE_DEG))
+        seen.setdefault(key, (float(lat), float(lon)))
+    return [seen[key] for key in sorted(seen)][:PURPLEAIR_MAX_BOXES]
 
 
-async def fetch_purpleair(client: httpx.AsyncClient) -> list[dict] | None:
-    key = os.environ.get("PURPLEAIR_API_KEY", "").strip()
-    if not key:
-        return None                        # not configured: no layer, no noise
-    try:
-        west, south, east, north = (float(p) for p in PURPLEAIR_BBOX.split(","))
-    except ValueError:
-        log.warning("purpleair: NEWS_PURPLEAIR_BBOX is not west,south,east,north")
-        return None
+async def _purpleair_box(client: httpx.AsyncClient, key: str,
+                         lat: float, lon: float) -> list[dict] | None:
     params = {
         "fields": PURPLEAIR_FIELDS,
         "location_type": "0",              # outdoors only
         "max_age": str(PURPLEAIR_MAX_AGE_S),
-        "nwlng": str(west), "nwlat": str(north),
-        "selng": str(east), "selat": str(south),
+        "nwlng": str(lon - PURPLEAIR_BOX_DEG),
+        "nwlat": str(lat + PURPLEAIR_BOX_DEG),
+        "selng": str(lon + PURPLEAIR_BOX_DEG),
+        "selat": str(lat - PURPLEAIR_BOX_DEG),
     }
     try:
         resp = await client.get(PURPLEAIR_URL, params=params,
@@ -1180,13 +1169,52 @@ async def fetch_purpleair(client: httpx.AsyncClient) -> list[dict] | None:
                     if resp.status_code in (401, 403) else "")
         return None
     try:
-        rows = normalize_purpleair(resp.json())
+        return normalize_purpleair(resp.json())
     except ValueError as exc:
         log.warning("purpleair: response was not JSON: %s", exc)
         return None
-    if rows is None:
-        log.warning("purpleair: response was not a fields/data table")
-    return rows
+
+
+async def fetch_purpleair(client: httpx.AsyncClient,
+                          boxes: list[tuple[float, float]]) -> list[dict] | None:
+    """Community sensors around each watched place.
+
+    **Any box failing fails the whole poll for this provider.** Returning the
+    boxes that did answer would let the prune treat every sensor near the ones
+    that did not as retired, and the next good poll would reinstate them — the
+    same partial-data trap the OpenAQ pagination avoids, arriving by a
+    different road.
+    """
+    api_key = os.environ.get("PURPLEAIR_API_KEY", "").strip()
+    if not api_key:
+        return None                        # not configured: no layer, no noise
+    if not boxes:
+        # Nobody is watching anywhere, so there is nothing this provider could
+        # usefully say. Not a failure — an instance with no saved locations
+        # should spend nothing here.
+        return None
+
+    limit = asyncio.Semaphore(PURPLEAIR_CONCURRENCY)
+
+    async def one(lat: float, lon: float):
+        async with limit:
+            return await _purpleair_box(client, api_key, lat, lon)
+
+    results = await asyncio.gather(*(one(lat, lon) for lat, lon in boxes),
+                                   return_exceptions=True)
+    merged: dict[str, dict] = {}
+    for result in results:
+        if isinstance(result, BaseException):
+            log.warning("purpleair: a box raised %s", result)
+            return None
+        if result is None:
+            return None
+        # Boxes overlap where watched places are close together, so the same
+        # sensor can arrive more than once. Keyed by its own id, so it lands in
+        # the table once.
+        for row in result:
+            merged[row["external_id"]] = row
+    return list(merged.values())
 
 
 
@@ -1577,7 +1605,15 @@ PROVIDERS = {"wfigs": fetch_wfigs, "airnow": fetch_airnow,
 
 # ---------- the poll ----------
 
-async def _fetch_all() -> tuple[list[dict], set[str]]:
+# Providers that need to know which places are being watched, rather than
+# fetching a fixed region. Only PurpleAir so far, and for a reason particular
+# to it: its network is far too large to hold and its readings only ever matter
+# within five kilometres of a saved location.
+PLACE_AWARE = {"purpleair"}
+
+
+async def _fetch_all(boxes: list[tuple[float, float]] | None = None
+                     ) -> tuple[list[dict], set[str]]:
     """Every configured provider, concurrently. Returns the rows and the set of
     providers that actually answered — pruning is scoped to those, so one
     provider being down never deletes another's rows."""
@@ -1585,7 +1621,8 @@ async def _fetch_all() -> tuple[list[dict], set[str]]:
     answered: set[str] = set()
     async with safefetch.client(timeout=FETCH_TIMEOUT) as client:
         results = await asyncio.gather(
-            *(fetch(client) for fetch in PROVIDERS.values()),
+            *(fetch(client, boxes or []) if name in PLACE_AWARE else fetch(client)
+              for name, fetch in PROVIDERS.items()),
             return_exceptions=True)
     for name, result in zip(PROVIDERS, results):
         if isinstance(result, BaseException):
@@ -1971,7 +2008,11 @@ async def poll(db: Session) -> dict:
     """One hazard cycle. Never raises into the ingest loop."""
     started = time.monotonic()
     try:
-        rows, answered = await _fetch_all()
+        # Which places anybody is watching, for the providers that ask per
+        # place rather than per region. One cheap query, and it decides how
+        # many outbound requests this poll makes.
+        boxes = await asyncio.to_thread(air_watch_boxes, db)
+        rows, answered = await _fetch_all(boxes)
         if not answered:
             return {**idle_status("no provider answered"),
                     "at": utcnow().isoformat()}
