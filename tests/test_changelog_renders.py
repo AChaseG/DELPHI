@@ -34,10 +34,21 @@ def _fn(name: str) -> str:
 # ---------- the popup renders it ----------
 
 def test_items_are_not_set_as_plain_text():
-    src = _fn("function showUpdates")
+    """Checked on the shared renderer rather than on showUpdates. The drawing
+    moved there when Settings gained a What's-new section of its own, and both
+    the interrupting popup and that section now call it — so this is the one
+    place the rule has to hold, and holding it here covers both."""
+    src = _fn("function renderUpdateEntries")
     assert "li.textContent = item" not in src, (
         "this is the bug: it shows the tags to the reader")
     assert "updateItemNodes(item)" in src
+
+
+def test_both_places_that_show_release_notes_use_that_renderer():
+    """A second copy would drift, and the one nobody looks at would drift
+    first — into exactly the innerHTML shortcut this file exists to forbid."""
+    assert 'renderUpdateEntries(el("updates-body"), entries);' in APP
+    assert "renderUpdateEntries(box, await API.changelog())" in APP
 
 
 def test_the_renderer_never_hands_a_string_to_innerhtml():

@@ -44,175 +44,209 @@
   </header>
 
   <!-- Settings side panel -->
-  <aside id="settings-panel" class="side-panel" hidden>
-    <div class="side-panel-head">
-      <h2>Settings</h2>
-      <button class="icon-btn" id="btn-close-settings" aria-label="Close settings">✕</button>
-    </div>
-    <div class="settings-body">
-      <!-- What this instance is doing, and the catalogue behind it. These four
-           numbers used to sit across the top of every board; they are a status
-           report rather than something a reader acts on, so they live where
-           you go when you want to know how Delphi itself is doing. -->
-      <h3 class="set-h">This instance</h3>
-      <div class="stat-row" id="stat-row">
-        <div class="stat-tile"><div class="stat-value" id="stat-articles">–</div><div class="stat-label">articles (24h)</div></div>
-        <div class="stat-tile"><div class="stat-value" id="stat-countries">–</div><div class="stat-label">countries (24h)</div></div>
-        <div class="stat-tile"><div class="stat-value" id="stat-sources">–</div><div class="stat-label">sources healthy</div></div>
-        <div class="stat-tile"><div class="stat-value" id="stat-alerts">–</div><div class="stat-label">alert hits unseen</div></div>
+  <!-- Settings: a dialog in the middle of the screen, in five sections.
+
+       It was a side panel — a single column of every setting Delphi has,
+       scrolled past to reach the one you came for. The list had outgrown the
+       shape: appearance, language, units, clocks, feeds, notifications, help,
+       billing, the account, the instance's own health and the operator console,
+       all in one run. Sections make it findable; the middle of the screen is
+       where a dialog belongs when it is the thing you are doing rather than a
+       drawer beside the thing you are reading.
+
+       It opens on What's new every time, deliberately. That is the one part of
+       this dialog with something to say that the reader did not already know,
+       and it is otherwise the sort of page nobody ever thinks to visit. -->
+  <div id="settings-backdrop" class="modal-backdrop centered" hidden>
+    <div class="modal settings-modal" role="dialog" aria-modal="true"
+         aria-labelledby="settings-title">
+      <div class="modal-head">
+        <!-- No gear on the title either. The glyph stopped being clickable
+             anywhere when ❓ took the corner slot, and putting it back as
+             decoration would re-teach a symbol that now opens nothing. -->
+        <h2 id="settings-title">Settings</h2>
+        <button class="icon-btn" id="btn-close-settings" aria-label="Close settings">✕</button>
       </div>
-      <!-- Typhon's own state, in the place somebody already comes to ask how
-           Delphi is doing. Without it, an operator whose hazard layers are
-           empty has nowhere at all to find out why. -->
-      <p class="s-meta" id="stat-hazards"></p>
-      <div class="set-row">
-        <span>Every outlet Delphi polls — add one, track a topic, repair or retire
-              what has stopped answering.</span>
-        <button class="btn small" id="btn-sources">📡 Sources</button>
+      <!-- Its own row rather than crowded in beside the title: five sections
+           will not sit on one line with a heading and a close button at any
+           width worth designing for. -->
+      <nav class="wiz-nav settings-tabs" id="settings-tabs" role="tablist"
+           aria-label="Settings sections">
+        <button data-tab="updates" class="active">🆕 What's new</button>
+        <button data-tab="display">🎨 Display</button>
+        <button data-tab="feeds">🔔 Feeds &amp; alerts</button>
+        <button data-tab="account">👤 Account</button>
+        <button data-tab="instance">🩺 Instance</button>
+      </nav>
+
+      <!-- ===================== WHAT'S NEW ===================== -->
+      <div class="modal-body settings-tab" data-tab="updates">
+        <p class="set-note" id="settings-updates-note">Everything that has shipped, newest first.</p>
+        <div id="settings-updates-body" class="faq-body updates-inline"></div>
       </div>
 
-      <!-- Only rendered when this instance charges for access; on a free one
-           the whole section stays out of the way. -->
-      <div id="set-billing" hidden>
-        <h3 class="set-h">Subscription</h3>
-        <p id="set-billing-state" class="set-note"></p>
+      <!-- ===================== DISPLAY ===================== -->
+      <div class="modal-body settings-tab" data-tab="display" hidden>
+        <h3 class="set-h">Appearance</h3>
+        <label class="set-row"><span>Theme</span>
+          <select id="set-theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">Match system</option>
+          </select>
+        </label>
+        <label class="set-row"><span>Compact mode <em>(hide summaries &amp; thumbnails)</em></span>
+          <input type="checkbox" id="set-compact">
+        </label>
+
+        <h3 class="set-h">Language</h3>
+        <label class="set-row"><span>Reading language <em>(articles in other languages are translated automatically)</em></span>
+          <select id="lang-select"></select>
+        </label>
+
+        <h3 class="set-h">Distances</h3>
+        <!-- Display only. Everything is stored and compared in kilometres; this
+             converts on the way to the screen and nowhere else. -->
+        <label class="set-row"><span>Units</span>
+          <select id="set-units">
+            <option value="km">Kilometres — “75 km”</option>
+            <option value="mi">Miles — “47 mi”</option>
+          </select>
+        </label>
+
+        <h3 class="set-h">Date &amp; time</h3>
+        <label class="set-row"><span>Timestamp format</span>
+          <select id="set-timefmt">
+            <option value="relative">Relative — “2h ago”</option>
+            <option value="local">Local time — “Jul 11, 08:36 PM”</option>
+            <option value="utc">UTC — “Jul 11 20:36Z”</option>
+            <option value="dtg">Date-time group — “112036Z JUL 26”</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- ===================== FEEDS & ALERTS ===================== -->
+      <div class="modal-body settings-tab" data-tab="feeds" hidden>
+        <h3 class="set-h">Feeds</h3>
         <div class="set-row">
-          <span id="set-billing-note" class="set-note"></span>
-          <span>
-            <button class="btn small" id="btn-manage-sub" hidden>Manage subscription</button>
-            <button class="btn small btn-primary" id="btn-subscribe" hidden>Subscribe</button>
-          </span>
+          <span>Every outlet Delphi polls — add one, track a topic, repair or retire
+                what has stopped answering.</span>
+          <button class="btn small" id="btn-sources">📡 Sources</button>
         </div>
-        <details id="set-invite-row">
-          <summary>I have an invitation code</summary>
-          <label class="field"><span>Code</span>
-            <input id="set-invite" type="text" autocomplete="off" spellcheck="false"
-                   placeholder="ABCD-EFGH-JKLM"></label>
+        <label class="set-row"><span>Hide events with no updates for
+            <em>(applies to feeds with 🕰 “Hide events with no recent updates” enabled;
+            hidden events return the moment a new report arrives)</em></span>
+          <select id="set-stale">
+            <option value="0">Never hide</option>
+            <option value="6">6 hours</option>
+            <option value="12">12 hours</option>
+            <option value="24">1 day</option>
+            <option value="48">2 days</option>
+            <option value="72">3 days</option>
+          </select>
+        </label>
+
+        <h3 class="set-h">Notifications</h3>
+        <label class="set-row"><span>Toast position</span>
+          <select id="set-toast-pos">
+            <option value="br">Bottom right</option>
+            <option value="bl">Bottom left</option>
+            <option value="tr">Top right</option>
+            <option value="tl">Top left</option>
+          </select>
+        </label>
+        <label class="set-row"><span>Alert sound volume: <strong id="set-vol-val"></strong></span>
+          <input type="range" id="set-volume" min="0" max="100" step="5">
+        </label>
+        <div class="set-row">
+          <span></span>
+          <button class="btn small" id="btn-test-notif">🔔 Test notification</button>
+        </div>
+        <label class="set-row"><span>Desktop notifications <em>(alert pop-ups while this tab is in the background)</em></span>
+          <input type="checkbox" id="set-desktop">
+        </label>
+      </div>
+
+      <!-- ===================== ACCOUNT ===================== -->
+      <div class="modal-body settings-tab" data-tab="account" hidden>
+        <!-- Only rendered when this instance charges for access; on a free one
+             the whole section stays out of the way. -->
+        <div id="set-billing" hidden>
+          <h3 class="set-h">Subscription</h3>
+          <p id="set-billing-state" class="set-note"></p>
           <div class="set-row">
-            <span id="set-invite-status" class="set-note"></span>
-            <button class="btn small" id="btn-redeem-invite">Use this code</button>
+            <span id="set-billing-note" class="set-note"></span>
+            <span>
+              <button class="btn small" id="btn-manage-sub" hidden>Manage subscription</button>
+              <button class="btn small btn-primary" id="btn-subscribe" hidden>Subscribe</button>
+            </span>
           </div>
-        </details>
-      </div>
+          <details id="set-invite-row">
+            <summary>I have an invitation code</summary>
+            <label class="field"><span>Code</span>
+              <input id="set-invite" type="text" autocomplete="off" spellcheck="false"
+                     placeholder="ABCD-EFGH-JKLM"></label>
+            <div class="set-row">
+              <span id="set-invite-status" class="set-note"></span>
+              <button class="btn small" id="btn-redeem-invite">Use this code</button>
+            </div>
+          </details>
+        </div>
 
-      <h3 class="set-h">Appearance</h3>
-      <label class="set-row"><span>Theme</span>
-        <select id="set-theme">
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-          <option value="system">Match system</option>
-        </select>
-      </label>
-      <label class="set-row"><span>Compact mode <em>(hide summaries & thumbnails)</em></span>
-        <input type="checkbox" id="set-compact">
-      </label>
-
-      <h3 class="set-h">Language</h3>
-      <label class="set-row"><span>Reading language <em>(articles in other languages are translated automatically)</em></span>
-        <select id="lang-select"></select>
-      </label>
-
-      <h3 class="set-h">Distances</h3>
-      <!-- Display only. Everything is stored and compared in kilometres; this
-           converts on the way to the screen and nowhere else. -->
-      <label class="set-row"><span>Units</span>
-        <select id="set-units">
-          <option value="km">Kilometres — “75 km”</option>
-          <option value="mi">Miles — “47 mi”</option>
-        </select>
-      </label>
-
-      <h3 class="set-h">Date & time</h3>
-      <label class="set-row"><span>Timestamp format</span>
-        <select id="set-timefmt">
-          <option value="relative">Relative — “2h ago”</option>
-          <option value="local">Local time — “Jul 11, 08:36 PM”</option>
-          <option value="utc">UTC — “Jul 11 20:36Z”</option>
-          <option value="dtg">Date-time group — “112036Z JUL 26”</option>
-        </select>
-      </label>
-
-      <h3 class="set-h">Feeds</h3>
-      <label class="set-row"><span>Hide events with no updates for
-          <em>(applies to feeds with 🕰 “Hide events with no recent updates” enabled;
-          hidden events return the moment a new report arrives)</em></span>
-        <select id="set-stale">
-          <option value="0">Never hide</option>
-          <option value="6">6 hours</option>
-          <option value="12">12 hours</option>
-          <option value="24">1 day</option>
-          <option value="48">2 days</option>
-          <option value="72">3 days</option>
-        </select>
-      </label>
-
-      <h3 class="set-h">Notifications</h3>
-      <label class="set-row"><span>Toast position</span>
-        <select id="set-toast-pos">
-          <option value="br">Bottom right</option>
-          <option value="bl">Bottom left</option>
-          <option value="tr">Top right</option>
-          <option value="tl">Top left</option>
-        </select>
-      </label>
-      <label class="set-row"><span>Alert sound volume: <strong id="set-vol-val"></strong></span>
-        <input type="range" id="set-volume" min="0" max="100" step="5">
-      </label>
-      <div class="set-row">
-        <span></span>
-        <button class="btn small" id="btn-test-notif">🔔 Test notification</button>
-      </div>
-      <label class="set-row"><span>Desktop notifications <em>(alert pop-ups while this tab is in the background)</em></span>
-        <input type="checkbox" id="set-desktop">
-      </label>
-      <h3 class="set-h">Help</h3>
-      <div class="set-row">
-        <span>Step-by-step instructions, and answers to the common questions</span>
-        <button class="btn small" id="btn-open-faq">❓ How to &amp; FAQ</button>
-      </div>
-      <div class="set-row">
-        <span>See everything that has shipped, by date</span>
-        <button class="btn small" id="btn-whats-new">🆕 What's new</button>
-      </div>
-      <div class="set-row">
-        <span>Something not behaving? Common problems and what to do about them</span>
-        <button class="btn small" id="btn-open-trouble">🛠 Troubleshooting</button>
-      </div>
-
-      <h3 class="set-h">Account security</h3>
-      <div class="set-row">
-        <span>Change your password without leaving the app — no email needed</span>
-        <button class="btn small" id="btn-change-password">🔑 Change password</button>
-      </div>
-      <div class="set-row">
-        <span>Sign out of this browser. Your other signed-in devices stay
-              signed in, and the news cached on this one is erased.</span>
-        <button class="btn small" id="btn-signout">🚪 Sign out</button>
-      </div>
-      <div class="set-row">
-        <span>Sign out of every device — use this if you've lost a device, or
-              think someone else has been in your account. The button above
-              only affects this browser; this ends every session, including
-              this one.</span>
-        <button class="btn small" id="btn-signout-all">🔒 Sign out everywhere</button>
-      </div>
-
-      <!-- Operator console. Lived on the action rail among things every reader
-           uses, despite almost nobody being able to see it; Settings is where
-           it belonged all along. -->
-      <div id="admin-setting" hidden>
-        <h3 class="set-h">Operator</h3>
+        <h3 class="set-h">Account security</h3>
         <div class="set-row">
-          <span>Manage every account on this server — roles, resets, removals</span>
-          <button class="btn small" id="btn-admin">🛠 Operator console</button>
+          <span>Change your password without leaving the app — no email needed</span>
+          <button class="btn small" id="btn-change-password">🔑 Change password</button>
+        </div>
+        <div class="set-row">
+          <span>Sign out of this browser. Your other signed-in devices stay
+                signed in, and the news cached on this one is erased.</span>
+          <button class="btn small" id="btn-signout">🚪 Sign out</button>
+        </div>
+        <div class="set-row">
+          <span>Sign out of every device — use this if you've lost a device, or
+                think someone else has been in your account. The button above
+                only affects this browser; this ends every session, including
+                this one.</span>
+          <button class="btn small" id="btn-signout-all">🔒 Sign out everywhere</button>
+        </div>
+
+        <p class="set-note">Settings are saved to your account and follow you to any browser
+           or device — change the theme here and you'll find it applied after signing in
+           anywhere else.</p>
+      </div>
+
+      <!-- ===================== INSTANCE ===================== -->
+      <div class="modal-body settings-tab" data-tab="instance" hidden>
+        <!-- What this instance is doing, and the catalogue behind it. These four
+             numbers used to sit across the top of every board; they are a status
+             report rather than something a reader acts on, so they live where
+             you go when you want to know how Delphi itself is doing. -->
+        <h3 class="set-h">This instance</h3>
+        <div class="stat-row" id="stat-row">
+          <div class="stat-tile"><div class="stat-value" id="stat-articles">–</div><div class="stat-label">articles (24h)</div></div>
+          <div class="stat-tile"><div class="stat-value" id="stat-countries">–</div><div class="stat-label">countries (24h)</div></div>
+          <div class="stat-tile"><div class="stat-value" id="stat-sources">–</div><div class="stat-label">sources healthy</div></div>
+          <div class="stat-tile"><div class="stat-value" id="stat-alerts">–</div><div class="stat-label">alert hits unseen</div></div>
+        </div>
+        <!-- Typhon's own state, in the place somebody already comes to ask how
+             Delphi is doing. Without it, an operator whose hazard layers are
+             empty has nowhere at all to find out why. -->
+        <p class="s-meta" id="stat-hazards"></p>
+
+        <!-- Operator console. Lived on the action rail among things every reader
+             uses, despite almost nobody being able to see it; Settings is where
+             it belonged all along. -->
+        <div id="admin-setting" hidden>
+          <h3 class="set-h">Operator</h3>
+          <div class="set-row">
+            <span>Manage every account on this server — roles, resets, removals</span>
+            <button class="btn small" id="btn-admin">🛠 Operator console</button>
+          </div>
         </div>
       </div>
-
-      <p class="set-note">Settings are saved to your account and follow you to any browser
-         or device — change the theme here and you'll find it applied after signing in
-         anywhere else.</p>
     </div>
-  </aside>
+  </div>
 
   <!-- Help modal: three tabs. "How to" is procedure — do this, then this. "FAQ"
        is explanation — what a thing is and why it behaves as it does. They were

@@ -32,7 +32,7 @@ def _view_switch_src() -> str:
     start = APP.index("function renderViewSwitch")
     return APP[start:APP.index("function renderBoardHeader")]
 
-SETTINGS = HTML[HTML.index('id="settings-panel"'):HTML.index('id="sources-panel"')]
+SETTINGS = HTML[HTML.index('id="settings-backdrop"'):HTML.index('id="sources-panel"')]
 
 
 # ---------- the rail is gone, and so is everything that served it ----------
@@ -144,7 +144,7 @@ def test_the_account_button_opens_settings_rather_than_signing_out():
     and now sits behind a deliberate step, inside the panel this opens."""
     src = APP[APP.index("function wireAuth"):]
     src = src[:src.index("\n}\n")]
-    assert 'el("btn-profile").onclick = () => { el("settings-panel").hidden = false; };' in src
+    assert 'el("btn-profile").onclick = openSettings;' in src
     assert "Session.clear()" not in src, (
         "signing out moved to signOutThisBrowser, called from the Settings row")
 

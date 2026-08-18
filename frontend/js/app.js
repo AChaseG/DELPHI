@@ -827,8 +827,11 @@ function updateItemNodes(text) {
   return frag;
 }
 
-function showUpdates(entries, note = "") {
-  const box = el("updates-body");
+/* One renderer, two homes: the popup that interrupts you when something has
+   just shipped, and the What's-new section of Settings that you can go and
+   read on purpose. Same entries, same markup, different reason for being on
+   screen — so the drawing is shared and only the framing differs. */
+function renderUpdateEntries(box, entries) {
   box.innerHTML = "";
   for (const entry of entries) {   // newest first; one block per date
     const block = document.createElement("div");
@@ -849,6 +852,10 @@ function showUpdates(entries, note = "") {
     block.append(date, title, ul);
     box.appendChild(block);
   }
+}
+
+function showUpdates(entries, note = "") {
+  renderUpdateEntries(el("updates-body"), entries);
   el("updates-note").textContent = note;
   el("updates-backdrop").hidden = false;
 }
@@ -859,6 +866,46 @@ function closeUpdates() {
     FAQ_AFTER_UPDATES = false;
     openHelp("howto");
   }
+}
+
+/* ---------- settings, as a dialog ----------
+
+   Five sections rather than one long column, and it opens on What's new every
+   time. That last part is a deliberate choice and not a default: What's new is
+   the only part of this dialog with something to say the reader does not
+   already know, and it is otherwise a page nobody thinks to visit. Everything
+   else here is looked *for*, so a section the reader chose is one click away
+   and costs them nothing to reach. */
+function showSettingsTab(tab) {
+  for (const s of document.querySelectorAll(".settings-tab"))
+    s.hidden = s.dataset.tab !== tab;
+  for (const b of el("settings-tabs").querySelectorAll("button"))
+    b.classList.toggle("active", b.dataset.tab === tab);
+  const body = document.querySelector(`.settings-tab[data-tab="${tab}"]`);
+  if (body) body.scrollTop = 0;          // a reopened section starts at the top
+}
+
+async function openSettings() {
+  showSettingsTab("updates");
+  el("settings-backdrop").hidden = false;
+  // Fetched on open rather than held: the changelog changes when a deploy
+  // lands, and a copy taken at page load would be the stale one on exactly the
+  // day somebody opens this to find out what changed.
+  const box = el("settings-updates-body");
+  const note = el("settings-updates-note");
+  box.textContent = "Loading…";
+  try {
+    renderUpdateEntries(box, await API.changelog());
+    note.textContent = "Everything that has shipped, newest first.";
+  } catch (e) {
+    box.textContent = "";
+    note.textContent = "The release history could not be loaded just now. "
+      + "Everything else in Settings still works.";
+  }
+}
+
+function closeSettings() {
+  el("settings-backdrop").hidden = true;
 }
 
 /* ---------- help ----------
@@ -916,9 +963,18 @@ function wireSettings() {
   // Settings moved onto 👤 because both are about the account and two buttons
   // for one subject was one too many.
   el("btn-help").onclick = () => openHelp("howto");
-  el("btn-close-settings").onclick = () => { el("settings-panel").hidden = true; };
-  el("btn-open-faq").onclick = () => openHelp("howto");
-  el("btn-open-trouble").onclick = () => openHelp("trouble");
+  // How-to, FAQ and Troubleshooting used to have buttons in Settings as well.
+  // They are all three tabs of the help dialog now, and ❓ in the corner opens
+  // it in one press — a second door into the same room, from a dialog about
+  // something else.
+  el("btn-close-settings").onclick = closeSettings;
+  el("settings-backdrop").addEventListener("mousedown", (e) => {
+    if (e.target === el("settings-backdrop")) closeSettings();
+  });
+  el("settings-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (b) showSettingsTab(b.dataset.tab);
+  });
   // Signing out was the whole of what 👤 did. That button now opens Settings,
   // so the action itself moves inside — beside "sign out everywhere", which is
   // where somebody looking for either one will look for both.
@@ -950,11 +1006,6 @@ function wireSettings() {
     const b = e.target.closest("button[data-tab]");
     if (b) showHelpTab(b.dataset.tab);
   });
-  el("btn-whats-new").onclick = async () => {
-    try { showUpdates(await API.changelog(), "The full release history, newest first."); }
-    catch (e) { toast("Couldn't load the release history", e.message); }
-  };
-  feedback(el("btn-whats-new"), "Loading…");
   el("btn-close-updates").onclick = closeUpdates;
   el("btn-updates-ok").onclick = closeUpdates;
   el("updates-backdrop").addEventListener("mousedown", (e) => {
@@ -1051,7 +1102,7 @@ function wireAuth() {
     ? "Sign in — your feeds and alerts are private to your account"
     : `Signed in as ${who} — your account and settings`;
   el("btn-profile").setAttribute("aria-label", `Account and settings: ${who}`);
-  el("btn-profile").onclick = () => { el("settings-panel").hidden = false; };
+  el("btn-profile").onclick = openSettings;
   feedback(el("btn-profile"));
 }
 
@@ -3104,7 +3155,7 @@ let ADMIN_DEVICE_WINDOW_S = 300;
 
 function wireAdmin() {
   el("btn-admin").onclick = async () => {
-    el("settings-panel").hidden = true;   // it opened from there; don't stack panels
+    closeSettings();                      // it opened from there; don't stack panels
     el("admin-panel").hidden = false;
     await renderAdminUsers();
     renderServiceHealth();

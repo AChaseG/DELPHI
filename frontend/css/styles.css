@@ -904,6 +904,11 @@ body.map-board .pillar { display: none; }
   display: flex; align-items: flex-start; justify-content: center;
   overflow-y: auto; padding: 30px 12px;
 }
+/* Vertically centred, for a dialog that caps its own height and scrolls
+   inside. Top-aligning is right for the long reading dialogs — help, the
+   release notes — where the content decides the height and the page scrolls
+   behind it; centring is right for one that is always the same size. */
+.modal-backdrop.centered { align-items: center; overflow: hidden; }
 .modal {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1406,7 +1411,32 @@ button.working::after {
 .gate-switch a { color: var(--accent); text-decoration: underline; }
 #gate-signin, #gate-register { display: flex; flex-direction: column; gap: 10px; }
 
-/* ---------- settings panel ---------- */
+/* ---------- settings ----------
+   A dialog in the middle of the screen, not a drawer down the side. Settings
+   is a thing you go and do, so it takes the middle and everything else waits;
+   a side panel is for something you consult while still reading, which this
+   never was.
+
+   The modal is a column with a fixed ceiling and the section bodies scroll
+   inside it. Without that, five sections of wildly different length would make
+   the dialog jump between a third of the screen and all of it every time a tab
+   was pressed. */
+.settings-modal {
+  width: 720px;
+  max-height: min(86vh, 860px);
+  display: flex; flex-direction: column;
+}
+.settings-tabs {
+  flex: 0 0 auto; flex-wrap: wrap;
+  padding: 8px 18px; border-bottom: 1px solid var(--hairline);
+}
+.settings-modal .settings-tab {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  gap: 10px;
+}
+/* The release notes read as prose inside a dialog that is otherwise a form, so
+   they get the body treatment the standalone What's-new popup already uses. */
+.updates-inline { padding: 0; }
 .settings-body { padding: 6px 16px 20px; display: flex; flex-direction: column; gap: 10px; }
 .set-h {
   margin: 14px 0 2px; font-size: 12px; color: var(--ink-muted);
@@ -1575,6 +1605,10 @@ body.compact .article .summary, body.compact .article .thumb { display: none; }
   .empty-state { padding-right: calc(var(--rail-w) + 10px); }
 
   .side-panel, .side-panel.wide { width: 100vw; max-width: 100vw; }
+  /* On a phone the dialog is the screen: no room to be a box on a backdrop,
+     and a capped height would only waste the little there is. */
+  .modal-backdrop.centered { align-items: stretch; padding: 0; }
+  .settings-modal { width: 100vw; max-height: 100vh; border-radius: 0; }
 
   .modal { width: 100%; }
   .modal-head, .modal-foot { flex-wrap: wrap; padding: 10px 14px; }

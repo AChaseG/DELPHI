@@ -13,6 +13,31 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-10-04",
+        "title": "Settings is a proper dialog now, in five sections",
+        "items": [
+            "⚙ <b>Settings has moved to the middle of the screen</b> and is "
+            "organised into five sections instead of one long column. It used "
+            "to be a drawer down the side holding every setting Delphi has — "
+            "appearance, language, units, clocks, feeds, notifications, "
+            "billing, your account, the instance's own health — in a single "
+            "run you scrolled past to reach whichever one you came for.",
+            "🗂 The sections are <b>🆕 What's new</b>, <b>🎨 Display</b>, "
+            "<b>🔔 Feeds &amp; alerts</b>, <b>👤 Account</b> and <b>🩺 "
+            "Instance</b>. Every setting that was there before is still "
+            "there — nothing was dropped in the move.",
+            "🆕 <b>It opens on What's new every time.</b> That section is the "
+            "only part of Settings with something to tell you that you did not "
+            "already know, and it is otherwise a page nobody thinks to visit. "
+            "Everything else here is something you go looking for, so it is "
+            "one click away and costs you nothing.",
+            "❓ The <b>How to</b> and <b>FAQ</b> buttons have left Settings. "
+            "They were a second door into a room the <b>❓</b> button in the "
+            "corner already opens in one press — as was <b>Troubleshooting</b>, "
+            "which is the third tab of that same dialog and went with them.",
+        ],
+    },
+    {
         "date": "2026-10-03",
         "title": "Community sensors now follow your saved places",
         "items": [
