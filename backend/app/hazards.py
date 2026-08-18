@@ -84,7 +84,11 @@ AIR_RETENTION_HOURS = float(os.environ.get("NEWS_AIR_RETENTION_H", "6"))
 # its own cap still sheds its least important rows first. Across providers
 # nothing is compared at all. The total is bounded by construction: this many
 # rows times however many providers are configured.
-MAX_PER_PROVIDER = int(os.environ.get("NEWS_MAX_HAZARDS_PER_PROVIDER", "4000"))
+# Set above what the largest provider can produce, so it stays the backstop it
+# is described as rather than a limit reached on every poll. PurpleAir is the
+# biggest at twelve thousand after thinning; OpenAQ is bounded by pagination at
+# eight thousand. A provider that goes past this is misbehaving.
+MAX_PER_PROVIDER = int(os.environ.get("NEWS_MAX_HAZARDS_PER_PROVIDER", "15000"))
 # The whole-table figure is now a tripwire rather than a deleter. If per-provider
 # capping is working this is unreachable, so reaching it means something is
 # wrong in a way that deleting rows would hide rather than fix.
@@ -962,9 +966,30 @@ PURPLEAIR_BBOX = os.environ.get("NEWS_PURPLEAIR_BBOX", "-170,15,-50,72")
 PURPLEAIR_MIN_CONFIDENCE = int(os.environ.get("NEWS_PURPLEAIR_MIN_CONF", "70"))
 # A sensor that has not reported for an hour is not telling you about now.
 PURPLEAIR_MAX_AGE_S = int(os.environ.get("NEWS_PURPLEAIR_MAX_AGE_S", "3600"))
-# The cap that keeps this from eating the table. Kept by worst reading, because
-# the entire reason anybody turns on a smoke layer is to find the smoke.
-PURPLEAIR_MAX = int(os.environ.get("NEWS_PURPLEAIR_MAX", "3000"))
+# The cap that keeps this from eating the table — and *how* it is applied is
+# the whole of it.
+#
+# This first shipped as "sort by AQI, keep the worst three thousand", on the
+# reasoning that the reason anybody turns on a smoke layer is to find the
+# smoke. That reasoning is right about a national view and wrong about every
+# other one, which is a bad trade because nobody reads this map nationally.
+# There are roughly twenty thousand active outdoor sensors in the default box,
+# so the rule discarded about eighty-five percent of them — and *which* ones
+# survived depended on where the smoke was in the country that afternoon rather
+# than on where the reader was looking. Wenatchee, with thirty sensors along a
+# twenty-mile stretch of river, drew three.
+#
+# So the thinning is geographic instead. One sensor — the worst — per grid
+# cell, which keeps an even spread everywhere rather than a dense cluster over
+# whichever state is burning. Where sensors are sparser than the cell, nothing
+# is dropped at all, which is the common case outside cities.
+PURPLEAIR_MAX = int(os.environ.get("NEWS_PURPLEAIR_MAX", "12000"))
+# Degrees, so about 1.7 km north-south. Chosen against the density that
+# actually exists: PurpleAir in a well-covered town runs about one sensor every
+# four or five kilometres, so a cell this size drops nothing there and only
+# bites in the few dense city blocks where three sensors on one street were
+# never three pieces of information.
+PURPLEAIR_CELL_DEG = float(os.environ.get("NEWS_PURPLEAIR_CELL_DEG", "0.015"))
 PURPLEAIR_FIELDS = ("name,latitude,longitude,pm2.5_cf_1,humidity,confidence,"
                     "location_type,last_seen")
 
@@ -1081,9 +1106,50 @@ def normalize_purpleair(payload) -> list[dict] | None:
                 "low_cost": True,
             },
         })
-    # Worst first, then cut. The whole reason for a smoke layer is the smoke.
-    rows.sort(key=lambda r: r["raw"]["aqi"], reverse=True)
-    return rows[:PURPLEAIR_MAX]
+    return _thin_by_grid(rows, PURPLEAIR_CELL_DEG, PURPLEAIR_MAX)
+
+
+def _thin_by_grid(rows: list[dict], cell: float, cap: int) -> list[dict]:
+    """Keep the worst reading in each cell of a grid, then cap what is left.
+
+    Geographic rather than global, because a global "keep the worst N" answers
+    the wrong question. A reader is looking at one town, and what they need is
+    that town's sensors — not the nation's most alarming ones, which on a bad
+    day are all in a single state four hundred miles away.
+
+    Within a cell the worst reading wins, so thinning never hides smoke: the
+    sensor that would have raised the alarm is exactly the one kept.
+
+    When the result is still over the cap the grid gets **coarser and the pass
+    runs again**, rather than falling back to a global sort. That fallback was
+    the original bug wearing a different hat: the moment the cap bound, the
+    worst sensors in the country took every remaining slot and whole states
+    went dark again. Doubling the cell degrades the map the way a map should
+    degrade — evenly, everywhere, into a sparser version of itself.
+    """
+    if cell <= 0:
+        return sorted(rows, key=lambda r: r["raw"]["aqi"], reverse=True)[:cap]
+
+    kept = rows
+    # Ten doublings takes a 1.7 km cell past 1,700 km, which is coarser than
+    # any bbox this is pointed at — so the loop always terminates on the cap
+    # rather than on the counter, and the counter is only there so a caller
+    # passing something absurd cannot hang the poll.
+    for _ in range(10):
+        best: dict[tuple[int, int], dict] = {}
+        for row in rows:
+            key = (int(row["lat"] // cell), int(row["lon"] // cell))
+            held = best.get(key)
+            if held is None or row["raw"]["aqi"] > held["raw"]["aqi"]:
+                best[key] = row
+        kept = list(best.values())
+        if len(kept) <= cap:
+            return kept
+        cell *= 2
+    # Still over after ten doublings: something is very wrong with the data, so
+    # take the worst and let the size warning in _prune do the talking.
+    kept.sort(key=lambda r: r["raw"]["aqi"], reverse=True)
+    return kept[:cap]
 
 
 async def fetch_purpleair(client: httpx.AsyncClient) -> list[dict] | None:

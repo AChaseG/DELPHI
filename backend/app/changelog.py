@@ -13,6 +13,29 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-10-03",
+        "title": "Community sensors now cover your town, not the loudest one",
+        "items": [
+            "🟣 <b>Most PurpleAir sensors were being thrown away.</b> There are "
+            "far more of them than the map keeps, so they were thinned — but "
+            "thinned by <i>reading</i>, keeping the highest few thousand "
+            "anywhere in North America. That meant which sensors you could see "
+            "depended on where the smoke was in the country that afternoon "
+            "rather than on where you were looking. A stretch of river with "
+            "thirty sensors on it drew three.",
+            "🗺 <b>Thinning is by area now.</b> The map keeps the worst sensor "
+            "in each small patch of ground, so coverage is even everywhere "
+            "instead of piled onto whichever state is burning. Where sensors "
+            "are further apart than the patch — which is most places — nothing "
+            "is dropped at all, and a street with eight sensors on it keeps the "
+            "one reading highest, so nothing is ever hidden.",
+            "📉 If there are still too many after that, the patches grow and "
+            "the pass runs again. The map gets sparser evenly rather than "
+            "abandoning whole regions, which is what the old limit did the "
+            "moment it was reached.",
+        ],
+    },
+    {
         "date": "2026-10-02",
         "title": "One busy source could push the others off the map",
         "items": [

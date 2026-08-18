@@ -133,18 +133,102 @@ def test_the_reading_carries_the_raw_number_alongside_the_corrected_one():
     assert raw["humidity"] == 60
 
 
-def test_the_cap_keeps_the_worst_not_the_first(monkeypatch):
-    """Thirty thousand sensors would crowd every other hazard out of the table,
-    and the entire reason anybody switches on a smoke layer is to find the
-    smoke."""
-    monkeypatch.setattr(hazards, "PURPLEAIR_MAX", 2)
-    rows = hazards.normalize_purpleair(_payload([
-        _sensor(1, pm=5.0), _sensor(2, pm=300.0), _sensor(3, pm=150.0),
-        _sensor(4, pm=8.0)]))
-    assert len(rows) == 2
-    assert [r["raw"]["aqi"] for r in rows] == sorted(
-        [r["raw"]["aqi"] for r in rows], reverse=True)
-    assert rows[0]["raw"]["raw_value"] == 300.0
+def test_thinning_is_geographic_not_national(monkeypatch):
+    """Reported from a live instance, with two screenshots side by side.
+
+    AirNow's Fire and Smoke Map showed about thirty sensors along the twenty
+    miles of the Columbia around Wenatchee. Delphi showed three. The cause was
+    this cap: it sorted every sensor in North America by AQI and kept the worst
+    three thousand of roughly twenty thousand, so about eighty-five percent
+    were discarded — and *which* ones survived depended on where the smoke was
+    in the country that afternoon rather than on where the reader was looking.
+
+    "Keep the worst" is the right answer to a question nobody asks. Nobody
+    reads this map nationally; they read it over one town, and what that town
+    needs is its own sensors.
+    """
+    # Two towns, one smoky and one clear, at the density PurpleAir actually has
+    # — and a cap that binds, which is the condition the live instance was in.
+    # Without the cap biting, a global sort and a geographic one look alike and
+    # this test would pass under the bug it exists to catch.
+    monkeypatch.setattr(hazards, "PURPLEAIR_MAX", 20)
+    smoky = [_sensor(i, lat=34.05 + i * 0.02, lon=-118.2, pm=300.0)
+             for i in range(20)]
+    clear = [_sensor(100 + i, lat=47.4 + i * 0.02, lon=-120.3, pm=15.0)
+             for i in range(20)]
+    kept = hazards.normalize_purpleair(_payload(smoky + clear))
+    here = [r for r in kept if r["lat"] > 40]
+    # Not a fixed fraction — the grid coarsens until the total fits, so the
+    # clear town keeps roughly its share rather than all of it. What matters is
+    # that its share is not zero, which is what the national sort gave it.
+    assert len(here) >= 5, (
+        "the clear town keeps its coverage even while another state burns; "
+        f"kept {len(here)} of 20 there")
+
+
+def test_a_dense_street_collapses_to_its_worst_sensor():
+    """Three sensors on one block were never three pieces of information, and
+    the one worth keeping is the one that would raise the alarm."""
+    stacked = [_sensor(i, lat=34.05 + i * 0.0005, lon=-118.24, pm=20.0 * (i + 1))
+               for i in range(8)]
+    kept = hazards.normalize_purpleair(_payload(stacked))
+    assert len(kept) < len(stacked)
+    assert max(r["raw"]["raw_value"] for r in kept) == 160.0
+
+
+def test_thinning_never_hides_the_smoke():
+    """The guarantee that makes geographic thinning safe: within a cell the
+    worst reading wins, so the sensor that would have raised the alarm is
+    exactly the one kept."""
+    rows = [{"lat": 40.0, "lon": -100.0, "raw": {"aqi": 20}},
+            {"lat": 40.001, "lon": -100.001, "raw": {"aqi": 300}},
+            {"lat": 40.002, "lon": -100.002, "raw": {"aqi": 55}}]
+    kept = hazards._thin_by_grid(rows, 0.015, 100)
+    assert len(kept) == 1
+    assert kept[0]["raw"]["aqi"] == 300
+
+
+def test_sparse_country_is_not_thinned_at_all():
+    """The common case outside a city, and it must cost nothing there."""
+    rows = [{"lat": 40.0 + i * 0.5, "lon": -100.0, "raw": {"aqi": 30}}
+            for i in range(10)]
+    assert len(hazards._thin_by_grid(rows, 0.015, 100)) == 10
+
+
+def test_a_binding_cap_coarsens_the_grid_rather_than_picking_favourites():
+    """The original bug wearing a different hat, and the one I shipped twice.
+
+    Thinning geographically fixes nothing if the cap underneath it still falls
+    back to a global sort — the moment it binds, the worst sensors in the
+    country take every remaining slot and whole states go dark again. Doubling
+    the cell degrades the map the way a map should degrade: evenly, everywhere,
+    into a sparser version of itself.
+    """
+    smoky = [{"lat": 34.0 + i * 0.02, "lon": -118.2, "raw": {"aqi": 300}}
+             for i in range(20)]
+    clear = [{"lat": 47.0 + i * 0.02, "lon": -120.3, "raw": {"aqi": 15}}
+             for i in range(20)]
+    kept = hazards._thin_by_grid(smoky + clear, 0.015, 20)
+    assert len(kept) <= 20
+    assert len([r for r in kept if r["lat"] > 40]) >= 5, (
+        "the clear region must survive a binding cap, not be outbid by smoke "
+        "four hundred miles away")
+
+
+def test_coarsening_terminates(monkeypatch):
+    """A cap of one against sensors spread across a continent still has to
+    return, and return something."""
+    rows = [{"lat": 30.0 + i, "lon": -100.0 + i, "raw": {"aqi": 50 + i}}
+            for i in range(30)]
+    kept = hazards._thin_by_grid(rows, 0.015, 1)
+    assert len(kept) == 1
+
+
+def test_the_per_provider_cap_sits_above_what_any_provider_produces():
+    """Otherwise the backstop is a limit reached on every poll, which is how
+    the last one came to be silently deleting most of this provider's rows."""
+    assert hazards.MAX_PER_PROVIDER > hazards.PURPLEAIR_MAX
+    assert hazards.MAX_PER_PROVIDER > hazards.OPENAQ_MAX_PAGES * hazards.OPENAQ_PAGE_SIZE
 
 
 def test_no_key_means_no_provider_not_a_failure(monkeypatch):
