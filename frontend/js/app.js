@@ -246,7 +246,8 @@ function updateViewButtons() {
   // A Pantheon's own board lights the tab it was opened from: it is where you
   // are, and nothing else in the bar would be lit at all.
   el("btn-view-pantheons").classList.toggle(
-    "active", VIEW === "pantheons" || VIEW.startsWith("pantheon:"));
+    "active", VIEW === "pantheons" || VIEW.startsWith("pantheon:")
+              || VIEW.startsWith("athena:"));
 }
 
 /* The map is a board, so it takes the board's place rather than floating over
@@ -258,19 +259,23 @@ function updateViewButtons() {
 function showBoard(which) {
   const map = which === "map";
   const pantheons = which === "pantheons";
-  const columns = !map && !pantheons;
+  const athena = which === "athena";
+  const columns = !map && !pantheons && !athena;
   // The decorative columns frame a board of columns; over a map they are two
   // opaque strips across the thing you are trying to read.
   document.body.classList.toggle("map-board", map);
   el("board").hidden = !columns;
   el("map-view").hidden = !map;
   el("pantheons-view").hidden = !pantheons;
+  el("athena-view").hidden = !athena;
+  if (!athena) AthenaBoard.close();
   if (!columns) {
     el("board-scroll").hidden = true;     // the board's own bar, not theirs
     el("empty-state").hidden = true;
   }
   if (map) MapBoard.open();
   if (pantheons) { refreshPantheons().then(renderPantheonsPanel); }
+  if (athena) AthenaBoard.open(+VIEW.split(":")[1]);
 }
 
 /* One board button per Pantheon, next to Home and My feeds. */
@@ -292,7 +297,8 @@ function renderViewSwitch() {
 function renderBoardHeader() {
   const bar = el("board-header");
   if (!bar) return;
-  const p = VIEW.startsWith("pantheon:")
+  const inAthena = VIEW.startsWith("athena:");
+  const p = (VIEW.startsWith("pantheon:") || inAthena)
     ? PANTHEONS.find(x => x.id === +VIEW.split(":")[1]) : null;
   bar.hidden = !p;
   if (!p) return;
@@ -319,7 +325,19 @@ function renderBoardHeader() {
   manage.title = "Members, invitations, and access settings";
   manage.onclick = () => PantheonModal.open(p);
 
-  bar.append(back, name, meta, manage);
+  // Athena is this Pantheon's record of what it has covered. A board of its
+  // own, because the coverage grid is themes down one side and weeks across
+  // the other and at a year of reporting it is wider than any panel.
+  const athena = document.createElement("button");
+  athena.className = "btn small";
+  athena.textContent = inAthena ? "📋 Shared feeds" : "🦉 Athena";
+  athena.title = inAthena
+    ? "Back to this Pantheon's shared feeds"
+    : "What this group has covered, and how often";
+  athena.onclick = () => setView(inAthena ? `pantheon:${p.id}` : `athena:${p.id}`);
+
+  back.onclick = () => setView("pantheons");
+  bar.append(back, name, meta, athena, manage);
 }
 
 /* Bumped by every render. A render that finds the counter moved on has been
@@ -489,9 +507,12 @@ async function renderBoard() {
   const generation = ++BOARD_GENERATION;
   const current = () => generation === BOARD_GENERATION;
 
-  showBoard(VIEW === "map" ? "map" : VIEW === "pantheons" ? "pantheons" : "columns");
+  showBoard(VIEW === "map" ? "map"
+    : VIEW === "pantheons" ? "pantheons"
+    : VIEW.startsWith("athena:") ? "athena" : "columns");
   renderBoardHeader();
-  if (VIEW === "map" || VIEW === "pantheons") return;   // they render themselves
+  // Each of the three renders itself; only the column board is built here.
+  if (VIEW === "map" || VIEW === "pantheons" || VIEW.startsWith("athena:")) return;
 
   if (VIEW.startsWith("pantheon:")) {
     const pid = +VIEW.split(":")[1];
@@ -3070,6 +3091,7 @@ function wirePantheons() {
   };
   feedback(el("btn-view-pantheons"));
   wirePantheonModal();
+  wireAthena();
   el("btn-create-pantheon").onclick = () => PantheonModal.open();
 }
 

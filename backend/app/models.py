@@ -335,6 +335,122 @@ class PantheonInvite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+# ---------- Athena: what a Pantheon has actually covered ----------
+#
+# A group that writes intelligence reports every week accumulates a question it
+# cannot answer from the reports themselves: *what have we been covering, and
+# how often?* Twenty weekly documents hold that answer and none of them state
+# it. Athena is the place a Pantheon files what it has written, tagged against
+# a vocabulary of its own, so the pattern across months becomes something you
+# can look at rather than something you remember.
+#
+# Four tables, and the shape is deliberately shallow. A **domain** groups
+# themes and carries the colour they are drawn in; a **theme** is one subject
+# the group tracks; a **document** is one thing somebody wrote, on one date;
+# an **entry** is one item inside it. That is the whole model.
+#
+# **The documents themselves are never stored.** A .docx is opened, read and
+# discarded in the member's own browser, and only the structure it yielded is
+# sent here. These are a group's intelligence products; Delphi has no business
+# holding the originals, and the volume has no business carrying them.
+
+
+class AthenaDomain(Base):
+    """A grouping of themes, and the colour they are drawn in.
+
+    Separate from the theme rather than a string on it, because the colour has
+    to be one answer for the group: two themes in the same domain disagreeing
+    about their own colour is a matrix nobody can read.
+    """
+    __tablename__ = "athena_domains"
+    __table_args__ = (UniqueConstraint("pantheon_id", "slug", name="uq_athena_domain"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pantheon_id: Mapped[int] = mapped_column(ForeignKey("pantheons.id"), index=True)
+    slug: Mapped[str] = mapped_column(String(60))
+    name: Mapped[str] = mapped_column(String(120))
+    color: Mapped[str] = mapped_column(String(16), default="#5C6B7A")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AthenaTheme(Base):
+    """One subject a Pantheon tracks.
+
+    The taxonomy is per-Pantheon and starts empty. A shipped default would be
+    one group's vocabulary imposed on every other, and the first thing anybody
+    would do is delete it — so instead the board explains itself on first open
+    and the group writes its own.
+    """
+    __tablename__ = "athena_themes"
+    __table_args__ = (UniqueConstraint("pantheon_id", "slug", name="uq_athena_theme"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pantheon_id: Mapped[int] = mapped_column(ForeignKey("pantheons.id"), index=True)
+    slug: Mapped[str] = mapped_column(String(60))
+    name: Mapped[str] = mapped_column(String(120))
+    domain: Mapped[str] = mapped_column(String(60), default="")   # AthenaDomain.slug
+    blurb: Mapped[str] = mapped_column(String(500), default="")
+    # Words that suggest this theme when a document is uploaded. Suggestions
+    # only — every one is confirmed by the person filing before it is saved,
+    # because a tag nobody agreed to is a coverage figure nobody can trust.
+    keywords: Mapped[list] = mapped_column(JSON, default=list)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AthenaDocument(Base):
+    """One thing the group wrote, on one date.
+
+    `kind` separates the two sorts a week produces: a **report**, whose entries
+    are the topics it covered, and **notes**, whose entries are the source
+    clusters behind them. They are the same shape and different questions —
+    what did we say, and what were we reading.
+    """
+    __tablename__ = "athena_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pantheon_id: Mapped[int] = mapped_column(ForeignKey("pantheons.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10), default="report")   # report | notes
+    # "YYYY-MM-DD" as a string, because it is a label on a document rather than
+    # an instant: the week of the 3rd is the week of the 3rd in every timezone,
+    # and a DateTime would invite an hour's drift into a column heading.
+    date: Mapped[str] = mapped_column(String(10), index=True)
+    # Which week's reporting this belongs to, for notes filed after the fact.
+    week: Mapped[str] = mapped_column(String(10), default="")
+    label: Mapped[str] = mapped_column(String(200), default="")
+    filename: Mapped[str] = mapped_column(String(200), default="")
+    # Who filed it, by username, for attribution on a shared board.
+    uploaded_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AthenaEntry(Base):
+    """One item inside a document: a topic in a report, a cluster in notes.
+
+    One table for both because they are structurally identical — a heading,
+    some prose, the themes it belongs to, and the links behind it. Two tables
+    would be the same columns twice and a second delete path to forget.
+
+    `themes` is a JSON list of theme slugs rather than a join table. It is read
+    wholesale and never queried by theme in SQL — the coverage matrix is
+    arithmetic over a date range, not a lookup — so a join table would buy
+    nothing and cost a third set of rows that a delete has to remember. The one
+    thing it does owe is upkeep: deleting a theme strips its slug from every
+    entry in the same transaction, so a dangling tag cannot outlive it.
+    """
+    __tablename__ = "athena_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("athena_documents.id"), index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    themes: Mapped[list] = mapped_column(JSON, default=list)
+    # [{"t": "title", "u": "https://…"}] — the sources behind this item.
+    links: Mapped[list] = mapped_column(JSON, default=list)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class FavoriteLocation(Base):
     """A place the user cares about, with a radius around it.
 

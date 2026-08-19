@@ -28,7 +28,7 @@ from starlette.concurrency import run_in_threadpool
 
 import re as _username_re
 
-from . import (accounts_backup, auth, billing, devices, discovery, export,
+from . import (accounts_backup, athena, auth, billing, devices, discovery, export,
                geocode, hazards, home, ingest, langdetect, mailer, passwords,
                ratelimit, repair, safefetch, storage, stripe_api, syndication,
                translate, watchdog)
@@ -40,7 +40,8 @@ from .database import Base, SessionLocal, engine, get_db
 from .events import broadcaster
 from .geo import haversine_km, load_gazetteer, search_places
 from .matching import explain_text_match, query_articles
-from .models import (Alert, AlertEvent, Article, Device, DiscoveredDomain, Event,
+from .models import (Alert, AlertEvent, Article, AthenaDocument, AthenaDomain,
+                     AthenaEntry, AthenaTheme, Device, DiscoveredDomain, Event,
                      FavoriteLocation, Feed, Hazard, Invite,
                      Pantheon, PantheonInvite, PantheonMember, Source,
                      Translation, User, ViewedArticle, ViewedEvent, utcnow)
@@ -2264,6 +2265,212 @@ def create_pantheon(body: dict, user_id: str = Depends(user_id_header),
     return _pantheon_json(db, p, member)
 
 
+# ---------- Athena: a Pantheon's own coverage ----------
+#
+# Everything here is scoped to one Pantheon and guarded by membership. The
+# board is readable and fileable by any member; the taxonomy and the removal of
+# somebody else's document are an admin's, because a theme is the vocabulary
+# the group's figures are counted in and renaming one silently changes every
+# number on the board.
+
+
+def _athena_admin(member) -> bool:
+    return member.role in ("owner", "admin")
+
+
+@app.get("/api/pantheons/{pantheon_id}/athena")
+def athena_board(pantheon_id: int, user_id: str = Depends(user_id_header),
+                 db: Session = Depends(get_db)):
+    """The whole board: the taxonomy, and every document with its entries."""
+    _pantheon, member = _require_membership(db, pantheon_id, user_id)
+    out = athena.board_json(db, pantheon_id)
+    out["can_manage"] = _athena_admin(member)
+    return out
+
+
+@app.post("/api/pantheons/{pantheon_id}/athena/documents", status_code=201)
+def athena_add_document(pantheon_id: int, body: dict,
+                        user_id: str = Depends(user_id_header),
+                        db: Session = Depends(get_db)):
+    """File one parsed document.
+
+    What arrives is JSON a browser produced from a .docx it read locally — so
+    it is treated exactly as any other client-supplied body would be, and never
+    as though the parser upstream had already made it safe. Every field is
+    bounded in `athena.clean_entries`, and a theme this Pantheon does not have
+    is dropped rather than invented.
+    """
+    _pantheon, member = _require_membership(db, pantheon_id, user_id)
+
+    kind = str(body.get("kind") or "report").strip()
+    if kind not in athena.KINDS:
+        raise HTTPException(422, "A document is either a report or a set of notes")
+    date = str(body.get("date") or "").strip()
+    if not athena.DATE_RE.match(date):
+        raise HTTPException(422, "Give the document a date, as YYYY-MM-DD")
+    week = str(body.get("week") or "").strip()
+    if week and not athena.DATE_RE.match(week):
+        raise HTTPException(422, "The week has to be a date, as YYYY-MM-DD")
+
+    entries = athena.clean_entries(body.get("entries"),
+                                   athena.theme_slugs(db, pantheon_id))
+    if not entries:
+        raise HTTPException(422, "There was nothing in that document to file — "
+                                 "check it has headings, or add the topics by hand")
+
+    total = db.scalar(select(func.count(AthenaDocument.id)).where(
+        AthenaDocument.pantheon_id == pantheon_id)) or 0
+    if total >= athena.MAX_DOCUMENTS:
+        raise HTTPException(422, f"This Pantheon is at its limit of "
+                                 f"{athena.MAX_DOCUMENTS} filed documents")
+
+    username = ""
+    if user_id.startswith("acct:"):
+        who = db.get(User, _acct_id(user_id))
+        username = who.username if who else ""
+
+    doc = AthenaDocument(
+        pantheon_id=pantheon_id, kind=kind, date=date,
+        week=week or (date if kind == "notes" else ""),
+        label=str(body.get("label") or "").strip()[:200],
+        filename=str(body.get("filename") or "").strip()[:200],
+        uploaded_by=username)
+    db.add(doc)
+    db.flush()
+    for entry in entries:
+        db.add(AthenaEntry(document_id=doc.id, **entry))
+    db.commit()
+    return {"id": doc.id, "entries": len(entries)}
+
+
+@app.delete("/api/pantheons/{pantheon_id}/athena/documents/{document_id}")
+def athena_delete_document(pantheon_id: int, document_id: int,
+                           user_id: str = Depends(user_id_header),
+                           db: Session = Depends(get_db)):
+    """Remove a filed document. Yours, or anyone's if you administer the group."""
+    _pantheon, member = _require_membership(db, pantheon_id, user_id)
+    doc = db.get(AthenaDocument, document_id)
+    if not doc or doc.pantheon_id != pantheon_id:
+        raise HTTPException(404, "That document is not filed here")
+    username = ""
+    if user_id.startswith("acct:"):
+        who = db.get(User, _acct_id(user_id))
+        username = who.username if who else ""
+    if doc.uploaded_by != username and not _athena_admin(member):
+        raise HTTPException(403, "Only the member who filed this, or an admin, "
+                                 "can remove it")
+    athena.delete_documents(db, [doc])
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/pantheons/{pantheon_id}/athena/themes", status_code=201)
+def athena_add_theme(pantheon_id: int, body: dict,
+                     user_id: str = Depends(user_id_header),
+                     db: Session = Depends(get_db)):
+    _pantheon, member = _require_membership(db, pantheon_id, user_id)
+    if not _athena_admin(member):
+        raise HTTPException(403, "Only an owner or admin can change the themes")
+    name = str(body.get("name") or "").strip()[:120]
+    if not name:
+        raise HTTPException(422, "Give the theme a name")
+    total = db.scalar(select(func.count(AthenaTheme.id)).where(
+        AthenaTheme.pantheon_id == pantheon_id)) or 0
+    if total >= athena.MAX_THEMES:
+        raise HTTPException(422, f"That is the {athena.MAX_THEMES}th theme — past "
+                                 f"this the matrix stops being readable")
+    domain = athena.slugify(body.get("domain") or "")
+    if domain and domain != "untitled":
+        _athena_ensure_domain(db, pantheon_id, str(body.get("domain")).strip())
+    theme = AthenaTheme(
+        pantheon_id=pantheon_id,
+        slug=athena.unique_slug(db, AthenaTheme, pantheon_id, name),
+        name=name, domain=domain if domain != "untitled" else "",
+        blurb=str(body.get("blurb") or "").strip()[:500],
+        keywords=[str(k).strip().lower()[:40]
+                  for k in (body.get("keywords") or []) if str(k).strip()][:40],
+        position=total)
+    db.add(theme)
+    db.commit()
+    return {"slug": theme.slug}
+
+
+def _athena_ensure_domain(db: Session, pantheon_id: int, name: str) -> str:
+    """A domain appears the first time a theme is put in one.
+
+    Managing domains as their own list would be a second screen of setup before
+    the group can file anything, and the only thing a domain carries beyond its
+    name is a colour — which has a sensible default.
+    """
+    slug = athena.slugify(name)
+    existing = db.scalar(select(AthenaDomain).where(
+        AthenaDomain.pantheon_id == pantheon_id, AthenaDomain.slug == slug))
+    if existing:
+        return slug
+    used = db.scalar(select(func.count(AthenaDomain.id)).where(
+        AthenaDomain.pantheon_id == pantheon_id)) or 0
+    db.add(AthenaDomain(pantheon_id=pantheon_id, slug=slug, name=name[:120],
+                        color=_ATHENA_COLORS[used % len(_ATHENA_COLORS)],
+                        position=used))
+    return slug
+
+
+# Distinguishable at a glance and readable in both themes, which rules out the
+# obvious bright set. Assigned in order, so the first domain a group makes is
+# always the same colour for everybody looking at that board.
+_ATHENA_COLORS = ("#A73E92", "#3E6DA7", "#B07C2A", "#B3403A", "#3F8A6D",
+                  "#6E5AA8", "#2F8C9E", "#8A6D3B")
+
+
+@app.patch("/api/pantheons/{pantheon_id}/athena/themes/{slug}")
+def athena_edit_theme(pantheon_id: int, slug: str, body: dict,
+                      user_id: str = Depends(user_id_header),
+                      db: Session = Depends(get_db)):
+    _pantheon, member = _require_membership(db, pantheon_id, user_id)
+    if not _athena_admin(member):
+        raise HTTPException(403, "Only an owner or admin can change the themes")
+    theme = db.scalar(select(AthenaTheme).where(
+        AthenaTheme.pantheon_id == pantheon_id, AthenaTheme.slug == slug))
+    if not theme:
+        raise HTTPException(404, "No such theme")
+    # The slug deliberately does not follow a rename. It is what every filed
+    # entry refers to, and rewriting it would mean rewriting history to match a
+    # change of wording — the name is what a reader sees and the slug is only
+    # ever an identifier.
+    if "name" in body:
+        name = str(body.get("name") or "").strip()[:120]
+        if not name:
+            raise HTTPException(422, "A theme needs a name")
+        theme.name = name
+    if "blurb" in body:
+        theme.blurb = str(body.get("blurb") or "").strip()[:500]
+    if "domain" in body:
+        raw = str(body.get("domain") or "").strip()
+        theme.domain = _athena_ensure_domain(db, pantheon_id, raw) if raw else ""
+    if "keywords" in body:
+        theme.keywords = [str(k).strip().lower()[:40]
+                          for k in (body.get("keywords") or []) if str(k).strip()][:40]
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/pantheons/{pantheon_id}/athena/themes/{slug}")
+def athena_delete_theme(pantheon_id: int, slug: str,
+                        user_id: str = Depends(user_id_header),
+                        db: Session = Depends(get_db)):
+    """Remove a theme, and its slug from every entry that carried it."""
+    _pantheon, member = _require_membership(db, pantheon_id, user_id)
+    if not _athena_admin(member):
+        raise HTTPException(403, "Only an owner or admin can change the themes")
+    theme = db.scalar(select(AthenaTheme).where(
+        AthenaTheme.pantheon_id == pantheon_id, AthenaTheme.slug == slug))
+    if not theme:
+        raise HTTPException(404, "No such theme")
+    touched = athena.delete_theme(db, theme)
+    db.commit()
+    return {"ok": True, "entries_untagged": touched}
+
+
 @app.get("/api/pantheons/public")
 def public_pantheons(user_id: str = Depends(user_id_header), db: Session = Depends(get_db)):
     """Directory of public Pantheons anyone may join."""
@@ -2349,6 +2556,10 @@ def delete_pantheon(pantheon_id: int, user_id: str = Depends(user_id_header),
     # else to unpick.
     _drop_locations(db, list(db.scalars(select(FavoriteLocation).where(
         FavoriteLocation.pantheon_id == pantheon_id))))
+    # And Athena's, through the same helper the other ending uses. Two copies of
+    # these deletes would be two places to forget one, which is the shape of bug
+    # this file has now been caught by twice.
+    athena.purge_pantheon(db, pantheon_id)
     db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == pantheon_id))
     db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == pantheon_id))
     db.delete(pantheon)
@@ -3950,6 +4161,11 @@ def _close_pantheon(db: Session, p: Pantheon) -> None:
     # out, or the owner's account is deleted — and it had been missed.
     _drop_locations(db, list(db.scalars(select(FavoriteLocation).where(
         FavoriteLocation.pantheon_id == p.id))))
+    # Athena's four tables go with it: the group's filed reports, its own theme
+    # vocabulary, and the domains those themes were grouped into. None of it
+    # means anything without the Pantheon, and none of it is reachable once the
+    # row is gone.
+    athena.purge_pantheon(db, p.id)
     db.execute(sa_delete(PantheonMember).where(PantheonMember.pantheon_id == p.id))
     db.execute(sa_delete(PantheonInvite).where(PantheonInvite.pantheon_id == p.id))
     db.delete(p)

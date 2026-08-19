@@ -577,6 +577,23 @@ const API = {
   // `geometry` is opt-in: a fire perimeter is far larger than the row that
   // carries it and is sub-pixel below about zoom 6, so the map asks for shapes
   // only when it is close enough for one to mean anything.
+  // ---- Athena: a Pantheon's own coverage ----
+  athena: (pid) => api(`/api/pantheons/${pid}/athena`),
+  athenaFile: (pid, doc) =>
+    api(`/api/pantheons/${pid}/athena/documents`,
+        { method: "POST", body: JSON.stringify(doc) }),
+  athenaUnfile: (pid, docId) =>
+    api(`/api/pantheons/${pid}/athena/documents/${docId}`, { method: "DELETE" }),
+  athenaAddTheme: (pid, theme) =>
+    api(`/api/pantheons/${pid}/athena/themes`,
+        { method: "POST", body: JSON.stringify(theme) }),
+  athenaEditTheme: (pid, slug, patch) =>
+    api(`/api/pantheons/${pid}/athena/themes/${encodeURIComponent(slug)}`,
+        { method: "PATCH", body: JSON.stringify(patch) }),
+  athenaDeleteTheme: (pid, slug) =>
+    api(`/api/pantheons/${pid}/athena/themes/${encodeURIComponent(slug)}`,
+        { method: "DELETE" }),
+
   hazards: (bbox, limit = 300, geometry = false, kinds = null) =>
     api(`/api/hazards?bbox=${encodeURIComponent(bbox)}&limit=${limit}`
         + (geometry ? "&geometry=1" : "")

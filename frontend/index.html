@@ -1691,6 +1691,55 @@
   <!-- The Pantheons board. Everything the side panel listed, on a board of its
        own beside the others — because a Pantheon is somewhere you go, not a
        setting you adjust, and the panel it lived in is gone. -->
+  <!-- Athena: what this Pantheon has actually covered.
+
+       A group writing weekly intelligence reports accumulates a question its
+       own reports cannot answer — what have we been covering, and how often?
+       Twenty documents hold that answer between them and none of them state
+       it. This is where the group files what it wrote, tagged against a
+       vocabulary of its own, so the pattern over months becomes something to
+       look at.
+
+       A board rather than a panel because the coverage matrix is themes down
+       one side and weeks across the other: at a year of reporting it is wider
+       than any dialog, and it is the whole point of the feature. -->
+  <section id="athena-view" class="athena-view" hidden>
+    <div class="athena-head">
+      <div class="athena-title">
+        <h2>🦉 Athena</h2>
+        <span class="s-meta" id="athena-sub"></span>
+      </div>
+      <nav class="wiz-nav" id="athena-tabs" role="tablist" aria-label="Athena views">
+        <button data-tab="coverage" class="active">▦ Coverage</button>
+        <button data-tab="sources">🔗 Sources</button>
+        <button data-tab="documents">📄 Documents</button>
+        <button data-tab="themes">🏷 Themes</button>
+      </nav>
+      <span class="athena-head-gap"></span>
+      <button class="btn small" id="btn-athena-help" title="What Athena is for">❓</button>
+      <button class="btn small btn-primary" id="btn-athena-add">＋ File a document</button>
+    </div>
+    <!-- Controls belong to the coverage view alone; the other three are lists. -->
+    <div class="athena-controls" id="athena-controls">
+      <label class="athena-ctl"><span>Group by</span>
+        <select id="athena-gran">
+          <option value="week">Week</option>
+          <option value="biweek">Fortnight</option>
+          <option value="month">Month</option>
+        </select>
+      </label>
+      <label class="athena-ctl"><span>From</span>
+        <select id="athena-from"></select>
+      </label>
+      <label class="athena-ctl"><span>To</span>
+        <select id="athena-to"></select>
+      </label>
+      <span class="athena-head-gap"></span>
+      <span class="s-meta" id="athena-stats"></span>
+    </div>
+    <div class="athena-body" id="athena-body"></div>
+  </section>
+
   <section id="pantheons-view" class="pantheons-view" hidden>
     <div class="pantheons-body">
       <!-- Left: the two ways in — make one, or join one somebody else made.
@@ -2076,6 +2125,75 @@
     </div>
   </div>
 
+  <!-- Shown the first time a Pantheon opens Athena, because the board starts
+       genuinely empty and an empty grid explains nothing about itself. No
+       taxonomy ships with it: a default would be one group's vocabulary
+       imposed on every other, and the first thing anybody would do is delete
+       it. So the board says what it is for instead, once. -->
+  <!-- The review step, and it is not a formality. Everything below was guessed
+       by a parser from somebody's Word document: which paragraphs were topics,
+       which links belonged to which, and which themes the keywords suggest. A
+       coverage figure is only worth reading if a person agreed to every tag
+       behind it, so nothing is filed until this is confirmed. -->
+  <div id="athena-review-backdrop" class="modal-backdrop centered" hidden>
+    <div class="modal settings-modal" role="dialog" aria-modal="true"
+         aria-labelledby="athena-review-title">
+      <div class="modal-head">
+        <h2 id="athena-review-title">Check before filing</h2>
+        <button class="icon-btn" id="btn-close-athena-review" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body settings-tab" id="athena-review-body"></div>
+      <div class="modal-foot">
+        <span class="s-meta" id="athena-review-note"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-athena-review-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-athena-review-file">File it</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="athena-intro-backdrop" class="modal-backdrop centered" hidden>
+    <div class="modal narrow" role="dialog" aria-modal="true"
+         aria-labelledby="athena-intro-title">
+      <div class="modal-head">
+        <h2 id="athena-intro-title">🦉 Athena</h2>
+        <button class="icon-btn" id="btn-close-athena-intro" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p><b>Athena maps what your group has actually covered.</b> File the
+           reports you write and the source notes behind them, tag each item
+           against themes of your own choosing, and the coverage grid shows how
+           often each theme has come up, week by week.</p>
+        <p>It answers the question a stack of weekly reports cannot: not
+           <em>what did we say in March</em>, but <em>what have we been
+           circling for three months without noticing</em> — and what has gone
+           quiet.</p>
+        <h3 class="set-h">How it works</h3>
+        <ol class="athena-steps">
+          <li><b>Make your themes.</b> The board starts empty on purpose — the
+              vocabulary is yours, not ours. Group them into domains
+              (<em>Reputation</em>, <em>Policy</em>, whatever you track) and
+              each domain takes a colour on the grid.</li>
+          <li><b>File a document.</b> Drop in a <code>.docx</code>, <code>.md</code>
+              or <code>.txt</code>. Its headings become topics and its links
+              become sources. Themes are suggested from the keywords you gave
+              them, and <b>you confirm every one</b> before anything is filed.</li>
+          <li><b>Read the grid.</b> Themes down the side, weeks across the top,
+              one cell per intersection. Press a cell to see exactly which
+              topics were behind it.</li>
+        </ol>
+        <p class="set-note"><b>Your documents never leave your browser.</b> The
+           file is opened, read and discarded on your own machine; only the
+           topics, themes and links you confirmed are sent to Delphi. Everyone
+           in this Pantheon can see what has been filed and file their own.</p>
+      </div>
+      <div class="modal-foot">
+        <span class="spacer"></span>
+        <button class="btn btn-primary" id="btn-athena-intro-ok">Start with themes</button>
+      </div>
+    </div>
+  </div>
+
   <div id="pn-backdrop" class="modal-backdrop" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pn-modal-title">
       <div class="modal-head">
@@ -2237,6 +2355,10 @@
   <!-- The local feed cache; app.js reads it at boot. -->
   <script src="/js/store.js"></script>
   <script src="/js/builder.js"></script>
+  <!-- Athena is a sub-application of its own: a board, its own dialogs, and a
+       .docx parser that nothing else in Delphi will ever call. Loaded before
+       app.js, which wires it. -->
+  <script src="/js/athena.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

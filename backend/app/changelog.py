@@ -13,6 +13,39 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-10-05",
+        "title": "Athena: what your Pantheon has actually covered",
+        "items": [
+            "🦉 <b>Athena is a new board inside every Pantheon.</b> File the "
+            "reports your group writes and the source notes behind them, tag "
+            "each item against themes of your own, and a grid shows how often "
+            "each theme has come up, week by week. Open it from the <b>🦉 "
+            "Athena</b> button on any Pantheon.",
+            "❓ It answers the question a stack of weekly reports cannot: not "
+            "<i>what did we say in March</i>, but <i>what have we been circling "
+            "for three months without noticing</i> — and what has gone quiet.",
+            "🏷 <b>The vocabulary is yours.</b> The board starts empty on "
+            "purpose; a shipped set of themes would be somebody else's "
+            "subject imposed on yours. Group your themes into domains and each "
+            "domain takes a colour on the grid. Owners and admins manage the "
+            "list; every member can file against it.",
+            "📄 <b>Drop in a <code>.docx</code>, <code>.md</code> or "
+            "<code>.txt</code>.</b> Headings become topics and links become "
+            "sources. Themes are suggested from the keywords you gave them — "
+            "and <b>you confirm every single one</b> before anything is filed, "
+            "because a coverage figure is only worth reading if a person "
+            "agreed to the tags behind it.",
+            "🔒 <b>Your documents never leave your browser.</b> The file is "
+            "opened, read and discarded on your own machine; only the topics, "
+            "themes and links you confirmed are sent to Delphi. The original "
+            "is never uploaded and never stored.",
+            "🔗 A <b>Sources</b> view groups every link you have filed by the "
+            "site it came from, most-cited first — which is a different "
+            "question from what you wrote about, and often a more "
+            "uncomfortable one.",
+        ],
+    },
+    {
         "date": "2026-10-04",
         "title": "Settings is a proper dialog now, in five sections",
         "items": [
