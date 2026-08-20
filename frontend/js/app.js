@@ -261,9 +261,11 @@ function showBoard(which) {
   const pantheons = which === "pantheons";
   const athena = which === "athena";
   const columns = !map && !pantheons && !athena;
-  // The decorative columns frame a board of columns; over a map they are two
-  // opaque strips across the thing you are trying to read.
-  document.body.classList.toggle("map-board", map);
+  // The decorative columns frame a board *of columns*. Over anything that uses
+  // the full width they are two opaque strips lying across the thing you are
+  // trying to read — the map, and now Athena's coverage grid, which had its
+  // theme names hidden under the left one and its buttons under the right.
+  document.body.classList.toggle("full-board", map || athena);
   el("board").hidden = !columns;
   el("map-view").hidden = !map;
   el("pantheons-view").hidden = !pantheons;

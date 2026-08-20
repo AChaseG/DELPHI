@@ -39,6 +39,9 @@ CHANGELOG: list[dict] = [
             "opened, read and discarded on your own machine; only the topics, "
             "themes and links you confirmed are sent to Delphi. The original "
             "is never uploaded and never stored.",
+            "🏛 The decorative columns step aside on Athena, as they already "
+            "did on Atlas — over a board that uses the full width they are two "
+            "opaque strips lying across the thing you are trying to read.",
             "🔗 A <b>Sources</b> view groups every link you have filed by the "
             "site it came from, most-cited first — which is a different "
             "question from what you wrote about, and often a more "

@@ -649,7 +649,7 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .layer-row:hover { background: var(--surface-2); }
 .layer-row input { margin: 0; flex: 0 0 auto; }
 .layer-row span { min-width: 0; }
-body.map-board .pillar { display: none; }
+body.full-board .pillar { display: none; }
 /* The rail is for the boards made of columns. On Atlas the pane is the rail's
    job, and a pop-out over a map is a pop-out over the thing being read. */
 
@@ -1727,14 +1727,30 @@ body.board-reordering .feed-col:not(.col-dragging) { transition: transform 120ms
 
 /* The grid itself. Sticky row headings, because a theme name is useless once
    it has scrolled off the left and the whole point is reading along a row. */
-.ath-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-.ath-matrix { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+/* Hugs the grid rather than spanning the window, so a group with three weeks
+   of reporting gets a small table and not a small table adrift in a large
+   empty frame. It grows with the columns and scrolls once it runs out. */
+.ath-scroll {
+  overflow-x: auto; border: 1px solid var(--border); border-radius: 8px;
+  width: max-content; max-width: 100%;
+}
+/* Sized to its content and no wider. It had `min-width: 100%`, which with only
+   a handful of columns made the table stretch to fill — and a table stretches
+   by giving the slack to its widest-content column, so the theme names took
+   two thirds of the screen and pushed every figure into the right-hand third.
+   Left to itself the grid grows with the reporting and scrolls when it has to,
+   which is the behaviour that was wanted in the first place. */
+.ath-matrix { border-collapse: separate; border-spacing: 0; width: max-content; }
 .ath-matrix th, .ath-matrix td { padding: 0; }
 .ath-corner, .ath-rowhead {
   position: sticky; left: 0; z-index: 2;
   background: var(--surface);
   text-align: left; font-weight: 500; font-size: 12.5px;
-  padding: 5px 10px; min-width: 190px; max-width: 260px;
+  padding: 5px 10px;
+  /* Fixed rather than a range, so the columns do not shuffle sideways when a
+     longer theme name is added. Long names wrap. */
+  width: 230px; min-width: 230px; max-width: 230px;
+  overflow-wrap: anywhere;
   border-left: 3px solid transparent;
   border-bottom: 1px solid var(--hairline);
 }
@@ -1755,7 +1771,7 @@ body.board-reordering .feed-col:not(.col-dragging) { transition: transform 120ms
 }
 .ath-cell {
   text-align: center; border-bottom: 1px solid var(--hairline);
-  min-width: 46px;
+  min-width: 62px;
 }
 .ath-cell.ath-total { font-size: 12px; color: var(--ink-2); font-weight: 600; }
 /* A count you can press. Sized to the cell so the shading reads as a block of
@@ -1798,8 +1814,18 @@ body.board-reordering .feed-col:not(.col-dragging) { transition: transform 120ms
   display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 8px; padding: 10px 12px; margin: 0 0 14px;
+  /* Capped rather than stretched. On a wide monitor three fields sharing the
+     whole width end up a hand's span apart, which reads as three unrelated
+     controls instead of one short form. */
+  max-width: 940px;
 }
-.ath-theme-form .field { flex: 1 1 180px; }
+.ath-theme-form .field { flex: 1 1 180px; min-width: 0; }
+/* Lists and prose in this board are read left to right, so they get a measure
+   rather than the full width of a very wide screen. The grid is exempt — it is
+   the one thing here that genuinely wants every pixel. */
+.athena-body > div > .set-note,
+.athena-body > div > .ath-card,
+.athena-body > div > .ath-theme-row { max-width: 1100px; }
 
 /* The review step. One card per item, and a dropped one stays visible rather
    than vanishing — you should be able to see what you chose not to file. */
@@ -1822,5 +1848,7 @@ body.board-reordering .feed-col:not(.col-dragging) { transition: transform 120ms
 @media (max-width: 820px) {
   .athena-head, .athena-controls { padding: 8px 12px; }
   .athena-body { padding: 12px 12px 24px; }
-  .ath-corner, .ath-rowhead { min-width: 130px; max-width: 150px; font-size: 12px; }
+  .ath-corner, .ath-rowhead {
+    width: 150px; min-width: 150px; max-width: 150px; font-size: 12px;
+  }
 }

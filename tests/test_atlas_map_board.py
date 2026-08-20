@@ -56,8 +56,8 @@ def test_the_map_is_told_to_measure_itself_when_shown():
 def test_the_decorative_columns_get_out_of_the_way():
     """They frame a board of columns. Over a map they are two opaque strips
     across the thing being read."""
-    assert "map-board" in _block("function showBoard", "\n}\n")
-    assert re.search(r"body\.map-board\s+\.pillar\s*\{[^}]*display:\s*none", CSS)
+    assert "full-board" in _block("function showBoard", "\n}\n")
+    assert re.search(r"body\.full-board\s+\.pillar\s*\{[^}]*display:\s*none", CSS)
 
 
 # ---------- the alerts and the places moved here ----------

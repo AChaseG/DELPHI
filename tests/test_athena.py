@@ -311,6 +311,23 @@ def test_the_pantheons_tab_stays_lit_inside_it():
     assert 'VIEW.startsWith("athena:")' in src
 
 
+def test_the_decorative_pillars_get_out_of_the_way():
+    """Reported from a live instance with a screenshot: theme names hidden
+    under the left pillar, the ＋ File a document button under the right.
+
+    The pillars are fixed, opaque and framed around a board *of columns*. Atlas
+    already hid them for the same reason — over anything that uses the full
+    width they are two strips lying across the thing you are trying to read —
+    and the class that did it was named for the map rather than for the
+    property, so Athena did not get it.
+    """
+    src = _fn(APP, "function showBoard")
+    assert 'classList.toggle("full-board", map || athena)' in src
+    assert "body.full-board .pillar { display: none; }" in CSS
+    assert "map-board" not in CSS, "renamed for what it does, not where it was first needed"
+    assert "map-board" not in APP
+
+
 def test_the_grid_scrolls_sideways_inside_its_own_box():
     """A year of columns must not push the page about."""
     assert ".ath-scroll" in CSS
