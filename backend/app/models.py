@@ -249,7 +249,18 @@ class Article(Base):
     categories: Mapped[list] = mapped_column(JSON, default=list)
     # places: [{"name": str, "country": iso2, "lat": float, "lon": float}]
     places: Mapped[list] = mapped_column(JSON, default=list)
+    # What the story is worth *now*, after decay. This is the column every
+    # feed, alert and sort filters on, so decay reaches all of them by
+    # rewriting it rather than by teaching each reader a new rule.
     importance: Mapped[int] = mapped_column(Integer, default=30, index=True)
+    # What it was worth when it arrived. Decay has to be recomputed from a
+    # fixed origin: applying the curve to the already-decayed value would
+    # compound it, and a pass that ran twice would halve the score twice.
+    # NULL means a row that predates this column; readers treat that as
+    # "the same as importance", which is true of anything never yet decayed.
+    # No index — ADD COLUMN cannot build one, so it would be true of a fresh
+    # database and quietly false of the running one.
+    base_importance: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     cluster_tokens: Mapped[str] = mapped_column(String(400), default="")  # for cross-source corroboration
     event_id: Mapped[int | None] = mapped_column(ForeignKey("events.id"), nullable=True, index=True)
 

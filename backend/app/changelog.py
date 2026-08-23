@@ -13,6 +13,31 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-10-07",
+        "title": "Importance now fades as a story goes quiet",
+        "items": [
+            "⏳ <b>A story\u2019s importance falls with time.</b> Until now a "
+            "score was decided the moment an article arrived and then frozen, "
+            "so a feed with a minimum-importance floor filled up with what was "
+            "urgent last Tuesday, and <b>Top stories</b> kept a week-old wire "
+            "alert above this morning\u2019s local one. Scores now walk down a "
+            "half-life curve as a story stops moving \u2014 nothing changes for "
+            "the first six hours, then a score gives up half its remaining "
+            "value roughly every two days.",
+            "🔁 <b>A story still being covered does not age.</b> Importance is "
+            "measured from the last time the story was added to, not from when "
+            "each piece was filed \u2014 so coverage from Monday holds its value "
+            "while the story is still running, and starts falling once it goes "
+            "quiet. The lift expires after two weeks: coverage from three "
+            "weeks ago is old coverage even when the story continues.",
+            "🗄 <b>The archive stays searchable.</b> A score never falls below "
+            "40% of where it started, so a major story from last year still "
+            "outranks a routine one and a search with a high floor still finds "
+            "it. Articles now carry both numbers \u2014 what a story is worth "
+            "now, and what it was worth when it broke.",
+        ],
+    },
+    {
         "date": "2026-10-06",
         "title": "The archive now trims itself, and says how fast it fills",
         "items": [

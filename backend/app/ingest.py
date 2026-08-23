@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 import feedparser
 import httpx
-from sqlalchemy import delete as sa_delete, exists, or_, select
+from sqlalchemy import delete as sa_delete, exists, func, or_, select, update as sa_update
 
 from . import (accounts_backup, discovery, hazards, home, langdetect, mailer,
                repair, safefetch, storage, syndication, translate, watchdog)
@@ -31,7 +31,8 @@ from .matching import CriteriaMatcher, match_fields
 from .models import (Alert, AlertEvent, Article, Event, FavoriteLocation, Source,
                      Translation, User, ViewedArticle, ViewedEvent, utcnow)
 from .geo import extract_places
-from .scoring import classify_categories, cluster_tokens, score_importance
+from .scoring import (DECAY_LIFT_MAX_HOURS, aged_importance, classify_categories,
+                      cluster_tokens, score_importance)
 
 log = logging.getLogger("ingest")
 
@@ -435,6 +436,7 @@ def process_entries(db, source: Source, entries: list, recent_clusters: RecentCl
         country = places[0]["country"] if places else source.country
         tokens = cluster_tokens(title, text, places)
         corroborating = recent_clusters.corroboration(source.id, tokens)
+        importance = score_importance(text, source.scope, source.tier, places, corroborating)
 
         article = Article(
             source_id=source.id,
@@ -451,7 +453,10 @@ def process_entries(db, source: Source, entries: list, recent_clusters: RecentCl
             country=country or "",
             categories=classify_categories(text, source.categories, entry_tags),
             places=places,
-            importance=score_importance(text, source.scope, source.tier, places, corroborating),
+            importance=importance,
+            # An article arrives at full value: it is inside the grace window
+            # by definition, so the live score and the origin agree on day one.
+            base_importance=importance,
             cluster_tokens=tokens,
         )
         db.add(article)
@@ -1181,6 +1186,141 @@ DB_TARGET_FRACTION = float(os.environ.get("NEWS_DB_TARGET_FRACTION", "0.55"))
 TRIM_BATCH = int(os.environ.get("NEWS_TRIM_BATCH", "750"))
 
 
+# How often the decay sweep runs, and how much of the archive it may rewrite in
+# one go. Both are about the cost of the pass rather than the shape of the
+# curve: decay moves a score by roughly a point an hour at its steepest, so
+# being one pass behind is invisible, and there is nothing to gain by paying
+# for precision nobody can see.
+DECAY_EVERY_SECONDS = float(os.environ.get("NEWS_DECAY_EVERY_S", "1800"))
+DECAY_BATCH = int(os.environ.get("NEWS_DECAY_BATCH", "2000"))
+
+# Where the sweep resumes. A pass takes a batch and leaves the cursor on the
+# last row it touched; a pass that comes back short has reached the end of the
+# window and resets, so the archive is swept in a loop rather than from the top
+# every half hour.
+_decay_cursor: int = 0
+
+
+def decay_scores(db, now=None) -> dict:
+    """Walk the still-moving part of the archive down its decay curve.
+
+    The score every feed and alert filters on is `Article.importance`, so decay
+    happens by rewriting that column rather than by teaching each reader to age
+    a value for itself. One pass here reaches all of them, the SQL stays what it
+    was, and there is exactly one definition of what a story is worth now.
+
+    Two bounds keep this from being a rewrite of the whole table every half
+    hour. The first is the window: past twice `DECAY_LIFT_MAX_HOURS` a score has
+    reached its floor and can never move again, whatever its cluster does, so
+    everything older is left alone permanently. The second is the batch, with a
+    cursor that carries across passes — so the cost of a pass is fixed, and an
+    archive of any size is swept in a loop rather than in one stall.
+
+    Only rows whose value actually changes are written. Most of a pass is
+    arithmetic that decides to do nothing, which is far cheaper than the write
+    it avoids.
+    """
+    global _decay_cursor
+    now = now or utcnow()
+    horizon = now - timedelta(hours=2 * DECAY_LIFT_MAX_HOURS)
+
+    if _decay_cursor <= 0:
+        # Start the sweep at the oldest row that can still move rather than at
+        # id 1: on a large archive the rows before the window outnumber the
+        # ones inside it many times over, and scanning past them every sweep
+        # would cost more than the sweep.
+        first = db.scalar(
+            select(func.min(Article.id)).where(Article.published_at >= horizon))
+        if first is None:
+            return {"scanned": 0, "changed": 0, "events": 0,
+                "backfilled": 0, "more": False}
+        _decay_cursor = first - 1
+
+    rows = db.execute(
+        select(Article.id, Article.importance, Article.base_importance,
+               Article.published_at, Article.event_id,
+               Event.first_seen, Event.updated_at)
+        .join(Event, Article.event_id == Event.id, isouter=True)
+        .where(Article.id > _decay_cursor, Article.published_at >= horizon)
+        .order_by(Article.id.asc()).limit(DECAY_BATCH)).all()
+    if not rows:
+        _decay_cursor = 0
+        return {"scanned": 0, "changed": 0, "events": 0,
+                "backfilled": 0, "more": False}
+
+    backfill: list[int] = []
+    by_value: dict[int, list[int]] = {}
+    for row in rows:
+        base = row.base_importance
+        if base is None:
+            # A row from before this column existed. Its current score is the
+            # only origin we have, and it is the right one: it has never been
+            # decayed, so it still holds what it arrived with.
+            base = row.importance
+            backfill.append(row.id)
+        fresh = aged_importance(
+            base, row.published_at, row.first_seen, row.updated_at, now=now)
+        if fresh != row.importance:
+            by_value.setdefault(fresh, []).append(row.id)
+
+    # Before the scores move, never after: `base_importance = importance` run
+    # second would record the decayed value as the origin, and every later pass
+    # would decay from there.
+    for chunk in _id_chunks(backfill):
+        db.execute(sa_update(Article).where(Article.id.in_(chunk))
+                   .values(base_importance=Article.importance))
+    changed = 0
+    for value, ids in by_value.items():
+        for chunk in _id_chunks(ids):
+            db.execute(sa_update(Article).where(Article.id.in_(chunk))
+                       .values(importance=value))
+            changed += len(chunk)
+    peaks = _restate_event_peaks(db, {r.event_id for r in rows if r.event_id})
+    db.commit()
+
+    more = len(rows) == DECAY_BATCH
+    _decay_cursor = rows[-1].id if more else 0
+    return {"scanned": len(rows), "changed": changed, "events": peaks,
+            "backfilled": len(backfill), "more": more}
+
+
+def _restate_event_peaks(db, event_ids: set[int]) -> int:
+    """Bring each cluster back to its highest-scoring report.
+
+    That is what an event's importance means — the FAQ says so, and
+    `clustering._merge` maintains it on the way up with a `max`. Decay only
+    moves the articles, so without this a cluster would keep the peak of
+    coverage that has since faded, and a grouped feed would age at a different
+    rate from the ungrouped one beside it.
+
+    Recomputed from every member rather than from the batch that prompted it,
+    so a cluster whose articles straddle two passes is still right.
+    """
+    if not event_ids:
+        return 0
+    moved = 0
+    for chunk in _id_chunks(sorted(event_ids)):
+        peaks = dict(db.execute(
+            select(Article.event_id, func.max(Article.importance))
+            .where(Article.event_id.in_(chunk))
+            .group_by(Article.event_id)).all())
+        current = dict(db.execute(
+            select(Event.id, Event.importance).where(Event.id.in_(chunk))).all())
+        for event_id, peak in peaks.items():
+            if peak is not None and current.get(event_id) != peak:
+                db.execute(sa_update(Event).where(Event.id == event_id)
+                           .values(importance=peak))
+                moved += 1
+    return moved
+
+
+def _id_chunks(ids: list[int], size: int = 500):
+    """SQLite binds each id in an IN list as its own parameter and caps how
+    many a statement may carry, so a batch is spent a few hundred at a time."""
+    for i in range(0, len(ids), size):
+        yield ids[i:i + size]
+
+
 def trim_to_budget(db) -> dict:
     """Hold the archive at a steady size by deleting about what a day adds.
 
@@ -1281,6 +1421,9 @@ def prune_to_fit(db) -> dict:
 # sample immediately: the rate is built from the gap between samples, and a
 # process that restarts often would otherwise never record two.
 _next_sample_at: float = 0.0
+# Not zero: a restart should spend its first tick on the news, not on
+# rewriting scores that move by a point an hour.
+_next_decay_at: float = 120.0
 _next_prune_at: float = 0.0  # monotonic deadline for the next retention pass
 # Zero, so the first tick after a restart runs it. Tightening the rules is
 # pointless if the catalog keeps yesterday's until this time tomorrow, and a
@@ -1382,7 +1525,8 @@ async def ingest_loop():
     (news wires first, then a bounded slice of city feeds), paced per host so
     Google gets a steady drip rather than a burst. Each source refreshes on its
     own interval; nothing starves and no single tick runs long."""
-    global _next_prune_at, _next_sample_at, _next_audit_at, _next_account_backup_at, _next_hazard_at
+    global _next_prune_at, _next_sample_at, _next_audit_at, _next_account_backup_at
+    global _next_hazard_at, _next_decay_at
     status["running"] = True
     started_at = time.monotonic()      # the warmup ramp measures from here
     # The one-off conversion to incremental auto-vacuum is NOT done here, and
@@ -1492,6 +1636,25 @@ async def ingest_loop():
                         except Exception:
                             # Measuring must never be able to stop the poll.
                             log.exception("could not record a storage sample")
+
+                    if time.monotonic() >= _next_decay_at:
+                        _next_decay_at = time.monotonic() + DECAY_EVERY_SECONDS
+                        try:
+                            moved = await asyncio.to_thread(decay_scores, db)
+                            if moved["changed"] or moved["backfilled"]:
+                                log.info("decay: %d of %d scores moved, %d "
+                                         "clusters restated, %d origins recorded",
+                                         moved["changed"], moved["scanned"],
+                                         moved["events"], moved["backfilled"])
+                            # A full batch means the sweep is mid-window. Come
+                            # back on the next tick rather than in half an hour,
+                            # so a large archive is walked in minutes instead of
+                            # days.
+                            if moved["more"]:
+                                _next_decay_at = 0.0
+                        except Exception:
+                            # Ageing a score must never be able to stop the poll.
+                            log.exception("could not age importance scores")
 
                     due_to_prune = time.monotonic() >= _next_prune_at
                     # When space is short, prune every tick rather than every

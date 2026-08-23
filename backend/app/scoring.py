@@ -7,10 +7,16 @@ Importance blends:
   - cross-source corroboration (similar headlines from distinct outlets).
 
 Tiers used by the UI: >=80 Critical, 60-79 High, 40-59 Notable, <40 Routine.
+
+That score is what a story was worth when it arrived. What it is worth now is
+`aged_importance`, which walks it down a half-life curve as the story goes
+quiet — see the decay section at the foot of this module.
 """
 from __future__ import annotations
 
+import os
 import re
+from datetime import datetime, timedelta
 
 from .intl_terms import BREAKING_INTL, CATEGORY_INTL, TAG_SYNONYMS
 
@@ -258,3 +264,123 @@ def score_importance(
         score += 6
     score += min(corroborating_sources * 8, 24)
     return max(5, min(100, score))
+
+
+# ---------------------------------------------------------------------------
+# Decay: importance is a judgement about now, not a permanent property
+# ---------------------------------------------------------------------------
+#
+# `score_importance` answers "how much does this matter?" at the moment an
+# article arrives, and then the answer is frozen. That is wrong in a way every
+# reader notices: a feed with a min-importance floor of 60 fills with what was
+# urgent last Tuesday, and Home's "Top stories" keeps a week-old wire alert
+# above this morning's local one, because the two were scored against different
+# days and compared as though they were not.
+#
+# So the stored score falls with time. Three parameters shape the curve, and
+# each exists to stop a specific failure:
+#
+#   grace     Nothing decays for the first few hours. Without it an article
+#             ingested twenty minutes ago already ranks under one ingested now,
+#             and Home's "Breaking" column — six hours, floor 40 — would churn
+#             its own contents every tick for no reason a reader could see.
+#
+#   half-life How fast the rest of it goes. 48 hours is the honest middle: a
+#             story is worth half as much the day after tomorrow as it is now.
+#             Shorter turns the archive into a live wire; longer is barely
+#             distinguishable from not decaying at all.
+#
+#   floor     A score never falls below this fraction of where it started. A
+#             curve that runs to zero destroys the archive: `min_importance`
+#             stops meaning "was this a big story" and starts meaning "is it a
+#             big story this afternoon", so a search across last year returns
+#             nothing above 60 however large the events in it were. Holding at
+#             40% keeps a Critical story permanently above a routine one while
+#             still dropping it below anything fresh of the same magnitude.
+#
+# Set NEWS_DECAY_HALF_LIFE_H=0 to switch the whole thing off; scores then behave
+# exactly as they did before this existed.
+DECAY_HALF_LIFE_HOURS = float(os.environ.get("NEWS_DECAY_HALF_LIFE_H", "48"))
+DECAY_GRACE_HOURS = float(os.environ.get("NEWS_DECAY_GRACE_H", "6"))
+DECAY_FLOOR_FRACTION = float(os.environ.get("NEWS_DECAY_FLOOR", "0.4"))
+
+# How long a story's own updates can keep its earlier coverage fresh.
+#
+# The rule below ages an article from the *later* of its publication and its
+# cluster's last update, so a piece from Monday stays near its opening score
+# while the story it belongs to is still moving. That is the intent, and left
+# uncapped it has a tail: a conflict or an election updates for months, and
+# every article ever filed under it would sit at full importance for as long as
+# the story ran, then freeze there the moment it stopped.
+#
+# So the lift expires. After this long, an article ages from its own
+# publication whatever its cluster is doing — coverage from three weeks ago is
+# old coverage even when the story continues. It is also what makes the sweep
+# terminate: past twice this age nothing can still be moving, which is the
+# predicate `ingest.decay_scores` uses to know what it may leave alone.
+DECAY_LIFT_MAX_HOURS = float(os.environ.get("NEWS_DECAY_LIFT_MAX_H", "336"))
+
+
+def decay_reference(
+    published_at,
+    event_first_seen=None,
+    event_updated_at=None,
+):
+    """The moment a story last showed signs of life.
+
+    The later of the article's own publication, the moment its cluster broke,
+    and the moment that cluster was last added to — so a story still being
+    covered does not age, and one nobody has touched since it broke ages from
+    the break. An article in no cluster has only its own publication.
+
+    The lift is capped at `DECAY_LIFT_MAX_HOURS` past publication: a live
+    cluster can hold an article fresh, but not indefinitely.
+    """
+    if published_at is None:
+        return event_updated_at or event_first_seen
+    latest = published_at
+    for stamp in (event_first_seen, event_updated_at):
+        if stamp is not None and stamp > latest:
+            latest = stamp
+    ceiling = published_at + timedelta(hours=DECAY_LIFT_MAX_HOURS)
+    return min(latest, ceiling)
+
+
+def decay_floor(base: int) -> int:
+    """The value a score falls to and stays at."""
+    return max(5, min(base, round(base * DECAY_FLOOR_FRACTION)))
+
+
+def decay_importance(base: int, age_hours: float) -> int:
+    """`base`, aged by `age_hours`, on the curve documented above.
+
+    Returns `base` unchanged for anything inside the grace window, for a
+    negative age (a feed that dates its items in the future — several do), and
+    when decay is switched off.
+    """
+    base = max(5, min(100, int(base)))
+    if DECAY_HALF_LIFE_HOURS <= 0:
+        return base
+    floor = decay_floor(base)
+    if base <= floor:
+        return base
+    moving = (age_hours or 0.0) - DECAY_GRACE_HOURS
+    if moving <= 0:
+        return base
+    kept = 0.5 ** (moving / DECAY_HALF_LIFE_HOURS)
+    return max(floor, min(base, round(floor + (base - floor) * kept)))
+
+
+def aged_importance(
+    base: int,
+    published_at,
+    event_first_seen=None,
+    event_updated_at=None,
+    now=None,
+) -> int:
+    """`decay_importance` with the age worked out from the timestamps."""
+    now = now or datetime.utcnow()
+    ref = decay_reference(published_at, event_first_seen, event_updated_at)
+    if ref is None:
+        return max(5, min(100, int(base)))
+    return decay_importance(base, (now - ref).total_seconds() / 3600.0)

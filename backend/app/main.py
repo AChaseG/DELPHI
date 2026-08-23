@@ -119,7 +119,8 @@ def _ensure_schema():
     """Additive migrations for databases created by earlier versions."""
     wanted = {
         "articles": {"event_id": "INTEGER", "content": "TEXT DEFAULT ''",
-                     "content_tried_at": "DATETIME"},
+                     "content_tried_at": "DATETIME",
+                     "base_importance": "INTEGER"},
         "feeds": {"group_events": "BOOLEAN DEFAULT 0",
                   "pantheon_id": "INTEGER",
                   "shared_by": "VARCHAR(32) DEFAULT ''"},
@@ -733,6 +734,11 @@ def _article_json(a: Article, tr: dict | None = None,
         "categories": a.categories or [],
         "places": a.places or [],
         "importance": a.importance,
+        # What it scored when it broke. Shipped alongside the live value so a
+        # reader can see that a story has been marked down by age rather than
+        # judged unimportant — and so that decay is visible at all, which
+        # rewriting one column in place otherwise would not be.
+        "base_importance": a.base_importance if a.base_importance is not None else a.importance,
         # Paywalled outlet: hand readers an archive.ph link to the full text.
         "paywall": bool(a.source and a.source.paywall),
         "archive_url": (f"https://archive.ph/newest/{a.url}"
