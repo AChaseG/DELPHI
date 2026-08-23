@@ -2734,7 +2734,12 @@ function paintStory(d, { partial = false } = {}) {
         weekday: "short", year: "numeric", month: "long", day: "numeric",
         hour: "2-digit", minute: "2-digit" })} · ${timeAgo(a.published_at)}`
     : "publication date not given";
-  el("st-byline").textContent = `${outlet} — ${when}`;
+  const byline = el("st-byline");
+  byline.textContent = `${outlet} — ${when}`;
+  // Every rating here, favourable ones included: the reader has opened one
+  // article to ask about it, which is the moment the answer is worth the room.
+  const bylineRating = sourceRatingChip(a.rating);
+  if (bylineRating) byline.append(" ", bylineRating);
 
   const img = el("st-image");
   if (safeUrl(a.image_url)) {
@@ -2920,6 +2925,43 @@ async function renderStoryMap(articles) {
   }, 80);
 }
 
+
+// A published judgement about the outlet that filed this — somebody else's
+// finding with a link to the reasoning, never a score Delphi is asserting.
+//
+// Shown on a feed card only when it is a warning. A chip reading "Generally
+// reliable" beside every headline from a major paper is noise on a dense list,
+// and noise is what stops the warnings being read. Story Focus shows every
+// rating, favourable ones included, because that is where a reader has gone to
+// ask about one article in particular.
+const RATING_STYLE = {
+  1: { cls: "rating-good", icon: "✓" },
+  2: { cls: "rating-mixed", icon: "?" },
+  3: { cls: "rating-weak", icon: "!" },
+  4: { cls: "rating-bad", icon: "⚠" },
+  5: { cls: "rating-bad", icon: "⚠" },
+};
+
+function sourceRatingChip(rating, { compact = false } = {}) {
+  if (!rating || !rating.status) return null;
+  const rank = +rating.rank || 0;
+  if (compact && rank < 3) return null;
+  const style = RATING_STYLE[rank] || RATING_STYLE[2];
+  const chip = document.createElement(rating.url ? "a" : "span");
+  chip.className = "src-rating " + style.cls;
+  // Third-party text, and the status comes from a page anyone may edit.
+  chip.textContent = `${style.icon} ${rating.status}`;
+  if (rating.url) {
+    chip.href = safeUrl(rating.url) || "#";
+    chip.target = "_blank";
+    chip.rel = "noopener noreferrer";
+  }
+  chip.title = `${rating.status} — ${rating.provider || "source rating"}`
+    + (rating.licence ? ` (${rating.licence})` : "")
+    + ". This is not Delphi's assessment. Open it to read the reasoning.";
+  return chip;
+}
+
 function articleRow(a, mode = "focus") {
   // "focus":   selecting the row opens the story
   // "plain":   inert row inside an already-clickable card
@@ -2978,6 +3020,8 @@ function articleRow(a, mode = "focus") {
     pin.title = `Inside your favourite location “${n.name}”`;
     meta.appendChild(pin);
   }
+  const ratingChip = sourceRatingChip(a.rating, { compact: true });
+  if (ratingChip) meta.appendChild(ratingChip);
   if (a.translated_from) bits.push("🌐 translated from " + a.translated_from.toUpperCase());
   if ((a.categories || []).length) bits.push(a.categories.slice(0, 3).join(" · "));
   if (mode === "focus") bits.push("⤢ open");

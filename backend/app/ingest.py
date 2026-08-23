@@ -21,8 +21,9 @@ import feedparser
 import httpx
 from sqlalchemy import delete as sa_delete, exists, func, or_, select, update as sa_update
 
-from . import (accounts_backup, discovery, hazards, home, langdetect, mailer,
-               repair, safefetch, storage, syndication, translate, watchdog)
+from . import (accounts_backup, discovery, feedkind, hazards, home, langdetect,
+               mailer, repair, reputation, safefetch, storage, syndication,
+               translate, watchdog)
 from .clustering import assign_events, live_events
 from .content import clean_summary, fetch_article_text
 from .database import SessionLocal
@@ -128,6 +129,11 @@ status: dict = {"running": False, "last_run": None, "last_new_articles": 0, "cyc
 # Both drew a blank map under a ticked box. An always-present key is the whole
 # fix; everything downstream just reads it.
 status["hazards"] = hazards.idle_status("no poll has run yet")
+# Present from the first request rather than only after a successful fetch:
+# "not enabled", "never run" and "failed" are three different states and a
+# missing key reads as all of them at once.
+status["ratings"] = {"ok": False, "enabled": reputation.enabled(),
+                     "reason": "no refresh has run yet"}
 
 # Full-article content fetching (match criteria against the story body, not
 # just headline + feed summary). NEWS_CONTENT_FETCH=0 disables.
@@ -250,6 +256,51 @@ async def fetch_source(client: httpx.AsyncClient, source: Source) -> tuple[Sourc
         return source, [], f"error: {r.status_code} {r.reason_phrase}"[:200]
     except Exception as exc:  # network errors must never kill the cycle
         return source, [], f"error: {type(exc).__name__}: {exc}"[:200]
+
+
+# How long a verdict stands before the feed is read again.
+#
+# Not every poll: the answer barely moves, and a source switched off by mistake
+# should cost one look rather than one every fifteen seconds. Not never either
+# — a domain changes hands, a paper replaces its feed with a shop, and the
+# check is free once the entries are already parsed.
+KIND_RECHECK_DAYS = float(os.environ.get("NEWS_KIND_RECHECK_DAYS", "30"))
+
+
+def _kind_check_due(source: Source) -> bool:
+    if not source.feed_kind_at:
+        return True
+    return source.feed_kind_at < utcnow() - timedelta(days=KIND_RECHECK_DAYS)
+
+
+def check_feed_kind(source: Source, entries: list) -> bool:
+    """Read what a source is publishing and switch it off if it is not news.
+
+    The adoption gate only helps from now on. The catalog is 85% auto-adopted
+    under rules that never read a feed, so the ticketing calendars already in
+    it would sit there for ever — and this is the pass that reaches them,
+    riding on a poll that has already fetched and parsed the entries. It costs
+    one pass of arithmetic per source per month.
+
+    Only sources Delphi adopted by itself may be switched off. A source someone
+    added by hand is their decision and this is a heuristic; the seed catalog
+    was curated; a topic tracker's feed is a query its owner wrote, and a query
+    about concert tickets legitimately returns ticket pages. Every one of those
+    still gets its verdict recorded, so an operator can see what Delphi thinks
+    and act on it, but nothing here switches them off.
+
+    Returns True when the source was disabled, so the caller can skip storing
+    the batch it just declined.
+    """
+    verdict = feedkind.classify(entries)
+    source.feed_kind = verdict.kind
+    source.feed_kind_at = utcnow()
+    if verdict.is_news or source.added_by != "auto-discovered":
+        return False
+    source.enabled = False
+    source.last_status = ("disabled: not a news feed — " + verdict.summary())[:200]
+    log.info("feed kind: disabled %s — %s", source.name, verdict.summary())
+    return True
 
 
 class RecentClusters:
@@ -878,6 +929,10 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
             failed.append(source)
             continue
         source.consecutive_failures = 0
+        if _kind_check_due(source) and check_feed_kind(source, entries):
+            # Declined this poll: its entries are listings, not articles, and
+            # storing them is exactly the failure this exists to stop.
+            continue
         for dom, pub in discovery.collect_publishers(entries).items():
             publishers.setdefault(dom, pub)
         # Commit per source so one bad feed can't roll back the whole batch.
@@ -1424,6 +1479,9 @@ _next_sample_at: float = 0.0
 # Not zero: a restart should spend its first tick on the news, not on
 # rewriting scores that move by a point an hour.
 _next_decay_at: float = 120.0
+# Not zero either: the ratings list changes a handful of entries a month,
+# so a restart has nothing to gain by fetching it before the news.
+_next_ratings_at: float = 300.0
 _next_prune_at: float = 0.0  # monotonic deadline for the next retention pass
 # Zero, so the first tick after a restart runs it. Tightening the rules is
 # pointless if the catalog keeps yesterday's until this time tomorrow, and a
@@ -1526,7 +1584,7 @@ async def ingest_loop():
     Google gets a steady drip rather than a burst. Each source refreshes on its
     own interval; nothing starves and no single tick runs long."""
     global _next_prune_at, _next_sample_at, _next_audit_at, _next_account_backup_at
-    global _next_hazard_at, _next_decay_at
+    global _next_hazard_at, _next_decay_at, _next_ratings_at
     status["running"] = True
     started_at = time.monotonic()      # the warmup ramp measures from here
     # The one-off conversion to incremental auto-vacuum is NOT done here, and
@@ -1655,6 +1713,17 @@ async def ingest_loop():
                         except Exception:
                             # Ageing a score must never be able to stop the poll.
                             log.exception("could not age importance scores")
+
+                    if (reputation.enabled()
+                            and time.monotonic() >= _next_ratings_at):
+                        _next_ratings_at = (time.monotonic()
+                                            + reputation.REFRESH_EVERY_SECONDS)
+                        try:
+                            status["ratings"] = await reputation.refresh(db)
+                        except Exception:
+                            # A missing rating is a missing chip beside a
+                            # headline. It must never stop the news.
+                            log.exception("could not refresh source ratings")
 
                     due_to_prune = time.monotonic() >= _next_prune_at
                     # When space is short, prune every tick rather than every

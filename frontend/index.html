@@ -1008,6 +1008,70 @@
         </details>
 
         <details>
+          <summary>🏷 What the rating beside an outlet's name means</summary>
+          <p>Some headlines carry a small chip naming how reliable the outlet that
+             filed them is considered to be — <b>✓ Generally reliable</b>,
+             <b>? No consensus</b>, <b>! Generally unreliable</b>,
+             <b>⚠ Deprecated</b> or <b>⚠ Blacklisted</b>.</p>
+          <p><b>It is not Delphi's judgement.</b> The ratings come from Wikipedia's
+             <b>perennial sources list</b>, a public list maintained by the Wikipedia
+             community where every entry links to the discussion that produced it.
+             The chip is a link: click it and you can read the argument and disagree
+             with it. Delphi is passing on somebody else's published finding, with
+             attribution, and is not asserting anything of its own about any outlet.
+             The list is used under its CC BY-SA 4.0 licence.</p>
+          <p><b>No chip means nobody has assessed that outlet — never that it
+             failed.</b> The list covers roughly 620 publishers, which is a small
+             fraction of the thousands Delphi reads. Most articles will never carry
+             one.</p>
+          <p>On a feed card only the warnings appear. A chip reading "Generally
+             reliable" beside every headline from a major paper is noise, and noise
+             is what stops warnings being read — so favourable ratings are shown when
+             you open a story, where you have gone to ask about that one article.</p>
+          <p><b>Political bias is deliberately not shown.</b> There is no free,
+             auditable source for it. The best-known one is one person's opinions,
+             which its own site describes as "not a tested scientific method", and a
+             label that changes how you read the news should be better founded than
+             that. Factual reliability is a question with published reasoning behind
+             it; political lean, for now, is not.</p>
+        </details>
+
+        <details>
+          <summary>🌱 How Delphi decides a website is a news outlet</summary>
+          <p>When an outlet Delphi has never seen turns up publishing in someone
+             else's coverage, Delphi looks for that outlet's own feed and adds it —
+             which is how the catalog grows toward wherever the news actually comes
+             from. The risk is obvious: a ticketing calendar, a shop and a jobs board
+             all publish feeds with exactly the shape of a news feed, and one of them
+             (a record label's concert calendar) really did become a "national news"
+             source and put gig listings into an energy feed.</p>
+          <p>So before adopting anything, Delphi <b>reads the feed</b>:</p>
+          <ul>
+            <li><b>Dates in the future.</b> An article is published when it is
+                written, so a news feed is always in the past. An events platform
+                dates each entry by when the event happens. This one needs no
+                vocabulary in any language, so it works as well on a Japanese
+                ticketing site as an English one.</li>
+            <li><b>Where the links point.</b> A feed where nine in ten links go to
+                <i>/tickets/</i>, <i>/products/</i> or <i>/jobs/</i> is not a
+                newspaper. Judged as a proportion, because a real paper has an events
+                section and an obituaries page and links into both.</li>
+            <li><b>What the text says.</b> "Buy tickets", "add to cart", "apply now",
+                prices.</li>
+            <li><b>Whether the headlines were written or generated.</b> Real
+                headlines share very few words with each other; ones built from a
+                template share almost all of them.</li>
+          </ul>
+          <p>Two of those signals are needed to decline a feed — one is not enough to
+             overrule an outlet. Every auto-added source is also re-read about once a
+             month as it is polled, so anything adopted under the older rules gets
+             caught too. A source that fails is <b>switched off, not deleted</b>, with
+             the reason in its status line in the Sources panel, and <b>a source you
+             added yourself is never switched off this way</b> — you chose it, and
+             this is a heuristic.</p>
+        </details>
+
+        <details>
           <summary>📊 How importance scoring works</summary>
           <p>Every article gets a transparent 0–100 score — no black box. It adds up:</p>
           <ul>

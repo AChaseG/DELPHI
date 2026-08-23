@@ -1852,3 +1852,33 @@ body.board-reordering .feed-col:not(.col-dragging) { transition: transform 120ms
     width: 150px; min-width: 150px; max-width: 150px; font-size: 12px;
   }
 }
+
+/* A published reliability judgement about an outlet. Deliberately quieter than
+   the importance chip beside it: importance is Delphi's own reading of the
+   story, this is somebody else's reading of the publisher, and the two must
+   not look like they carry the same authority. */
+.src-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.78em;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-decoration: none;
+  background: transparent;
+}
+a.src-rating:hover, a.src-rating:focus-visible { text-decoration: underline; }
+.src-rating.rating-good  { color: #2f7d55; }
+.src-rating.rating-mixed { color: #898781; }
+.src-rating.rating-weak  { color: #b3771a; }
+.src-rating.rating-bad   { color: #d03b3b; }
+@media (prefers-color-scheme: dark) {
+  .src-rating.rating-good  { color: #6fbf8f; }
+  .src-rating.rating-mixed { color: #a8a6a0; }
+  .src-rating.rating-weak  { color: #e0a447; }
+  .src-rating.rating-bad   { color: #ef7f7f; }
+}

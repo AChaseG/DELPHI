@@ -152,6 +152,16 @@ class Source(Base):
     tier: Mapped[int] = mapped_column(Integer, default=2)  # 1 = major wire/global, 2 = national, 3 = local/niche
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     added_by: Mapped[str] = mapped_column(String(50), default="catalog")  # catalog | user | topic-tracker
+    # What the feed's own entries say it is: news | events | commerce | jobs.
+    # Judged by `feedkind.classify` from content rather than from the domain,
+    # which is the only defence that generalises past the sites somebody
+    # already thought to name. `feed_kind_at` paces the re-check — it is not
+    # worth asking on every poll, and a feed that changed what it publishes is
+    # worth noticing eventually rather than never. Neither is indexed: ADD
+    # COLUMN cannot build an index, so it would be true of a fresh database
+    # and quietly false of the running one.
+    feed_kind: Mapped[str] = mapped_column(String(20), default="")
+    feed_kind_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_status: Mapped[str] = mapped_column(String(200), default="")
     last_article_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -207,6 +217,32 @@ class DiscoveredDomain(Base):
     # never again. Counting is what tells them apart without a list of every
     # kind of website that is not a newspaper.
     sightings: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SourceRating(Base):
+    """What a published, auditable list says about one publisher's reliability.
+
+    Deliberately not a column on `Source`. A rating is about a *domain* and
+    Delphi holds many sources per domain (a paper's world feed, its politics
+    feed, a Google News query about it); the rating outlives any of them, and
+    it applies to an article's publisher whether or not that publisher is in
+    the catalog at all. Keyed by domain, joined on read.
+    """
+    __tablename__ = "source_ratings"
+    __table_args__ = (UniqueConstraint("provider", "domain", name="uq_rating"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(30), default="wikipedia", index=True)
+    domain: Mapped[str] = mapped_column(String(200), index=True)
+    # The rating in the publisher's own words — never paraphrased into a score
+    # of ours. "Generally reliable" is a judgement somebody made and can be
+    # read back to them; a 4/5 is a number we invented.
+    status: Mapped[str] = mapped_column(String(60), default="")
+    # 1 best .. 5 worst, for ordering and colour only.
+    rank: Mapped[int] = mapped_column(Integer, default=0)
+    label: Mapped[str] = mapped_column(String(200), default="")   # the outlet's name as listed
+    url: Mapped[str] = mapped_column(String(500), default="")     # where the judgement can be read
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Event(Base):

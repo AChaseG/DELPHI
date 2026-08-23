@@ -13,6 +13,40 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-10-08",
+        "title": "Delphi reads a feed before adopting it, and says who it trusts",
+        "items": [
+            "📰 <b>Delphi now checks that a feed is actually news before adding "
+            "it.</b> Automatic discovery used to ask one question of a feed \u2014 "
+            "does it parse \u2014 which a ticketing calendar answers as well as a "
+            "newspaper does. That is how a record label\u2019s concert calendar "
+            "became a \u201cnational news\u201d source. It now reads the entries: "
+            "dates in the future are an events calendar rather than a "
+            "publication, links to <i>/tickets/</i> and <i>/products/</i> and "
+            "<i>/jobs/</i> are not articles, and headlines that are 90% "
+            "identical to one another were generated rather than written.",
+            "🧹 <b>The same check reaches what was already added.</b> Most of the "
+            "catalog was adopted under the old rules, so every auto-added "
+            "source is now read once a month as it is polled. Anything that "
+            "turns out to be a shop, a jobs board or an events calendar is "
+            "switched off \u2014 never deleted \u2014 with the reason written into its "
+            "status line so you can disagree and switch it back on. Sources "
+            "you added yourself are never touched.",
+            "🏷 <b>Headlines can now carry a reliability rating for the outlet "
+            "that filed them.</b> The ratings come from Wikipedia\u2019s perennial "
+            "sources list \u2014 a public, openly licensed list where every "
+            "judgement links to the discussion that produced it. On a feed "
+            "card only warnings appear, so the list stays readable; open a "
+            "story and you see the rating whatever it says.",
+            "🔍 <b>It is somebody else\u2019s finding, not Delphi\u2019s.</b> The chip "
+            "names who made the judgement and links to the reasoning, because "
+            "a label that changes how you read a headline should be one you "
+            "can go and argue with. Roughly 620 outlets are covered, which is "
+            "far from all of them \u2014 no chip means nobody has assessed that "
+            "outlet, never that it failed.",
+        ],
+    },
+    {
         "date": "2026-10-07",
         "title": "Importance now fades as a story goes quiet",
         "items": [

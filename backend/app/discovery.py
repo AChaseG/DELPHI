@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 import httpx
 from sqlalchemy import func, select
 
-from . import safefetch
+from . import feedkind, safefetch
 from .models import DiscoveredDomain, Source, utcnow
 from .repair import COMMON_PATHS, REPAIR_TIMEOUT, _FeedLinkParser, _get, _validate
 
@@ -282,13 +282,23 @@ async def discover_new_sources(db, publishers: dict[str, tuple[str, str]]
 
         probed = await asyncio.gather(*(probe(e) for e in todo))
         for (dom, name, homepage), found in probed:
-            if found and found[0] not in taken:
+            # The entries are already here — the probe fetched and parsed them
+            # to decide the feed was real — and until now the only thing ever
+            # asked of them was whether there were any. A ticketing calendar
+            # passes that test as well as a newspaper does.
+            verdict = feedkind.classify(found[1]) if found else feedkind.Verdict()
+            if found and not verdict.is_news:
+                _record(db, dom, "not-news")
+                log.info("discovery: declined %s (%s) — %s",
+                         name, dom, verdict.summary())
+            elif found and found[0] not in taken:
                 feed_url, entries = found
                 source = Source(
                     name=name, rss_url=feed_url, homepage=homepage,
                     scope="national", tier=3, platform="news",
                     added_by="auto-discovered",
                     last_status="ok (auto-discovered)", last_fetched_at=utcnow(),
+                    feed_kind="news", feed_kind_at=utcnow(),
                 )
                 db.add(source)
                 db.flush()  # article rows need source.id

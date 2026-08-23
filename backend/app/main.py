@@ -28,10 +28,10 @@ from starlette.concurrency import run_in_threadpool
 
 import re as _username_re
 
-from . import (accounts_backup, athena, auth, billing, devices, discovery, export,
-               geocode, hazards, home, ingest, langdetect, mailer, passwords,
-               ratelimit, repair, safefetch, storage, stripe_api, syndication,
-               translate, watchdog)
+from . import (accounts_backup, athena, auth, billing, devices, discovery,
+               export, geocode, hazards, home, ingest, langdetect, mailer,
+               passwords, ratelimit, repair, reputation, safefetch, storage,
+               stripe_api, syndication, translate, watchdog)
 from .boolean_query import normalize_quotes, query_advisories, validate_query
 from .catalog import seed_city_sources, seed_sources
 from .changelog import CHANGELOG, fingerprints, unseen_entries, updates_since
@@ -136,7 +136,9 @@ def _ensure_schema():
                     "paywall": "BOOLEAN DEFAULT 0",
                     "etag": "VARCHAR(200) DEFAULT ''",
                     "last_modified": "VARCHAR(80) DEFAULT ''",
-                    "syndicate": "VARCHAR(40) DEFAULT ''"},
+                    "syndicate": "VARCHAR(40) DEFAULT ''",
+                    "feed_kind": "VARCHAR(20) DEFAULT ''",
+                    "feed_kind_at": "DATETIME"},
         "users": {"email": "VARCHAR(200) DEFAULT ''",
                   "email_verified": "BOOLEAN DEFAULT 0",
                   "last_seen_at": "DATETIME",
@@ -698,10 +700,39 @@ def _viewed_articles(db: Session, user_id: str, articles: list[Article]) -> set[
         ViewedArticle.user_id == user_id, ViewedArticle.article_id.in_(ids))))
 
 
+def _publisher_domain(a: Article) -> str:
+    """The domain a rating would be about: the outlet's, not the feed host's.
+
+    Taken from the article's own URL first. A source's `rss_url` is often on a
+    feed host — feeds.bbci.co.uk, feedburner — which is not the publisher and
+    would be rated as nothing at all.
+    """
+    for candidate in (a.url, a.source.homepage if a.source else "",
+                      a.source.rss_url if a.source else ""):
+        if domain := discovery.domain_of(candidate or ""):
+            return domain
+    return ""
+
+
+def _ratings_for(db, articles: list[Article]) -> dict[str, dict]:
+    """One lookup for a whole page of articles, in the shape `tr` and `viewed`
+    already use — a per-article query here would be a query per row."""
+    if not reputation.enabled() or not articles:
+        return {}
+    try:
+        return reputation.lookup(db, {d for d in (_publisher_domain(a)
+                                                  for a in articles) if d})
+    except Exception:
+        # A missing rating is a missing chip. It is never worth a 500.
+        logging.getLogger("reputation").exception("could not look up ratings")
+        return {}
+
+
 def _article_json(a: Article, tr: dict | None = None,
                   viewed: set[int] | None = None,
                   event_updated: dict[int, Event] | None = None,
-                  viewed_articles: set[int] | None = None) -> dict:
+                  viewed_articles: set[int] | None = None,
+                  ratings: dict[str, dict] | None = None) -> dict:
     """Serialize an article; `tr` is a {article_id: {title, summary}} map of
     translations into the requester's language.
 
@@ -743,6 +774,10 @@ def _article_json(a: Article, tr: dict | None = None,
         "paywall": bool(a.source and a.source.paywall),
         "archive_url": (f"https://archive.ph/newest/{a.url}"
                         if a.source and a.source.paywall and a.url.startswith("http") else None),
+        # Somebody else's published finding about this publisher, with a link
+        # to the reasoning — not a score Delphi is asserting. Absent when the
+        # outlet has never been assessed, which is most of them.
+        "rating": (ratings or {}).get(_publisher_domain(a)),
         "source": {
             "id": a.source.id, "name": a.source.name, "country": a.source.country,
             "scope": a.source.scope,
@@ -1718,7 +1753,9 @@ async def search_articles(
     viewed = _viewed_events(db, user_id, articles)
     read_alone = _viewed_articles(db, user_id, articles)
     events = _events_for(db, articles) if (criteria or {}).get("hide_stale") else None
-    return [_article_json(a, tr, viewed, events, read_alone) for a in articles]
+    ratings = _ratings_for(db, articles)
+    return [_article_json(a, tr, viewed, events, read_alone, ratings)
+            for a in articles]
 
 
 @app.post("/api/query/validate")
@@ -1911,7 +1948,9 @@ async def feed_articles(feed_id: int, limit: int = Query(default=40, le=200),
     viewed = _viewed_events(db, user_id, articles)
     read_alone = _viewed_articles(db, user_id, articles)
     events = _events_for(db, articles) if (feed.criteria or {}).get("hide_stale") else None
-    return [_article_json(a, tr, viewed, events, read_alone) for a in articles]
+    ratings = _ratings_for(db, articles)
+    return [_article_json(a, tr, viewed, events, read_alone, ratings)
+            for a in articles]
 
 
 async def _grouped_response(db: Session, articles: list[Article], lang: str, limit: int,
@@ -3117,7 +3156,8 @@ async def _story(db: Session, article: Article, lang: str, user_id: str) -> dict
     tr = await translate.translate_articles(db, articles or [article], lang)
     viewed = _viewed_events(db, user_id, [article])
     read_alone = _viewed_articles(db, user_id, [article])
-    focus = _article_json(article, tr, viewed, None)
+    focus = _article_json(article, tr, viewed, None, None,
+                          _ratings_for(db, [article]))
 
     # A column truncates the summary to 400 characters because a column is
     # narrow; here there is room for the publisher's summary in full.
@@ -3153,7 +3193,9 @@ async def _story(db: Session, article: Article, lang: str, user_id: str) -> dict
             "first_seen": event.first_seen.isoformat() + "Z",
             "updated_at": event.updated_at.isoformat() + "Z",
         } if event else None,
-        "articles": [_article_json(a, tr, viewed, None, read_alone) for a in articles],
+        "articles": [_article_json(a, tr, viewed, None, read_alone,
+                                   _ratings_for(db, articles))
+                     for a in articles],
         "sources": sources,
         "related": related,
     }
