@@ -13,7 +13,7 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
-        "date": "2026-10-08",
+        "date": "2026-08-23",
         "title": "Delphi reads a feed before adopting it, and says who it trusts",
         "items": [
             "📰 <b>Delphi now checks that a feed is actually news before adding "
@@ -47,7 +47,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-10-07",
+        "date": "2026-08-23",
         "title": "Importance now fades as a story goes quiet",
         "items": [
             "⏳ <b>A story\u2019s importance falls with time.</b> Until now a "
@@ -72,7 +72,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-10-06",
+        "date": "2026-08-23",
         "title": "The archive now trims itself, and says how fast it fills",
         "items": [
             "📈 <b>Delphi measures how fast its archive is growing</b> and shows "
@@ -104,7 +104,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-10-05",
+        "date": "2026-08-19",
         "title": "Athena: what your Pantheon has actually covered",
         "items": [
             "🦉 <b>Athena is a new board inside every Pantheon.</b> File the "
@@ -140,7 +140,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-10-04",
+        "date": "2026-08-18",
         "title": "Settings is a proper dialog now, in five sections",
         "items": [
             "⚙ <b>Settings has moved to the middle of the screen</b> and is "
@@ -165,7 +165,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-10-03",
+        "date": "2026-08-18",
         "title": "Community sensors now follow your saved places",
         "items": [
             "🟣 <b>PurpleAir is asked about your places, not about a "
@@ -190,7 +190,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-10-02",
+        "date": "2026-08-18",
         "title": "One busy source could push the others off the map",
         "items": [
             "🟣 <b>PurpleAir sensors were being written and then deleted "
@@ -216,7 +216,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-10-01",
+        "date": "2026-08-18",
         "title": "Help moves to the corner, and community sensors fill the gaps",
         "items": [
             "❓ <b>Help is now one press away.</b> The <b>❓</b> button in the "
@@ -249,7 +249,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-30",
+        "date": "2026-08-18",
         "title": "Typhon covers the world, and folds up when you want the map",
         "items": [
             "🌍 <b>Typhon is no longer two American layers.</b> Earthquakes, "
@@ -282,7 +282,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-29",
+        "date": "2026-08-18",
         "title": "Fires have a shape, and the air layer leaves the US",
         "items": [
             "🔥 <b>Wildfires draw their actual outline.</b> Typhon showed "
@@ -323,7 +323,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-28",
+        "date": "2026-08-17",
         "title": "Atlas reads left to right, and the air layer sees more",
         "items": [
             "🗺 <b>Atlas is three columns now</b>, in the order you use them: "
@@ -350,7 +350,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-27",
+        "date": "2026-08-17",
         "title": "An empty Typhon layer now tells you why it is empty",
         "items": [
             "🐉 <b>Typhon runs by default now.</b> It shipped switched off "
@@ -374,7 +374,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-26",
+        "date": "2026-08-17",
         "title": "Miles, if you think in miles",
         "items": [
             "📏 <b>⚙ Settings → Distances</b> switches every distance in "
@@ -394,7 +394,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-25",
+        "date": "2026-08-17",
         "title": "The fires that concern you look different",
         "items": [
             "🔥 A wildfire inside the distance you set for a watched place is "
@@ -415,7 +415,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-24",
+        "date": "2026-08-17",
         "title": "Your watched places know what is burning, and what you are breathing",
         "items": [
             "🔥 A watched place can now carry a <b>wildfire distance</b>. Set "
@@ -447,7 +447,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-23",
+        "date": "2026-08-16",
         "title": "Typhon can see the air now",
         "items": [
             "🌫 A second Typhon layer on 🗺 Atlas: <b>air quality</b>, from "
@@ -475,7 +475,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-22",
+        "date": "2026-08-16",
         "title": "Typhon: what is burning, on the map, while it burns",
         "items": [
             "🐉 <b>Typhon</b> is a new layer on 🗺 Atlas — named for the "
@@ -503,7 +503,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-21",
+        "date": "2026-08-16",
         "title": "Global disaster alerts, from the source the responders use",
         "items": [
             "🌍 <b>GDACS</b> — the Global Disaster Alert and Coordination "
@@ -523,7 +523,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-20",
+        "date": "2026-08-16",
         "title": "A pass over the whole of it, and what the pass turned up",
         "items": [
             "🧹 A read-through of every file, looking for the things tests do "
@@ -567,7 +567,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-19",
+        "date": "2026-08-16",
         "title": "The pop-out rail is gone; everything it held has a home",
         "items": [
             "🧭 The strip of buttons pinned to the right edge has been taken "
@@ -603,7 +603,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-18",
+        "date": "2026-08-16",
         "title": "Atlas: five base maps, and two tabs that are columns",
         "items": [
             "🗺 The map can be read on <b>five different grounds</b> now — "
@@ -631,7 +631,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-17",
+        "date": "2026-08-16",
         "title": "Atlas — a whole board that is a map",
         "items": [
             "🗺 There is a third board beside 🏠 Home and 📋 My feeds: "
@@ -664,7 +664,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-16",
+        "date": "2026-08-14",
         "title": "Subscriptions, and invitations that skip them",
         "items": [
             "💳 Delphi can now charge for access. The operator sets the price, "
@@ -695,7 +695,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-15",
+        "date": "2026-08-14",
         "title": "intitle:, intext:, source:, site: — and AROUND(5)",
         "items": [
             "🎯 The operators every research guide lists are implemented, and "
@@ -730,7 +730,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-14",
+        "date": "2026-08-14",
         "title": "A word said once is not what an article is about",
         "items": [
             "🪶 Reported with a link and a query: an energy search — solar OR "
@@ -761,7 +761,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-13",
+        "date": "2026-08-10",
         "title": "The outlet counts for as much as it used to again",
         "items": [
             "📊 Importance scoring gives the source's reach its old weight back: "
@@ -791,7 +791,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-12",
+        "date": "2026-08-10",
         "title": "A deleted Pantheon that kept coming back",
         "items": [
             "🏛 Reported as a Pantheon that would not stay deleted. The Pantheon "
@@ -821,7 +821,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-12",
+        "date": "2026-08-10",
         "title": "Filters were matching the page, not the article",
         "items": [
             "🔍 A filter searches three things: the headline, the feed summary, "
@@ -857,7 +857,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-11",
+        "date": "2026-08-10",
         "title": "One number was taking 78 seconds to count",
         "items": [
             "⏱️ The sign-in page was timing out again — and this time it was a "
@@ -886,7 +886,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-10",
+        "date": "2026-08-10",
         "title": "Half a logo on the sign-in page",
         "items": [
             "🖼️ On a phone with a weak signal the sign-in page showed the top "
@@ -907,7 +907,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-09",
+        "date": "2026-08-10",
         "title": "Seven papers, one newsroom, one vote",
         "items": [
             "🔎 The question was whether the catalogue is full of outlets that "
@@ -934,7 +934,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-08",
+        "date": "2026-08-10",
         "title": "A third of every hour was spent counting the same headlines",
         "items": [
             "🧊 The freezes were not the network and not the host this time. "
@@ -963,7 +963,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-07",
+        "date": "2026-08-09",
         "title": "Found it: the nightly outage was the backup",
         "items": [
             "🎯 The “can’t reach the server” screen "
@@ -1012,7 +1012,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-06",
+        "date": "2026-08-05",
         "title": "Keeping a record of the moments it goes quiet",
         "items": [
             "📝 Every time D.E.L.P.H.I. has been unreachable, the "
@@ -1035,7 +1035,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-05",
+        "date": "2026-08-04",
         "title": "Why a concert listing turned up in an energy feed",
         "items": [
             "🎫 A feed watching for solar, wind, coal and nuclear "
@@ -1066,7 +1066,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-04",
+        "date": "2026-08-04",
         "title": "Chasing the last of the \u201ccan\u2019t reach the server\u201d",
         "items": [
             "\u26a1 Moving to a dedicated processor worked, and the numbers are "
@@ -1088,7 +1088,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-03",
+        "date": "2026-08-04",
         "title": "Operators can see and limit where an account is being used",
         "items": [
             "📱 The operator console now shows how many devices each account is "
@@ -1117,7 +1117,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-02",
+        "date": "2026-08-04",
         "title": "Stories arrive already translated",
         "items": [
             "🌍 A column of foreign-language reporting was taking seconds to "
@@ -1141,7 +1141,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-09-01",
+        "date": "2026-08-04",
         "title": "Why the dashboard kept saying it couldn't reach the server",
         "items": [
             "🧾 The stage timings added yesterday found it on their first "
@@ -1172,7 +1172,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-31",
+        "date": "2026-08-03",
         "title": "The site going unreachable for a minute at a time",
         "items": [
             "🚦 Several times a day D.E.L.P.H.I. stopped answering entirely — "
@@ -1210,7 +1210,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-30",
+        "date": "2026-08-02",
         "title": "The feed editor opens straight away",
         "items": [
             "✎ Pressing edit on a feed or an alert used to show nothing at all "
@@ -1233,7 +1233,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-29",
+        "date": "2026-08-02",
         "title": "The board uses your whole monitor now",
         "items": [
             "🖥 Columns were a fixed width, so a wider screen bought you more "
@@ -1255,7 +1255,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-28",
+        "date": "2026-08-02",
         "title": "Why a feed carried a story with none of its words in it",
         "items": [
             "🧹 A page carries more than its story: a section menu, a “More "
@@ -1288,7 +1288,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-27",
+        "date": "2026-08-02",
         "title": "The side panels open again",
         "items": [
             "⚡ Pantheons, Locations, Alerts, Sources and the feed editor were "
@@ -1309,7 +1309,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-26",
+        "date": "2026-08-02",
         "title": "A thousand sources should not read like thirty",
         "items": [
             "🏛 Which stories reach 🏠 Home no longer depends so much on who "
@@ -1334,7 +1334,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-25",
+        "date": "2026-08-02",
         "title": "Take a Focus away, and drag your columns where you want them",
         "items": [
             "📤 A Focus can now be exported. Open any story and press ⭳ Export "
@@ -1366,7 +1366,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-24",
+        "date": "2026-08-01",
         "title": "Favourite locations actually carry news now",
         "items": [
             "📍 If your 📍 Favourite Locations column has been empty, this is why: "
@@ -1388,7 +1388,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-23",
+        "date": "2026-08-01",
         "title": "Delphi now clears out old news properly, and says when it's tight",
         "items": [
             "🧹 Old articles were already being deleted after 30 days — but the "
@@ -1409,7 +1409,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-22",
+        "date": "2026-08-01",
         "title": "Delphi now turns down the passwords attackers try first",
         "items": [
             "🚫 New passwords are checked against the ten thousand most common "
@@ -1430,7 +1430,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-21",
+        "date": "2026-08-01",
         "title": "Change your password without leaving the app",
         "items": [
             "🔑 ⚙ Settings → Account security → Change password. Your current "
@@ -1447,7 +1447,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-20",
+        "date": "2026-08-01",
         "title": "Sign-up stops confirming who has an account here",
         "items": [
             "📧 Creating an account with an email address that already has one "
@@ -1469,7 +1469,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-19",
+        "date": "2026-08-01",
         "title": "You can end a session now — and one just ended",
         "items": [
             "🔒 Settings has a new “Sign out everywhere”. Signing out from the "
@@ -1490,7 +1490,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-18",
+        "date": "2026-08-01",
         "title": "The limit on password guessing now actually holds",
         "items": [
             "🔑 Delphi caps how many sign-in attempts one caller can make, to "
@@ -1508,7 +1508,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-17",
+        "date": "2026-08-01",
         "title": "Two ways an account could reach too far, closed",
         "items": [
             "🛡 Delphi now only fetches from public internet addresses. Adding "
@@ -1531,7 +1531,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-16",
+        "date": "2026-08-01",
         "title": "Delphi reads more of the world, more often",
         "items": [
             "🌍 The source catalog has gone from 86 feeds in 4 languages to "
@@ -1567,7 +1567,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-15",
+        "date": "2026-08-01",
         "title": "Take a column with you, and read means read",
         "items": [
             "⤓ Every column can now leave as a file. <b>📊 Excel</b> gives a "
@@ -1592,7 +1592,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-14",
+        "date": "2026-08-01",
         "title": "Errors that tell you what went wrong",
         "items": [
             "⚠ Every failure now names the thing that failed. \"Request failed\" "
@@ -1622,7 +1622,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-13",
+        "date": "2026-08-01",
         "title": "A tidier rail, and a Troubleshooting tab",
         "items": [
             "🛠 Help has a third tab. <b>Troubleshooting</b> starts from the "
@@ -1649,7 +1649,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-12",
+        "date": "2026-08-01",
         "title": "A speed pass over the whole of Delphi",
         "items": [
             "📦 Everything Delphi sends is now compressed on the way to your "
@@ -1689,7 +1689,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-11",
+        "date": "2026-07-31",
         "title": "Alert hits open reliably, and every button answers",
         "items": [
             "🔔 Clicking a hit in the alerts panel sometimes did nothing at all. "
@@ -1711,7 +1711,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-10",
+        "date": "2026-07-31",
         "title": "The location search finds addresses now",
         "items": [
             "📍 Typing in the Favourite Locations search suggests places as you "
@@ -1731,7 +1731,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-09",
+        "date": "2026-07-31",
         "title": "Stories open the moment you click them",
         "items": [
             "⚡ A headline used to wait on the server before anything appeared — "
@@ -1752,7 +1752,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-08",
+        "date": "2026-07-30",
         "title": "A headline opens the story, not the outlet",
         "items": [
             "📖 Clicking a headline used to send you straight to the publisher's "
@@ -1777,7 +1777,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-07",
+        "date": "2026-07-30",
         "title": "Home is ready before you open it",
         "items": [
             "🏠 The columns on Home are the same for every reader — fixed subjects "
@@ -1794,7 +1794,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-06",
+        "date": "2026-07-30",
         "title": "Delphi opens about four times faster",
         "items": [
             "⚡ Startup used to be a queue: settings, then the source catalog, "
@@ -1824,7 +1824,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-05",
+        "date": "2026-07-30",
         "title": "The board stops freezing while it draws",
         "items": [
             "Putting a full board on screen locked the interface for about "
@@ -1838,7 +1838,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-04",
+        "date": "2026-07-30",
         "title": "Delphi remembers your board between visits",
         "items": [
             "💾 The columns you have read are now kept on your own computer, so "
@@ -1861,7 +1861,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-03",
+        "date": "2026-07-30",
         "title": "Keyword feeds stop timing out",
         "items": [
             "⚡ Feeds and searches that match on words are 5–7× faster. Serving a "
@@ -1883,7 +1883,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-02",
+        "date": "2026-07-30",
         "title": "One column for every place you watch",
         "items": [
             "📍 Favourite locations now share a single feed instead of each "
@@ -1903,7 +1903,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-08-01",
+        "date": "2026-07-30",
         "title": "Boards that are already loaded when you get there",
         "items": [
             "⚡ Once the board you're looking at has finished loading, Delphi "
@@ -1927,7 +1927,7 @@ CHANGELOG: list[dict] = [
         ],
     },
     {
-        "date": "2026-07-31",
+        "date": "2026-07-30",
         "title": "A proper manual",
         "items": [
             "📖 Help is now two tabs. “How to” is instructions — step by step, for "
@@ -2177,6 +2177,100 @@ CHANGELOG: list[dict] = [
 ]
 
 
+# One-time compatibility map, and a note on how it came to be needed.
+#
+# Every entry above was dated by hand, and the convention drifted: a session
+# adding an entry looked at the newest date in the file and wrote the day
+# after it, rather than writing the day it actually was. Nothing checked, so
+# the dates marched forward a day at a time regardless of the calendar and
+# ended up six weeks ahead of it. The clock was never wrong; the data was.
+# `test_changelog_dates.py` now refuses a date that has not happened yet, which
+# is the check that should always have existed.
+#
+# Correcting the dates is not free, because a fingerprint is a hash of the
+# entry *including* its date — so re-dating seventy-one entries would make all
+# seventy-one look unseen and greet every reader with a what's-new popup
+# containing the entire history of the project. This maps each corrected
+# entry's old fingerprint to its new one, so an account that had already seen
+# an entry still counts as having seen it.
+#
+# Safe to delete once every active account has loaded the app since the
+# correction: `/api/session/hello` rewrites `changelog_seen` to the current
+# fingerprints on every load, so a returning account needs this exactly once.
+_REDATED: dict[str, str] = {
+    "2026-07-31:e0bd4ba8af": "2026-07-30:ddd3f2548e",
+    "2026-08-01:e5b571121e": "2026-07-30:4cb8d93464",
+    "2026-08-02:f27bf29dd9": "2026-07-30:9d330347c2",
+    "2026-08-03:9845c6ce0a": "2026-07-30:6eef32538f",
+    "2026-08-04:0dadf8fcf0": "2026-07-30:98796509da",
+    "2026-08-05:4836aace86": "2026-07-30:1759836209",
+    "2026-08-06:3388420db5": "2026-07-30:9592eece2c",
+    "2026-08-07:677139d190": "2026-07-30:3480fb0fde",
+    "2026-08-08:6644ef3bb5": "2026-07-30:8527efe04b",
+    "2026-08-09:a5ef336909": "2026-07-31:dcf53e6614",
+    "2026-08-10:c8a690b5ff": "2026-07-31:9f4199cda5",
+    "2026-08-11:cbe8b8e3e6": "2026-07-31:a8d1179965",
+    "2026-08-12:633abc7e3e": "2026-08-01:fa6ddf007a",
+    "2026-08-13:03d38153d0": "2026-08-01:c8d6fa3171",
+    "2026-08-14:a5aec335e7": "2026-08-01:a1c7761a7c",
+    "2026-08-15:ec37997aee": "2026-08-01:86e6349287",
+    "2026-08-16:dd809dc6d2": "2026-08-01:029f14b522",
+    "2026-08-17:f6be6d85b9": "2026-08-01:e91f66b304",
+    "2026-08-18:70a5bae31b": "2026-08-01:6c6209969b",
+    "2026-08-19:7c49f24096": "2026-08-01:8e8127fd58",
+    "2026-08-20:bfa8f2aa94": "2026-08-01:d027a7cf40",
+    "2026-08-21:593cbab280": "2026-08-01:f140f6c1e4",
+    "2026-08-22:027b090dbc": "2026-08-01:aa26a74dd5",
+    "2026-08-23:cabe421e2f": "2026-08-01:369d96e9a5",
+    "2026-08-24:2ce7d9d7de": "2026-08-01:8a5d1834db",
+    "2026-08-25:9fbc39b6ab": "2026-08-02:f9bab63b7d",
+    "2026-08-26:b4052a1651": "2026-08-02:72832800f2",
+    "2026-08-27:09c393e25b": "2026-08-02:ad2389bcfe",
+    "2026-08-28:1368781984": "2026-08-02:b338cdcc3f",
+    "2026-08-29:46d972476e": "2026-08-02:8296ead55c",
+    "2026-08-30:a0aa2399c7": "2026-08-02:0e708dd9ce",
+    "2026-08-31:21ba528d1f": "2026-08-03:48cfcd7114",
+    "2026-09-01:b084e52e47": "2026-08-04:5daf9ac7be",
+    "2026-09-02:558c525c61": "2026-08-04:290571da1a",
+    "2026-09-03:7abb7cd190": "2026-08-04:34ac9bdb52",
+    "2026-09-04:c59c4ebf45": "2026-08-04:b48ee0470b",
+    "2026-09-05:629f072d64": "2026-08-04:c4a8deccae",
+    "2026-09-06:5e328e7ec7": "2026-08-05:87a9f896bd",
+    "2026-09-07:3b39b8f08a": "2026-08-09:60e414cc25",
+    "2026-09-08:1e960c1c6b": "2026-08-10:00bf288d3c",
+    "2026-09-09:6883adce67": "2026-08-10:1670e4f00f",
+    "2026-09-10:4ffbf57e6b": "2026-08-10:52f8c54d00",
+    "2026-09-11:a971647611": "2026-08-10:6e48889c9a",
+    "2026-09-12:2e7a611042": "2026-08-10:b874c73d4c",
+    "2026-09-12:2f7a990dfa": "2026-08-10:c9a86c9604",
+    "2026-09-13:f5d8117712": "2026-08-10:61bebdabc6",
+    "2026-09-14:a0f3b68f0b": "2026-08-14:a440873e25",
+    "2026-09-15:a2db0e3b58": "2026-08-14:67e0912ef6",
+    "2026-09-16:6219d027e3": "2026-08-14:3d1cf693c4",
+    "2026-09-17:cdbe44ca08": "2026-08-16:479efb3a7a",
+    "2026-09-18:2977d399e9": "2026-08-16:182bd42f22",
+    "2026-09-19:0e57cc500d": "2026-08-16:c6b4ae9407",
+    "2026-09-20:a1d04f3b26": "2026-08-16:bc5f631941",
+    "2026-09-21:d10b52b1c0": "2026-08-16:023ac10718",
+    "2026-09-22:dc7266bc45": "2026-08-16:b310ec694a",
+    "2026-09-23:169b0ba804": "2026-08-16:6dcc18cde6",
+    "2026-09-24:9ce7cb5344": "2026-08-17:7930eaeaa5",
+    "2026-09-25:5ad1ce9054": "2026-08-17:ee1142600e",
+    "2026-09-26:9c035d53f4": "2026-08-17:1409d79e64",
+    "2026-09-27:e155bf8b91": "2026-08-17:72da09a56b",
+    "2026-09-28:3debbe5d1d": "2026-08-17:72afdfa801",
+    "2026-09-29:474de036a6": "2026-08-18:f36f993c14",
+    "2026-09-30:da52de9d88": "2026-08-18:e988fc92c1",
+    "2026-10-01:fe96b77e1b": "2026-08-18:24e3630a90",
+    "2026-10-02:05b4b596b0": "2026-08-18:7f6b66a8b4",
+    "2026-10-03:4c45a3360f": "2026-08-18:45356fc954",
+    "2026-10-04:b0b3ab1dea": "2026-08-18:3ff655ad4d",
+    "2026-10-05:795a9f5a6d": "2026-08-19:a8aaff3663",
+    "2026-10-06:ec499dbc29": "2026-08-23:95f87e8170",
+    "2026-10-07:d66615148f": "2026-08-23:28daab61db",
+    "2026-10-08:e418424812": "2026-08-23:0af9741737",
+}
+
 def updates_since(seen: datetime) -> list[dict]:
     """Entries shipped after the calendar day the user was last seen.
     Legacy fallback for accounts that predate fingerprint tracking."""
@@ -2199,4 +2293,6 @@ def fingerprints() -> list[str]:
 def unseen_entries(seen: list[str]) -> list[dict]:
     """Entries (new or changed) whose fingerprint the user hasn't seen yet."""
     seen_set = set(seen)
+    # An entry seen under its old, wrong date counts as seen. See _REDATED.
+    seen_set.update(_REDATED[f] for f in seen_set & _REDATED.keys())
     return [e for e in CHANGELOG if _fingerprint(e) not in seen_set]

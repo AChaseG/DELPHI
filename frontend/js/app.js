@@ -856,11 +856,19 @@ function updateItemNodes(text) {
    screen — so the drawing is shared and only the framing differs. */
 function renderUpdateEntries(box, entries) {
   box.innerHTML = "";
-  for (const entry of entries) {   // newest first; one block per date
+  // Newest first, one block per entry — and the date heading only when the day
+  // changes. A busy day ships several entries, and repeating the same date
+  // above each of them reads as a mistake rather than as a list.
+  let lastDate = null;
+  for (const entry of entries) {
     const block = document.createElement("div");
     block.className = "update-entry";
+    const sameDay = entry.date === lastDate;
+    if (sameDay) block.classList.add("update-same-day");
+    lastDate = entry.date;
     const date = document.createElement("div");
     date.className = "update-date";
+    date.hidden = sameDay;
     date.textContent = new Date(entry.date + "T00:00:00").toLocaleDateString([],
       { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     const title = document.createElement("h3");

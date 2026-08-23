@@ -1882,3 +1882,7 @@ a.src-rating:hover, a.src-rating:focus-visible { text-decoration: underline; }
   .src-rating.rating-weak  { color: #e0a447; }
   .src-rating.rating-bad   { color: #ef7f7f; }
 }
+
+/* A second entry on the same day carries no date heading of its own, so it
+   needs the gap the heading used to provide. */
+.update-entry.update-same-day { margin-top: -0.35rem; padding-top: 0.6rem; }
