@@ -13,6 +13,38 @@ from datetime import datetime
 
 CHANGELOG: list[dict] = [
     {
+        "date": "2026-10-06",
+        "title": "The archive now trims itself, and says how fast it fills",
+        "items": [
+            "📈 <b>Delphi measures how fast its archive is growing</b> and shows "
+            "it in <b>👤 Settings → 🩺 Instance</b>: megabytes a day, articles a "
+            "day, what an article costs, and — the number that actually "
+            "matters — roughly how many days until the archive reaches its "
+            "ceiling. Retention could always say what to delete; it could "
+            "never say <i>how long have I got</i>.",
+            "🧹 <b>Old news is now cleared continuously rather than in a "
+            "panic.</b> The archive is held at a level below its ceiling, and "
+            "once it gets there a small batch of the oldest articles goes on "
+            "each housekeeping pass — so it settles and then sheds each day's "
+            "intake as the next day's arrives, instead of growing until it "
+            "hits the wall. Nothing under two days old is ever touched.",
+            "💾 <b>The Disk line could go missing from the operator console.</b> "
+            "Checking whether the database can hand space back needs to open "
+            "it — and a volume with no room left is exactly when that fails, "
+            "so the fault took the whole panel with it and hid its own "
+            "diagnosis. Every part of that block is now guarded, and anything "
+            "unreadable is reported as unreadable instead of vanishing. It "
+            "also no longer says a database <i>cannot</i> return space when "
+            "the truth is we could not ask.",
+            "📖 <b>The How-to and FAQ cover Typhon and Athena.</b> They had "
+            "not been updated since before either shipped. New How-to sections "
+            "for both, and FAQ answers for the questions they raise: why a "
+            "fire shows a circle rather than an outline, why an air reading "
+            "outside the US says it is not an official AQI, what Athena counts "
+            "and who can see it, and why a hazard layer is empty.",
+        ],
+    },
+    {
         "date": "2026-10-05",
         "title": "Athena: what your Pantheon has actually covered",
         "items": [

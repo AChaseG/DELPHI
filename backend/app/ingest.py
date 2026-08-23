@@ -1163,6 +1163,81 @@ def prune_old_articles(db) -> dict:
             "more": len(old_ids) >= RETENTION_BATCH}
 
 
+# Where the archive is *held*, as a fraction of the volume. Deliberately below
+# storage.DB_MAX_FRACTION, which is the ceiling: the ceiling is a wall you hit
+# and this is a level you sit at.
+#
+# The difference matters more than it sounds. Trimming only at the ceiling
+# means the file grows to seventy per cent of the disk and stops there — and on
+# a database that predates incremental auto-vacuum it *never comes back down*,
+# because deleting rows does not shrink a SQLite file. The operator then has a
+# permanently seventy-per-cent-full volume and a poller that pauses whenever a
+# busy week pushes it the rest of the way. Holding a lower level keeps real
+# headroom instead of only a promise of it.
+DB_TARGET_FRACTION = float(os.environ.get("NEWS_DB_TARGET_FRACTION", "0.55"))
+# The most one pass will delete. Small on purpose: this runs every housekeeping
+# tick, and the point is to shed roughly what a day adds over the course of a
+# day rather than to take a bite out of the archive on the hour.
+TRIM_BATCH = int(os.environ.get("NEWS_TRIM_BATCH", "750"))
+
+
+def trim_to_budget(db) -> dict:
+    """Hold the archive at a steady size by deleting about what a day adds.
+
+    The existing pruners answer two different questions and neither is this
+    one. `prune_old_articles` answers "how old is too old" and cannot bound a
+    database, because how much thirty days weighs depends on how much news
+    happened. `prune_to_fit` answers "are we over the wall" and only acts once
+    the archive has already filled seventy per cent of the volume.
+
+    This one keeps it at a level. Once the archive is past its target, every
+    housekeeping tick drops a small batch of the oldest articles — so the file
+    converges on the target and then stays there, shedding each day's intake as
+    the next day's arrives. A rolling window measured in bytes rather than in
+    days, which is the thing that actually has to fit.
+
+    Bounded on both sides, as the other two are: never past MIN_KEEP_DAYS, and
+    never more than TRIM_BATCH in one pass. `more` says the target has not been
+    reached yet, so the caller can come back on the next tick instead of in six
+    hours.
+    """
+    target = int(storage.db_ceiling() * (DB_TARGET_FRACTION / storage.DB_MAX_FRACTION)) \
+        if storage.DB_MAX_FRACTION > 0 else 0
+    if target <= 0:
+        return {"articles": 0, "events": 0, "over_target_bytes": 0, "more": False}
+    over = storage.db_bytes() - target
+    if over <= 0:
+        return {"articles": 0, "events": 0, "over_target_bytes": 0, "more": False}
+
+    floor = utcnow() - timedelta(days=MIN_KEEP_DAYS)
+    ids = db.scalars(
+        select(Article.id).where(Article.published_at < floor)
+        .order_by(Article.published_at.asc()).limit(TRIM_BATCH)).all()
+    if not ids:
+        # Everything left is inside the floor. Said once per pass rather than
+        # silently doing nothing: it means the volume is genuinely too small
+        # for this catalog, which is an operator's decision and not ours.
+        log.warning(
+            "archive is %.0f MB above its target but nothing is older than "
+            "%.1f days — the volume is too small for this much news, or "
+            "NEWS_DB_TARGET_FRACTION is set too low",
+            over / 1e6, MIN_KEEP_DAYS)
+        return {"articles": 0, "events": 0, "over_target_bytes": over, "more": False}
+
+    _delete_articles(db, list(ids))
+    events = _drop_empty_events(db, floor)
+    # Deleting alone changes nothing on disk; this is the half that does — and
+    # on a database that predates incremental auto-vacuum it does nothing
+    # either, which is what the operator console's ♻ button is for.
+    storage.checkpoint()
+    freed = storage.reclaim()
+    log.info("archive was %.0f MB above target: dropped %d of the oldest "
+             "articles, returned %.0f MB to the disk",
+             over / 1e6, len(ids), freed / 1e6)
+    return {"articles": len(ids), "events": events, "over_target_bytes": over,
+            "freed_bytes": freed, "more": len(ids) == TRIM_BATCH}
+
+
 def prune_to_fit(db) -> dict:
     """Drop the oldest articles until the archive is back under its ceiling.
 
@@ -1202,6 +1277,10 @@ def prune_to_fit(db) -> dict:
             "freed_bytes": freed}
 
 
+# The archive measures itself once an hour. Starts at zero so a restart takes a
+# sample immediately: the rate is built from the gap between samples, and a
+# process that restarts often would otherwise never record two.
+_next_sample_at: float = 0.0
 _next_prune_at: float = 0.0  # monotonic deadline for the next retention pass
 # Zero, so the first tick after a restart runs it. Tightening the rules is
 # pointless if the catalog keeps yesterday's until this time tomorrow, and a
@@ -1303,7 +1382,7 @@ async def ingest_loop():
     (news wires first, then a bounded slice of city feeds), paced per host so
     Google gets a steady drip rather than a burst. Each source refreshes on its
     own interval; nothing starves and no single tick runs long."""
-    global _next_prune_at, _next_audit_at, _next_account_backup_at, _next_hazard_at
+    global _next_prune_at, _next_sample_at, _next_audit_at, _next_account_backup_at, _next_hazard_at
     status["running"] = True
     started_at = time.monotonic()      # the warmup ramp measures from here
     # The one-off conversion to incremental auto-vacuum is NOT done here, and
@@ -1401,6 +1480,19 @@ async def ingest_loop():
                         # volume is no help when the volume is what was lost.
                         await asyncio.to_thread(accounts_backup.send_scheduled, db)
 
+                    # One row an hour saying how big the archive is and how
+                    # many articles are in it. Cheap enough to be unconditional
+                    # — three integers — and it is the only thing that can
+                    # answer "how long have I got" rather than "how full is it
+                    # right now".
+                    if time.monotonic() >= _next_sample_at:
+                        _next_sample_at = time.monotonic() + storage.SAMPLE_EVERY_SECONDS
+                        try:
+                            await asyncio.to_thread(storage.sample, db)
+                        except Exception:
+                            # Measuring must never be able to stop the poll.
+                            log.exception("could not record a storage sample")
+
                     due_to_prune = time.monotonic() >= _next_prune_at
                     # When space is short, prune every tick rather than every
                     # six hours: the interval is tuned for housekeeping, and
@@ -1420,6 +1512,11 @@ async def ingest_loop():
                             # Age-based pruning first, then whatever the disk
                             # still demands beyond it.
                             prune_to_fit(db)
+                            # And then the level: a small batch every tick so
+                            # the archive settles at its target and sheds each
+                            # day's intake as the next arrives, rather than
+                            # growing to the ceiling and being cut back there.
+                            trim_to_budget(db)
                             if pruned["articles"]:
                                 storage.checkpoint()
                                 storage.reclaim()

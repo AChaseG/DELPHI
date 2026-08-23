@@ -3252,7 +3252,15 @@ async function renderServiceHealth() {
   // degrading part of it — and the one whose only previous symptom was the app
   // refusing to start, with nothing left running to explain why.
   const st = s.storage || {};
-  if (st.ok) {
+  if (!st.ok && !st.detail) {
+    // The gap this used to fall through. With neither flag set, both branches
+    // below were skipped and the disk simply had no line — on the one panel an
+    // operator opens *because* the disk is in trouble. A missing answer now
+    // says it is missing.
+    lines.push("💾 Disk: the volume could not be measured, and no reason was "
+               + "given. That is a fault in Delphi rather than in the disk — "
+               + "check the server log.");
+  } else if (st.ok) {
     const mb = (n) => `${(n / 1e6).toFixed(0)} MB`;
     const head = `💾 Disk: ${mb(st.db_bytes)} of news in ${mb(st.total_bytes)} `
       + `(${st.free_pct}% free).`;
@@ -3270,7 +3278,34 @@ async function renderServiceHealth() {
     } else {
       lines.push(head);
     }
-    if (!st.reclaimable) {
+    // How fast it is filling, which is the number that decides whether to buy
+    // disk — and the one the panel could never answer before.
+    const g = st.growth || {};
+    if (g.ready) {
+      const perDay = g.bytes_per_day;
+      let line = `📈 Growth: ${(perDay / 1e6).toFixed(1)} MB a day `
+        + `(${g.articles_per_day.toLocaleString()} articles`
+        + (g.bytes_per_article ? `, ${(g.bytes_per_article / 1024).toFixed(1)} KB each` : "")
+        + `), measured over the last ${g.span_hours}h.`;
+      if (perDay <= 0) {
+        line += " The archive is holding steady or shrinking — trimming is "
+          + "keeping up with what arrives.";
+      } else if (g.days_to_ceiling !== null && g.days_to_ceiling !== undefined) {
+        line += ` At that rate it reaches its ceiling in about `
+          + `${g.days_to_ceiling} day${g.days_to_ceiling === 1 ? "" : "s"}, `
+          + "at which point the oldest news starts being dropped to fit.";
+      }
+      lines.push(line);
+    } else if (g.reason) {
+      lines.push(`📈 Growth: ${g.reason}.`);
+    }
+    if (st.reclaimable === null) {
+      lines.push("💾 Whether this database can hand freed space back to the disk "
+                 + "could not be determined"
+                 + (st.reclaimable_detail ? ` — ${st.reclaimable_detail}` : "")
+                 + ". That usually means the database could not be opened, which "
+                 + "on a full volume is the first thing to go wrong.");
+    } else if (!st.reclaimable) {
       lines.push("💾 Deleting old articles frees space inside the database file "
                  + "but doesn't hand it back to the disk, because this database "
                  + "predates Delphi setting that up at creation. Converting it is "

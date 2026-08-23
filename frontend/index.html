@@ -657,6 +657,71 @@
         </details>
 
         <details>
+          <summary>🦉 Athena — mapping what your group has covered</summary>
+          <p>Athena is a board inside every Pantheon. It answers the question a stack
+             of weekly reports cannot: not <em>what did we say in March</em>, but
+             <em>what have we been circling for three months without noticing</em> —
+             and what has gone quiet.</p>
+          <p><b>Open it:</b> go to <b>🏛 Pantheons</b>, open one, and press
+             <b>🦉 Athena</b> in the bar at the top. <b>📋 Shared feeds</b> in the same
+             place takes you back.</p>
+          <p><b>1. Make your themes.</b> The board starts empty on purpose — the
+             vocabulary is your group's, not ours. Go to <b>🏷 Themes</b>, give each one
+             a name, optionally a <b>domain</b> to group it under (each domain takes a
+             colour on the grid), and optionally some <b>keywords</b> so uploads can
+             suggest it. Owners and admins manage the list; every member can file
+             against it.</p>
+          <p><b>2. File a document.</b> Press <b>＋ File a document</b> and choose a
+             <code>.docx</code>, <code>.md</code> or <code>.txt</code>. Bold headings
+             become topics, "Heading: a line about it" works too, and any links become
+             sources. A review step then shows everything it found with suggested
+             themes — <b>tick the ones that are right, untick the ones that are not, and
+             edit any title</b> — and nothing is filed until you press <b>File it</b>.</p>
+          <p><b>3. Read the grid.</b> <b>▦ Coverage</b> is themes down the side and
+             weeks across the top. Each cell is how many topics in that period carried
+             that theme, shaded so the busy stretches stand out; press one to see
+             exactly which topics were behind it. <b>Group by</b> switches between week,
+             fortnight and month, and <b>From</b>/<b>To</b> narrow the range.</p>
+          <p><b>The other two views:</b> <b>🔗 Sources</b> groups every link you have
+             filed by the site it came from, most-cited first — a different question
+             from what you wrote about, and often a more uncomfortable one.
+             <b>📄 Documents</b> lists what has been filed, who filed it, and lets you
+             remove one.</p>
+          <p><b>Your documents never leave your browser.</b> The file is opened, read
+             and discarded on your own machine; only the topics, themes and links you
+             confirmed are sent to Delphi. The original is never uploaded and never
+             stored.</p>
+        </details>
+
+        <details>
+          <summary>🐉 Typhon — live hazards on the map</summary>
+          <p>Typhon draws what is happening right now — fires, air quality,
+             earthquakes, storms, floods, volcanoes, droughts and severe weather — on
+             the <b>🗺 Atlas</b> map, beside your watched places and alert hits.</p>
+          <p><b>Switch layers on:</b> the panel on the right of Atlas has two
+             collapsible folders. <b>🗺 Base map</b> picks the ground; <b>🐉 Typhon</b>
+             holds one switch per kind of hazard, with a switch above them all that
+             turns the lot on or off at once. Both folders remember whether you left
+             them open.</p>
+          <p><b>Fires have a shape.</b> Where the agencies have flown a perimeter,
+             Atlas draws the real mapped boundary. Where they have not — which is most
+             fires — you get a <b>dashed circle showing the approximate area burned</b>,
+             worked out from the reported acreage. It says which you are looking at
+             when you press it. Outlines load from about the zoom of a large state and
+             in; further out they would be smaller than the dot on top of them.</p>
+          <p><b>Get told when a fire is near a place you watch:</b> open
+             <b>📍 Locations</b> on Atlas, edit a place, and set a <b>wildfire
+             distance</b>. Any fire reported inside that ring raises an alert and draws
+             as a <b>🔥 flame</b> instead of a dot. Tick <b>email me</b> to have it
+             reach you when Delphi is closed. Air quality has no ring and never
+             notifies — it is a value that exists everywhere rather than an event, so
+             it is shown on the place instead.</p>
+          <p><b>Air quality on a watched place</b> appears on its row and in its map
+             popup, and always says what it rests on: an average of the monitors within
+             five kilometres, or the nearest one with its distance stated.</p>
+        </details>
+
+        <details>
           <summary>👤 Setting up how Delphi looks and behaves</summary>
           <p>Press <b>👤</b> in the top-right corner. Everything here is saved to your account
              and follows you to any browser or device.</p>
@@ -1189,6 +1254,92 @@
              aggregator or an auto-discovered outlet still translates correctly. (If a
              translation call to the provider fails, the original is shown; it retries
              on the next load.)</p>
+        </details>
+
+        <details>
+          <summary>🐉 Why does a fire show a circle instead of its outline?</summary>
+          <p>Because nobody has flown it yet. The federal agencies map a perimeter for
+             fires big enough to be worth the flight, and most fires never are. Rather
+             than show nothing, Delphi draws a dashed circle showing the
+             <b>approximate area burned</b>, worked out from the reported acreage.</p>
+          <p><b>The two are deliberately drawn differently and they are different
+             claims.</b> A mapped perimeter is solid: it says where the fire's edge is.
+             The circle is dashed and hollow: it says how much has burned and
+             <em>nothing at all</em> about the shape, or which way the fire has run. A
+             hundred-thousand-acre fire is a circle about eleven kilometres across, and
+             the real burn is never that neat.</p>
+          <p>A perimeter is also not as live as the fire it belongs to. Acreage updates
+             with every situation report; the outline updates when somebody flies it,
+             which for a big fire is roughly nightly. The popup gives the outline's own
+             date for that reason.</p>
+        </details>
+
+        <details>
+          <summary>🌫 Why does an air reading say "not an official AQI"?</summary>
+          <p>Because it was worked out here rather than published by an agency, and the
+             difference is worth knowing.</p>
+          <p><b>Inside the United States</b>, readings come from <b>AirNow</b> — the
+             EPA's own regulatory monitors, reporting a finished AQI on the published
+             scale. Those say <code>AQI 42 · Good</code> with no caveat.</p>
+          <p><b>Everywhere else</b>, readings come from <b>OpenAQ</b>, which aggregates
+             government monitors worldwide but publishes a raw measurement rather than
+             an index. Delphi converts it using the EPA's breakpoint table — but that
+             table is defined over a <em>24-hour average</em> for particulates and an
+             8-hour average for ozone, and what we have is one recent reading. The
+             category is meaningful; the number is not the official AQI, so it says
+             so.</p>
+          <p><b>Community sensors</b> (PurpleAir, where an operator has supplied a key)
+             say more than that. A light-scattering sensor on somebody's fence
+             over-reads, and over-reads more in damp air, so the EPA's published
+             humidity correction is applied and the popup shows the raw figure beside
+             the corrected one. Sensors the network itself doubts, and sensors indoors,
+             are dropped. <b>Where a regulatory monitor is in range of your place, it
+             always wins</b> — the community network's value is coverage between the
+             good instruments, not a rival reading beside one.</p>
+          <p>Two scales are never averaged together. A place reports one network, and
+             says which.</p>
+        </details>
+
+        <details>
+          <summary>🦉 What does Athena actually count, and who can see it?</summary>
+          <p>It counts <b>topics you filed, tagged with themes you chose</b>. Nothing is
+             inferred from your news feeds and nothing is counted that a person did not
+             confirm — the upload step suggests themes from your keywords, and every
+             suggestion is a toggle you press before anything is saved. A coverage
+             figure is only worth reading if somebody agreed to the tags behind it.</p>
+          <p><b>Everyone in the Pantheon</b> can see what has been filed and file their
+             own. Owners and admins manage the theme list, because a theme is what the
+             figures are counted in and renaming one silently changes every number on
+             the board. You can remove a document you filed; an admin can remove any.</p>
+          <p><b>The documents themselves are never stored.</b> A <code>.docx</code> is a
+             zip of XML, and both halves are unpacked in your own browser. Only the
+             structure you confirmed is sent. The original is <b>never uploaded and
+             never stored</b> — Delphi holds no copy of it and there is nothing to
+             download back.</p>
+          <p><b>Deleting a theme</b> removes it from every topic already tagged with it,
+             and its column of figures goes too. That is not recoverable — the tag is
+             gone, not hidden.</p>
+        </details>
+
+        <details>
+          <summary>🐉 Why is a Typhon layer empty?</summary>
+          <p>An empty layer and a broken one used to look identical, so the map now
+             says which it is directly under the switches, and <b>👤 Settings →
+             🩺 Instance</b> carries the same in one line.</p>
+          <p>The usual reasons: <b>nothing reported in this view</b> (the honest and
+             most common one — pan or zoom out); <b>this instance has no API key</b> for
+             that provider, which an operator fixes in a minute; the provider could not
+             be reached; or the whole feature is switched off with
+             <code>NEWS_HAZARDS=0</code>.</p>
+          <p><b>Wildfires are United States only</b>, from the federal interagency feed,
+             and the layer's label says so. Earthquakes, storms, floods, volcanoes and
+             droughts are worldwide. Severe weather is United States only and only the
+             warnings that carry an actual polygon, which is the sharp-edged half —
+             tornado, severe thunderstorm, flash flood.</p>
+          <p><b>Community air sensors only appear near a saved place.</b> That network
+             has tens of thousands of sensors and Delphi asks only about the ground
+             around locations somebody is watching, so a cluster of them by your
+             places and none elsewhere is correct rather than a fault.</p>
         </details>
 
         <details>

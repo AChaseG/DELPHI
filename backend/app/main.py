@@ -2868,6 +2868,46 @@ def _reach_status(db: Session) -> dict:
     }
 
 
+def _storage_status(db: Session) -> dict:
+    """The disk, and how fast it is filling — and never able to be absent.
+
+    Every part of this is wrapped, because the disk block is the one an
+    operator opens the console *for* and it was the one most able to disappear:
+    `auto_vacuum_mode` opens a database connection, and a volume with no room
+    left is exactly the situation where opening a connection fails. One raised
+    exception there took the whole status endpoint with it, so the operator
+    trying to find out why the disk was full got nothing at all — the failure
+    hiding its own diagnosis.
+
+    Anything unreadable comes back as a stated reason rather than a missing
+    key. "Nothing here" and "nothing working" must never read the same.
+    """
+    try:
+        info = dict(storage.disk())
+    except Exception as exc:
+        return {"ok": False, "detail": f"could not read the volume: {exc}"}
+    for key, get in (("ceiling_bytes", storage.db_ceiling),
+                     ("over_ceiling_bytes", storage.over_ceiling)):
+        try:
+            info[key] = get()
+        except Exception:
+            info[key] = None
+    try:
+        info["reclaimable"] = storage.auto_vacuum_mode() == 2
+    except Exception as exc:
+        # Unknown rather than False: telling an operator their database cannot
+        # return space, when the truth is we could not ask, sends them to run a
+        # VACUUM they may not need on a disk that cannot afford one.
+        info["reclaimable"] = None
+        info["reclaimable_detail"] = str(exc)
+    try:
+        info["growth"] = storage.growth(db)
+    except Exception as exc:
+        info["growth"] = {"ready": False, "reason": f"could not be measured: {exc}"}
+    info["target_fraction"] = ingest.DB_TARGET_FRACTION
+    return info
+
+
 @app.get("/api/ingest/status")
 def ingest_status(db: Session = Depends(get_db)):
     # The warm Home board goes with it: both are the poller's work, and an
@@ -2906,10 +2946,7 @@ def ingest_status(db: Session = Depends(get_db)):
             # never opened a port and there was nothing left running to report
             # it. A number here is the difference between noticing at 70% and
             # finding out at 100%.
-            "storage": {**storage.disk(),
-                        "ceiling_bytes": storage.db_ceiling(),
-                        "over_ceiling_bytes": storage.over_ceiling(),
-                        "reclaimable": storage.auto_vacuum_mode() == 2},
+            "storage": _storage_status(db),
             **_reach_status(db)}
 
 

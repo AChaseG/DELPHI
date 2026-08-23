@@ -215,3 +215,104 @@ def checkpoint() -> None:
             conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
     except Exception as exc:
         log.warning("wal checkpoint failed: %s", exc)
+
+
+# ---------- how fast it is filling, and how long that leaves ----------
+#
+# Retention could always answer "delete anything older than thirty days". It
+# could never answer the question an operator actually has — *how fast is this
+# filling up and how long have I got* — and without that the only signal the
+# disk was in trouble was the disk being in trouble.
+#
+# Measured rather than assumed, because the answer is entirely local. A
+# synthetic corpus puts one article at about **2.8 KB** once its row, its
+# full-text index and the indexes over it are counted, so a thousand articles a
+# day is roughly 2.8 MB a day. But how many a day *this* instance takes depends
+# on its catalog, and an instance polling five hundred city feeds is not the
+# instance polling forty wires. So the rate comes from the archive's own
+# history.
+
+# One sample an hour is plenty to see a trend and cheap enough to ignore.
+SAMPLE_EVERY_SECONDS = float(os.environ.get("NEWS_STORAGE_SAMPLE_EVERY_S", "3600"))
+# Long enough that a quiet weekend does not read as a collapse in the rate, and
+# short enough to notice a catalog that doubled on Tuesday.
+SAMPLE_KEEP_DAYS = float(os.environ.get("NEWS_STORAGE_SAMPLE_DAYS", "14"))
+# The rate is refused below this much history. Two samples an hour apart can
+# say anything — a checkpoint landing between them looks like a doubling — and
+# a wrong rate drives the trimming below.
+MIN_SPAN_HOURS = float(os.environ.get("NEWS_STORAGE_MIN_SPAN_H", "6"))
+
+
+def sample(db) -> dict:
+    """Record one measurement of the archive, and drop the stale ones."""
+    from datetime import timedelta
+
+    from sqlalchemy import delete as _delete
+    from sqlalchemy import func as _func
+    from sqlalchemy import select as _select
+
+    from .models import Article, StorageSample, utcnow
+
+    info = disk()
+    row = StorageSample(
+        db_bytes=db_bytes(),
+        free_bytes=int(info.get("free_bytes") or 0) if info.get("ok") else 0,
+        articles=int(db.scalar(_select(_func.count(Article.id))) or 0))
+    db.add(row)
+    db.execute(_delete(StorageSample).where(
+        StorageSample.at < utcnow() - timedelta(days=SAMPLE_KEEP_DAYS)))
+    db.commit()
+    return {"db_bytes": row.db_bytes, "articles": row.articles}
+
+
+def growth(db) -> dict:
+    """How fast the archive is growing, from its own recorded history.
+
+    The oldest and newest samples rather than a fit through all of them: this
+    is a number an operator reads to decide whether to buy more disk, and a
+    straight line between two real measurements is both easier to defend and
+    harder to get subtly wrong than a regression nobody will check.
+
+    Everything is `None` until there is enough history to mean anything, and
+    the caller is expected to say "not yet" rather than print a zero.
+    """
+    from sqlalchemy import select as _select
+
+    from .models import StorageSample
+
+    rows = list(db.scalars(_select(StorageSample).order_by(StorageSample.at)))
+    if len(rows) < 2:
+        return {"ready": False, "samples": len(rows),
+                "reason": "not enough history yet — this needs a few hours"}
+    first, last = rows[0], rows[-1]
+    hours = (last.at - first.at).total_seconds() / 3600.0
+    if hours < MIN_SPAN_HOURS:
+        return {"ready": False, "samples": len(rows),
+                "reason": f"only {hours:.1f}h of history — needs {MIN_SPAN_HOURS:.0f}h"}
+
+    per_day = (last.db_bytes - first.db_bytes) / hours * 24.0
+    articles_per_day = (last.articles - first.articles) / hours * 24.0
+    info = disk()
+    # Days until the archive reaches its ceiling at the present rate. Only
+    # meaningful while it is actually growing: a shrinking archive has no
+    # deadline, and dividing by a negative rate would invent one.
+    days_left = None
+    if per_day > 0:
+        headroom = max(0, db_ceiling() - last.db_bytes)
+        days_left = round(headroom / per_day, 1)
+    return {
+        "ready": True,
+        "samples": len(rows),
+        "span_hours": round(hours, 1),
+        "bytes_per_day": int(per_day),
+        "articles_per_day": int(articles_per_day),
+        # The one number that makes the other two concrete. Measured, not the
+        # 2.8 KB a synthetic corpus gives — a real archive's mix of wire copy
+        # and full article text is its own.
+        "bytes_per_article": (int((last.db_bytes - first.db_bytes)
+                                  / (last.articles - first.articles))
+                              if last.articles > first.articles else None),
+        "days_to_ceiling": days_left,
+        "db_bytes": last.db_bytes,
+        "free_bytes": info.get("free_bytes") if info.get("ok") else None,
+    }

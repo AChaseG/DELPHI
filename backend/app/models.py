@@ -335,6 +335,30 @@ class PantheonInvite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class StorageSample(Base):
+    """How big the archive was, and how many articles were in it, at one moment.
+
+    Retention could always answer "delete anything older than thirty days". It
+    could never answer the question an operator actually has, which is **how
+    fast is this filling up and how long have I got** — and without that, the
+    only signal the disk was in trouble was the disk being in trouble.
+
+    A row an hour, kept for a fortnight. Two samples give a rate; a fortnight of
+    them gives a rate that is not just yesterday's news cycle. It is the
+    cheapest table in the database by a wide margin — 24 rows a day, three
+    integers each — and it is what lets the archive be trimmed continuously to
+    match what a day adds instead of being cut back in a panic once it has
+    already filled seventy per cent of the volume.
+    """
+    __tablename__ = "storage_samples"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    db_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    free_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    articles: Mapped[int] = mapped_column(Integer, default=0)
+
+
 # ---------- Athena: what a Pantheon has actually covered ----------
 #
 # A group that writes intelligence reports every week accumulates a question it
