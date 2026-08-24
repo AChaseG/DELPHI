@@ -218,14 +218,75 @@ def _term_pattern(term: str) -> str:
     return r"\s+".join(_word_pattern(p) for p in term.split())
 
 
+# Scripts written without spaces between words: CJK ideographs and the kana,
+# Hangul, and Thai. A word boundary is a transition between a word character
+# and a non-word one, and in these scripts every character is a word
+# character — so "\b地震\b" inside "大規模な地震が発生" has no boundary on either
+# side and never matches. Neither does any other term a reader might write in
+# Chinese, Japanese, Korean or Thai.
+#
+# The failure was total and silent: the query parsed, validated, and returned
+# nothing for ever. `scoring.py` found this first and documented it for
+# breaking-news terms; the Boolean engine kept using boundaries everywhere and
+# so could not be used at all in four of the languages Delphi reads.
+_UNSPACED_SCRIPT = re.compile(
+    r"[\u3040-\u30ff"      # kana
+    r"\u3400-\u4dbf"       # CJK extension A
+    r"\u4e00-\u9fff"       # CJK unified ideographs
+    r"\uf900-\ufaff"       # CJK compatibility ideographs
+    r"\uac00-\ud7a3"       # Hangul syllables
+    r"\u1100-\u11ff"       # Hangul jamo
+    r"\u0e00-\u0e7f]")     # Thai
+
+
+def unspaced(term: str) -> bool:
+    """Is this term written in a script with no spaces between words?"""
+    return bool(_UNSPACED_SCRIPT.search(term or ""))
+
+
+def _edge(term: str, side: str) -> str:
+    """The boundary assertion to use at one end of a term.
+
+    Chosen per end rather than per term, because a mixed term — "AI기업",
+    "5G네트워크", which is how these languages actually write about
+    technology — needs a real boundary on its Latin end and none on its CJK
+    end. Using the same rule for both would either lose the mixed terms or
+    give the Latin ones the substring matching they must not have.
+    """
+    if not term:
+        return ""
+    char = term[0] if side == "start" else term[-1]
+    if _UNSPACED_SCRIPT.match(char):
+        return ""
+    # A wildcard end has no fixed character to sit against, and \b after \w*
+    # is satisfied by anything; leaving it off changes nothing and avoids
+    # asserting a boundary the pattern cannot honour.
+    if char in "*?":
+        return ""
+    return r"\b"
+
+
 def _term_regex(term: str) -> re.Pattern:
-    return re.compile(r"\b" + _term_pattern(term) + r"\b", re.IGNORECASE)
+    return re.compile(_edge(term, "start") + _term_pattern(term)
+                      + _edge(term, "end"), re.IGNORECASE)
 
 
 def _near_regex(a: str, b: str, n: int) -> re.Pattern:
-    """`a` and `b` with at most n words between them, either order."""
-    gap = r"(?:\W+\w+){0,%d}?\W+" % n
+    """`a` and `b` with at most n words between them, either order.
+
+    "Words" is the wrong unit for a script that does not space them, so for a
+    CJK or Thai operand the gap is counted in characters instead — which is
+    the closest honest equivalent, and keeps NEAR working rather than silently
+    matching nothing.
+    """
     pa, pb = _term_pattern(a), _term_pattern(b)
+    if unspaced(a) or unspaced(b):
+        # Roughly two characters to the word in these scripts, which is what
+        # the reader who wrote NEAR/5 is thinking in.
+        gap = r".{0,%d}?" % (n * 2)
+        return re.compile(rf"(?:{pa}{gap}{pb}|{pb}{gap}{pa})",
+                          re.IGNORECASE | re.DOTALL)
+    gap = r"(?:\W+\w+){0,%d}?\W+" % n
     return re.compile(rf"\b(?:{pa}{gap}{pb}|{pb}{gap}{pa})\b", re.IGNORECASE)
 
 
@@ -352,7 +413,21 @@ def compile_query(query: str):
 
 # Terms FTS5 cannot be trusted to tokenize the way the Python matcher does:
 # wildcards, and scripts SQLite's default tokenizer does not split on.
-_FTS_UNSAFE_TERM = re.compile(r"[*?]|[\u3040-\u30ff\u3400-\u9fff\u0e00-\u0e7f]")
+#
+# Built from `_UNSPACED_SCRIPT` rather than from its own list of ranges, and
+# that is the whole point of the change. The two lists were written separately
+# and drifted: this one covered kana, Han and Thai and omitted Hangul, so a
+# Korean term was handed to FTS5, whose tokenizer reads 고용률 as one
+# indivisible token and finds no match for 고용 — dropping the row before the
+# matcher could ever see it, and breaking the superset guarantee that the whole
+# narrowing step depends on.
+#
+# It was invisible while the matcher rejected every CJK term anyway. Fixing the
+# matcher without fixing this would have turned a silent failure into a subtler
+# one: Korean feeds that work on a full scan and quietly lose rows as soon as
+# the index is used. One definition, used twice, cannot drift again.
+FTS_UNSAFE = re.compile(r"[*?]|" + _UNSPACED_SCRIPT.pattern)
+_FTS_UNSAFE_TERM = FTS_UNSAFE
 
 
 def fts_expression(query: str) -> str | None:

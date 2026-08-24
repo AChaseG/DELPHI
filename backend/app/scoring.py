@@ -18,6 +18,7 @@ import os
 import re
 from datetime import datetime, timedelta
 
+from .boolean_query import _UNSPACED_SCRIPT
 from .intl_terms import BREAKING_INTL, CATEGORY_INTL, TAG_SYNONYMS
 
 # Where an article starts before anything is known about the story itself.
@@ -53,7 +54,13 @@ _TIER_ADJUST = {1: 8, 3: -4}
 
 # CJK/Thai have no ASCII word boundaries, so \b matching fails on them —
 # those terms are matched as substrings instead.
-_CJK_RE = re.compile(r"[぀-ヿ㐀-鿿가-힣฀-๿]")
+#
+# This module found the problem first and fixed it only for itself; the Boolean
+# engine and the keyword path each carried their own boundary rule and had
+# never been told. The definition now lives in one place and is imported by all
+# three, so "which scripts have no word boundaries" cannot be answered three
+# different ways again.
+_CJK_RE = _UNSPACED_SCRIPT
 
 
 def _make_matcher(term: str):

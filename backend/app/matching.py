@@ -26,14 +26,18 @@ from sqlalchemy.orm import Session, defer, joinedload
 
 from sqlalchemy import text
 
-from .boolean_query import (QueryError, Text, compile_query, fts_expression,
-                            host_of, plain_terms, query_terms)
+from .boolean_query import (FTS_UNSAFE, QueryError, Text, _edge, compile_query,
+                            fts_expression, host_of, plain_terms, query_terms)
 from .geo import places_match_geo
 from .models import Article, Source, utcnow
 
 # Scripts SQLite's unicode61 tokenizer doesn't word-segment — FTS can't
-# reliably match these, so queries containing them fall back to a full scan.
-_FTS_UNSAFE = re.compile(r"[぀-ヿ㐀-鿿가-힣฀-๿*?]")
+# reliably match these, so criteria containing them fall back to a full scan.
+# Imported rather than restated: this file used to keep its own copy of the
+# range list, `boolean_query` kept a second, and `scoring` a third. They
+# disagreed about Hangul, which is how a Korean term came to be handed to an
+# index that could not match it.
+_FTS_UNSAFE = FTS_UNSAFE
 
 # Rows fetched per round trip while scanning candidates. Small enough that a
 # query filling its page early reads a fraction of the scan cap, large enough
@@ -86,8 +90,18 @@ _ROWS_PER_MATCH = 8
 
 
 def _kw_regex(kw: str) -> re.Pattern:
+    """A plain keyword as a regex.
+
+    Boundaries come from `boolean_query._edge` rather than being written here,
+    because a keyword and a Boolean term are the same thing to a reader and
+    must not match differently. That is also how the CJK bug survived: the
+    Boolean engine, the keyword path and `scoring` each wrote their own
+    boundary rule, and only one of the three had ever been told that Chinese,
+    Japanese, Korean and Thai do not put spaces between words.
+    """
     parts = [re.escape(p) for p in kw.split()]
-    return re.compile(r"\b" + r"\s+".join(parts) + r"\b", re.IGNORECASE)
+    body = r"\s+".join(parts)
+    return re.compile(_edge(kw, "start") + body + _edge(kw, "end"), re.IGNORECASE)
 
 
 def article_text(article: Article) -> str:

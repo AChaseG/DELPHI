@@ -118,6 +118,8 @@ async def _ensure_indexes() -> None:
 def _ensure_schema():
     """Additive migrations for databases created by earlier versions."""
     wanted = {
+        "translations": {"attempts": "INTEGER DEFAULT 0",
+                         "next_try_at": "DATETIME"},
         "articles": {"event_id": "INTEGER", "content": "TEXT DEFAULT ''",
                      "content_tried_at": "DATETIME",
                      "base_importance": "INTEGER"},

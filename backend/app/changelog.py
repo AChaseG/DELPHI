@@ -14,6 +14,37 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-08-23",
+        "title": "Searching in Korean, Japanese, Chinese or Thai now works",
+        "items": [
+            "🈶 <b>A boolean feed written in Chinese, Japanese, Korean or Thai "
+            "matched nothing at all.</b> Every search term was compiled with "
+            "word boundaries around it, and those scripts do not put spaces "
+            "between words \u2014 so the query parsed, saved, and then stayed "
+            "empty for ever with nothing to say why. Terms in those languages "
+            "now match, and so do mixed ones like <i>AI\uae30\uc5c5</i>. "
+            "Latin-script terms are unchanged: <i>quake</i> still does not "
+            "match <i>earthquake</i>.",
+            "🔤 <b>Proximity works in those languages too.</b> "
+            "<b>NEAR/5</b> counts words, and where words are not spaced it now "
+            "counts characters instead \u2014 the closest honest equivalent, "
+            "rather than an operator that quietly matches nothing.",
+            "🌐 <b>A failed translation is no longer silent or endless.</b> "
+            "When the translation service did not answer, Delphi stored "
+            "nothing \u2014 so the article appeared in its original language "
+            "with no explanation, and every later page load asked again, for "
+            "ever. Failures are now recorded and retried a few times with a "
+            "growing wait, then left alone. An answer that comes back empty, "
+            "or identical to what was sent, no longer counts as a "
+            "translation.",
+            "⏱ <b>Stories in your own feeds are translated before you open "
+            "them.</b> Only Home's columns were prepared ahead of time; "
+            "everything else was translated while you waited, which is where "
+            "the failures showed. Newly arrived articles are now translated "
+            "between poll cycles like Home's are.",
+        ],
+    },
+    {
+        "date": "2026-08-23",
         "title": "Delphi reads a feed before adopting it, and says who it trusts",
         "items": [
             "📰 <b>Delphi now checks that a feed is actually news before adding "

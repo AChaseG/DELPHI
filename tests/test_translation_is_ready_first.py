@@ -31,17 +31,35 @@ from backend.app.models import Article, Source, User, utcnow
 
 def test_the_poller_warms_translations_after_it_warms_home():
     loop = inspect.getsource(ingest.ingest_loop)
-    assert "await warm_translations()" in loop, (
+    assert "await warm_translations(" in loop, (
         "nothing translates Home's stories ahead of a reader")
-    assert loop.index("await warm_home()") < loop.index("await warm_translations()"), (
+    assert loop.index("await warm_home()") < loop.index("await warm_translations("), (
         "translations are warmed before the columns that decide what to warm")
 
 
-def test_it_translates_exactly_what_home_will_show(db):
+def test_the_poller_hands_it_what_just_arrived():
+    """Home used to be the whole of it, and that was the gap a reader hit: a
+    story in a feed somebody built was translated inside their own request."""
+    loop = inspect.getsource(ingest.ingest_loop)
+    assert "await warm_translations(fresh_ids)" in loop
+    assert "fresh_ids = done.get(\"new_article_ids\")" in loop
+
+
+def test_a_batch_reports_the_ids_it_added():
+    """Ids rather than the instances: the session that loaded them is closed
+    before the warming pass runs, and a detached instance raises rather than
+    answering for its own primary key."""
+    body = inspect.getsource(ingest._ingest_batch)
+    assert '"new_article_ids": [a.id for a in all_new]' in body
+
+
+def test_it_translates_what_home_will_show_and_what_just_landed(db):
     """Warming the wrong set would be pure waste: the point is that the next
-    reader's request is a cache hit."""
+    reader's request is a cache hit — for their own feeds too, not only Home."""
     body = inspect.getsource(ingest.warm_translations)
     assert "home.warm_article_ids()" in body
+    assert "fresh" in body
+    assert "WARM_TRANSLATE_MAX" in body, "an unbounded pass would hammer the provider"
 
 
 def test_warm_article_ids_reports_each_story_once(db):

@@ -1106,7 +1106,12 @@ async def _ingest_batch(db, sources: list[Source]) -> dict:
              ok_sources, len(sources), unchanged, len(all_new), len(hits),
              repaired, discovered, retired, removed,
              " ".join(f"{name} {secs:.1f}s" for name, secs in phase.items()))
-    return {"new_articles": len(all_new), "new_events": new_events, "unchanged": unchanged,
+    return {"new_articles": len(all_new),
+            # Ids, not the instances: the session that loaded them is closed by
+            # the time the warming pass runs, and a detached instance raises
+            # rather than answering for its own primary key.
+            "new_article_ids": [a.id for a in all_new],
+            "new_events": new_events, "unchanged": unchanged,
             "alert_hits": len(hits), "content_fetched": content_fetched,
             "backfilled": backfilled,
             "repaired": repaired, "discovered": discovered,
@@ -1515,6 +1520,16 @@ async def warm_home():
         log.exception("could not warm the Home board")
 
 
+# How many articles one warming pass may translate.
+#
+# A busy tick can bring several hundred, and each costs two provider calls per
+# reading language. The cap is about the provider rather than the clock: the
+# free endpoint is not an SLA-backed API, and the way to find its rate limit is
+# to lean on it. Anything not reached here is still translated on demand — this
+# moves the wait, it does not create a new failure mode.
+WARM_TRANSLATE_MAX = int(os.environ.get("NEWS_WARM_TRANSLATE_MAX", "250"))
+
+
 def reading_languages(db) -> list[str]:
     """The languages accounts on this server actually read in.
 
@@ -1535,7 +1550,7 @@ def reading_languages(db) -> list[str]:
     return list(langs)
 
 
-async def warm_translations():
+async def warm_translations(fresh: list[int] | None = None):
     """Translate Home's warmed stories before a reader opens the board.
 
     Translation is per article and per language, cached forever after the
@@ -1560,9 +1575,18 @@ async def warm_translations():
         return
     db = None
     try:
-        ids = home.warm_article_ids()
+        # Home's warmed stories, plus everything that just arrived.
+        #
+        # It used to be Home alone, and that was the gap a reader actually hit:
+        # Home was warmed and every custom feed was not, so an article in a
+        # boolean feed was translated inside the reader's own request, and any
+        # failure there left it on the screen in a language they do not read
+        # with nothing to say why. A feed somebody built is not less important
+        # than a column Delphi built for them.
+        ids = list(dict.fromkeys(list(home.warm_article_ids()) + list(fresh or [])))
         if not ids:
             return
+        ids = ids[:WARM_TRANSLATE_MAX]
         db = SessionLocal()
         langs = await asyncio.to_thread(reading_languages, db)
         if not langs:
@@ -1571,6 +1595,9 @@ async def warm_translations():
             lambda: db.scalars(select(Article).where(Article.id.in_(ids))).all())
         for lang in langs:
             await translate.translate_articles(db, articles, lang)
+        status["translation"] = dict(
+            translate.stats,
+            **await asyncio.to_thread(translate.pending, db, langs[0]))
     except Exception:
         log.exception("could not warm translations")
     finally:
@@ -1599,6 +1626,7 @@ async def ingest_loop():
 
     while True:
         new_articles = 0
+        fresh_ids: list[int] = []
         try:
             async with cycle_lock:
                 db = SessionLocal()
@@ -1632,7 +1660,9 @@ async def ingest_loop():
                             + [s for s in due if _is_city(s)]
                             [:warmup_batch(CITY_PER_TICK, since_start)])
                         if batch:
-                            new_articles = (await _ingest_batch(db, batch))["new_articles"]
+                            done = await _ingest_batch(db, batch)
+                            new_articles = done["new_articles"]
+                            fresh_ids = done.get("new_article_ids") or []
 
                     # Typhon, on the news side of the disk guard rather than
                     # the housekeeping side. Audit and backup run even when the
@@ -1783,5 +1813,5 @@ async def ingest_loop():
             await warm_home()
             # Straight after, so the stories it just warmed are readable in
             # the reader's own language before the reader arrives.
-            await warm_translations()
+            await warm_translations(fresh_ids)
         await asyncio.sleep(POLL_TICK)

@@ -343,6 +343,16 @@ class Translation(Base):
     title: Mapped[str] = mapped_column(Text, default="")
     summary: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # A row with an empty title is a *failure* record, not a translation: the
+    # provider was asked and did not answer usefully. Kept because the
+    # alternative — storing nothing — is what made a failed article
+    # indistinguishable from one nobody had tried yet, so every load retried it
+    # for ever and no reader was ever told anything had gone wrong.
+    #
+    # Neither column is indexed: ADD COLUMN cannot build an index, so it would
+    # be true of a fresh database and quietly false of the running one.
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_try_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Pantheon(Base):
