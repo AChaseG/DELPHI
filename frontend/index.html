@@ -1166,6 +1166,12 @@
              means NEAR/10; chains like <code>a NEAR/3 b NEAR/3 c</code> check each
              adjacent pair). Google writes proximity as
              <code>earthquake AROUND(5) tokyo</code>; both spellings work.</p>
+          <p><b>Order matters sometimes.</b> <code>NEAR</code> ignores which term
+             comes first. <code>ONEAR/3</code> does not — <code>Boeing ONEAR/3
+             crash</code> is a crash of a Boeing, while <code>crash ONEAR/3
+             Boeing</code> is a crash into one. If you already write
+             <code>PRE/3</code> (LexisNexis) or <code>W/3</code> (Factiva), both
+             mean the same thing here.</p>
           <p><b>Field operators</b> point a term at one part of the article instead of
              all of it, which is the sharpest tool here for a query that keeps
              collecting the wrong thing:</p>
@@ -1175,6 +1181,12 @@
                 available; <code>intitle:"solar farm"</code> takes a phrase.</li>
             <li><code>intext:solar</code> — only the summary and the fetched body,
                 never the headline.</li>
+            <li><code>inlede:solar</code> — the headline, the summary and the opening
+                of the article, and nothing after that. A news story says what it is
+                about at the top; a word appearing two thousand words down is usually
+                background, a "related" rail, or the page's own menu. This is the
+                sharpest filter here after <code>intitle:</code>, and unlike
+                <code>intitle:</code> it still finds a story whose headline is a pun.</li>
             <li><code>source:Reuters</code> — the publication's name.</li>
             <li><code>site:bbc.co.uk</code> — the site it was published on, and
                 <code>-site:example.com</code> excludes one. <code>www.</code> is
@@ -2229,6 +2241,15 @@
             <span>Minimum importance: <strong id="b-imp-val">0</strong> <em id="b-imp-tier"></em>
               <em> — how much the story matters to the international community (source reach, breaking signals, cross-outlet corroboration)</em></span>
             <input id="b-importance" type="range" min="0" max="100" step="5" value="0">
+          </label>
+          <label class="field">
+            <span>A word must appear at least
+              <input id="b-min-mentions" type="number" min="0" max="10" step="1"
+                     value="0" class="tiny-number"> times
+              <em> — 0 uses the default (twice in the body, or once in the
+              headline). Raise it when a term of yours is common in another
+              sense: "solar" in a kit review is said once, a story about a
+              solar farm says it again.</em></span>
           </label>
           <div class="field">
             <label class="check-row"><input type="checkbox" id="b-search-translations">

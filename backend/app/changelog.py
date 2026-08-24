@@ -14,6 +14,32 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-08-23",
+        "title": "Three operators the research databases have and Delphi did not",
+        "items": [
+            "↔️ <b>Order can matter in a proximity search now.</b> "
+            "<code>NEAR</code> ignores which term comes first. "
+            "<code>Boeing ONEAR/3 crash</code> does not \u2014 that is a crash "
+            "<i>of</i> a Boeing, where <code>crash ONEAR/3 Boeing</code> is a "
+            "crash <i>into</i> one. If you already write <code>PRE/3</code> "
+            "from LexisNexis or <code>W/3</code> from Factiva, both mean the "
+            "same thing here.",
+            "📰 <b>You can search just the top of a story.</b> "
+            "<code>inlede:semiconductor</code> looks at the headline, the "
+            "standfirst and the opening paragraph and nothing after. A news "
+            "story says what it is about at the top; a word appearing two "
+            "thousand words down is usually background, a \u201crelated\u201d rail "
+            "or the page\u2019s own menu. Unlike <code>intitle:</code> it still "
+            "finds a story whose headline is a pun.",
+            "🔢 <b>The prominence rule now has a dial.</b> Delphi has always "
+            "quietly required a lone word to appear twice in the body before "
+            "an article counts as being about it \u2014 which is why a football "
+            "kit called \u201cSolar Yellow\u201d stays out of an energy feed. That "
+            "was fixed at two and invisible. You can now raise it when one of "
+            "your words is common in another sense.",
+        ],
+    },
+    {
+        "date": "2026-08-23",
         "title": "An English query can now find a Korean story",
         "items": [
             "🌏 <b>Feeds can search translations as well as the original "
@@ -21,7 +47,7 @@ CHANGELOG: list[dict] = [
             "words against each article\u2019s own words \u2014 so a Korean story "
             "was invisible to an English feed however relevant it was, which "
             "is a strange gap in a product built to read the world. Tick "
-            "<b>\ud83c\udf10 Also search translations</b> when building a feed "
+            "<b>🌐 Also search translations</b> when building a feed "
             "and the translations Delphi already holds are searched too.",
             "🗂 <b>Every stored language, not just yours.</b> A feed is a "
             "standing question and does not know who will open it, so it "

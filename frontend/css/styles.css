@@ -1890,3 +1890,7 @@ a.src-rating:hover, a.src-rating:focus-visible { text-decoration: underline; }
 /* "No term of yours is in this article" — the answer that explains a result
    rather than justifying it, so it gets the warning tone the others do not. */
 .ar-why-wide { border-left: 3px solid var(--warn, #b3771a); padding-left: 0.7rem; }
+
+/* A count inside a sentence, sized to the two digits it can hold rather than
+   stretching to the width of the field it sits in. */
+.tiny-number { width: 4.2rem; }

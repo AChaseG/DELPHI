@@ -17,6 +17,7 @@ Criteria shape (every key optional):
 """
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -110,6 +111,21 @@ def article_text(article: Article) -> str:
     return f"{article.title}\n{article.summary}\n{article.content or ''}"
 
 
+# How much of an article counts as its lede.
+#
+# Sixty words is roughly the headline, the standfirst and the opening
+# paragraph — the part a news story uses to say what it is about, and the part
+# a subeditor writes last precisely so that it does. Factiva's own positional
+# operator defaults to a comparable window.
+LEDE_WORDS = int(os.environ.get("NEWS_LEDE_WORDS", "60"))
+
+
+def lede_text(article: Article) -> str:
+    """The headline, the summary, and the opening of the body."""
+    opening = " ".join((article.content or "").split()[:LEDE_WORDS])
+    return f"{article.title or ''}\n{article.summary or ''}\n{opening}"
+
+
 def translated_text(article: Article) -> str:
     """Every stored translation of this article, as one blob.
 
@@ -149,6 +165,7 @@ def match_fields(article: Article, source: Source | None = None,
         all=f"{article.title}\n{summary_and_body}{extra}",
         headline=(article.title or "") + extra,
         text=summary_and_body + extra,
+        lede=lede_text(article) + extra,
         source=(source.name if source else "") or "",
         site=host_of(article.url or ""),
     )
@@ -160,6 +177,11 @@ def match_fields(article: Article, source: Source | None = None,
 # Wind" in a concert listing, "coal" in the name of a road. A story that is
 # actually about the thing says the word again.
 _PROMINENT_REPEATS = 2
+
+# The most a feed may raise it to. A word demanded thirty times is not a
+# prominence rule any more, it is a way to build a feed that never fills and
+# cannot be debugged from the outside.
+MAX_MENTIONS = int(os.environ.get("NEWS_MAX_MENTIONS", "10"))
 
 
 def _count_upto(pattern: re.Pattern, text: str, limit: int) -> int:
@@ -291,6 +313,13 @@ class CriteriaMatcher:
         # existing feed, and that should be the reader's decision rather than
         # a surprise the next time they open the board.
         self.search_translations = bool(self.criteria.get("search_translations"))
+        # Factiva exposes this as `atleast10 term` and Delphi kept it hidden at
+        # two. Two is right for most feeds and wrong for a feed built on a word
+        # that is common in another sense — the reader who hit that had no dial
+        # to turn, only a heuristic they could not see.
+        self.min_mentions = max(1, min(MAX_MENTIONS,
+                                       int(self.criteria.get("min_mentions") or
+                                           _PROMINENT_REPEATS)))
         # Any number of areas, matched as OR. `geo` was the original single-area
         # key and is still written by older clients and stored on saved feeds,
         # so it is folded in rather than replaced.
@@ -448,6 +477,16 @@ class CriteriaMatcher:
         # 20 KB bodies, going to the body first doubled the cost of matching an
         # article; this way the common case is microseconds and only the
         # articles about to be dropped pay for a second pass.
+        # Above the default, a headline mention is no longer a free pass and
+        # neither is a phrase: a reader who asked for five is saying "one
+        # mention is what I am trying to exclude", so the count is taken over
+        # the whole article and nothing shortcuts it. Below that, the shortcuts
+        # stay — they are why the default is cheap.
+        if self.min_mentions > _PROMINENT_REPEATS:
+            whole = article_text(article)
+            return any(_count_upto(p, whole, self.min_mentions) >= self.min_mentions
+                       for _t, p in self.terms)
+
         head = headline_text(article)
         for _term, pattern in self.terms:
             if pattern.search(head):
@@ -463,7 +502,7 @@ class CriteriaMatcher:
             # a word a story is about is usually a line or two away, so this
             # normally stops early, where looking for a *different* word means
             # reading the whole body once per remaining term.
-            if _count_upto(pattern, body, _PROMINENT_REPEATS) >= _PROMINENT_REPEATS:
+            if _count_upto(pattern, body, self.min_mentions) >= self.min_mentions:
                 return True
             return any(p.search(body) for _t, p in self.terms[i + 1:])
         # Nothing literal matched: the article is here on a NEAR pair, or on a

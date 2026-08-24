@@ -64,6 +64,15 @@ class Text:
     text: str = ""         # intext: — summary and body, the article's own words
     source: str = ""       # source: — the publication's name
     site: str = ""         # site: — the host the article was published on
+    # inlede: — the headline, the summary, and the opening of the body.
+    #
+    # Factiva spells this /F50/ and it earns its place for the same reason
+    # there: a news story says what it is about at the top, and a word that
+    # only turns up two thousand words down is usually background, a "related"
+    # rail, or the page's own furniture. Restricting a term to the lede is the
+    # sharpest tool there is against an incidental match, and it needs no
+    # judgement about how many times a word has to appear.
+    lede: str = ""
 
     @classmethod
     def plain(cls, text: str) -> "Text":
@@ -75,7 +84,7 @@ class Text:
         return cls(all=text, text=text)
 
     def field(self, name: str) -> str:
-        return {"title": self.headline, "text": self.text,
+        return {"title": self.headline, "text": self.text, "lede": self.lede,
                 "source": self.source, "site": self.site}.get(name, self.all)
 
 
@@ -94,6 +103,7 @@ def host_of(url: str) -> str:
 _FIELDS = {
     "intitle": "title", "title": "title", "headline": "title",
     "intext": "text", "text": "text", "body": "text",
+    "inlede": "lede", "lede": "lede", "intro": "lede",
     "source": "source", "publication": "source", "outlet": "source",
     "site": "site", "host": "site", "domain": "site",
 }
@@ -152,18 +162,21 @@ def tokenize(query: str) -> list[Token]:
             upper = word.upper()
             if upper in ("AND", "OR", "NOT"):
                 tokens.append(Token(upper, upper, m.start()))
-            elif upper == "NEAR" or upper.startswith("NEAR/"):
-                if upper == "NEAR":
+            elif _proximity_kind(upper):
+                kind, spelling = _proximity_kind(upper)
+                if "/" not in upper:
                     n = 10
                 else:
                     try:
                         n = int(upper.split("/", 1)[1])
                     except ValueError:
                         raise QueryError(
-                            f"NEAR needs a whole number, e.g. NEAR/5 (position {m.start()})")
+                            f"{spelling} needs a whole number, e.g. "
+                            f"{spelling}/5 (position {m.start()})")
                     if not 1 <= n <= 100:
-                        raise QueryError("NEAR distance must be between 1 and 100")
-                tokens.append(Token("NEAR", str(n), m.start()))
+                        raise QueryError(
+                            f"{spelling} distance must be between 1 and 100")
+                tokens.append(Token(kind, str(n), m.start()))
             elif word.startswith("-") and len(word) > 1:
                 # Google-style negation: -sports == NOT sports, and -site:x too.
                 tokens.append(Token("NOT", "NOT", m.start()))
@@ -179,6 +192,20 @@ def tokenize(query: str) -> list[Token]:
             else:
                 tokens.extend(_word_tokens(word, m.start()))
     return tokens
+
+
+# Proximity operators and the spellings readers arrive with. NEAR is Delphi's
+# own and unordered; ONEAR is the ordered one, with PRE (LexisNexis) and W
+# (Factiva) accepted as the same thing because somebody who already writes
+# those should not have to learn a third word to say what they mean.
+_PROXIMITY = {"NEAR": "NEAR", "ONEAR": "ONEAR", "PRE": "ONEAR", "W": "ONEAR"}
+
+
+def _proximity_kind(upper: str) -> tuple[str, str] | None:
+    """(token kind, the spelling used) for a proximity word, or None."""
+    head = upper.split("/", 1)[0]
+    kind = _PROXIMITY.get(head)
+    return (kind, head) if kind else None
 
 
 def _word_tokens(word: str, pos: int) -> list[Token]:
@@ -271,6 +298,23 @@ def _term_regex(term: str) -> re.Pattern:
                       + _edge(term, "end"), re.IGNORECASE)
 
 
+def _onear_regex(a: str, b: str, n: int) -> re.Pattern:
+    """`a` then `b`, in that order, with at most n words between them.
+
+    Order carries meaning that an unordered NEAR throws away, and the
+    professional systems all offer both for the same reason: "Boeing PRE/3
+    crash" is a crash of a Boeing, while "crash PRE/3 Boeing" is a crash into
+    one. Spelled ONEAR/n here to sit beside NEAR/n; PRE/n and W/n are accepted
+    because those are what a reader arrives already knowing from LexisNexis and
+    Factiva.
+    """
+    pa, pb = _term_pattern(a), _term_pattern(b)
+    if unspaced(a) or unspaced(b):
+        return re.compile(rf"{pa}.{{0,{n * 2}}}?{pb}", re.IGNORECASE | re.DOTALL)
+    gap = r"(?:\W+\w+){0,%d}?\W+" % n
+    return re.compile(rf"\b{pa}{gap}{pb}\b", re.IGNORECASE)
+
+
 def _near_regex(a: str, b: str, n: int) -> re.Pattern:
     """`a` and `b` with at most n words between them, either order.
 
@@ -344,14 +388,16 @@ class _Parser:
     def near_expr(self):
         left = self.atom()
         prev = left  # the operand a chained NEAR measures from
-        while self.peek() and self.peek().kind == "NEAR":
+        while self.peek() and self.peek().kind in ("NEAR", "ONEAR"):
             op = self.next()
             right = self.atom()
             if prev[0] != "term" or right[0] != "term":
                 raise QueryError(
-                    f"NEAR (position {op.pos}) works between two words or quoted "
-                    "phrases, not groups — write (a NEAR/5 c) OR (b NEAR/5 c) instead")
-            pair = ("term", _near_regex(prev[2], right[2], int(op.value)))
+                    f"{op.kind} (position {op.pos}) works between two words or "
+                    f"quoted phrases, not groups — write (a {op.kind}/5 c) OR "
+                    f"(b {op.kind}/5 c) instead")
+            build = _onear_regex if op.kind == "ONEAR" else _near_regex
+            pair = ("term", build(prev[2], right[2], int(op.value)))
             left = pair if left is prev else ("and", left, pair)
             prev = right
         return left

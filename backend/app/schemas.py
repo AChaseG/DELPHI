@@ -30,6 +30,11 @@ class Criteria(BaseModel):
     # Off by default: switching it on widens an existing feed, and that is the
     # reader's decision to make.
     search_translations: bool = False
+    # How many times a term must appear before the article counts as being
+    # about it. Delphi has always applied a prominence rule — a lone word in
+    # the body has to be said twice — and kept it hidden at 2. Factiva exposes
+    # the same idea as `atleast10 term`. 0 or unset means the default.
+    min_mentions: int = 0
     hours: float | None = None
     date_from: str = ""   # ISO date (YYYY-MM-DD), inclusive
     date_to: str = ""     # ISO date (YYYY-MM-DD), inclusive
