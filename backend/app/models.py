@@ -302,6 +302,12 @@ class Article(Base):
 
     source = relationship("Source", back_populates="articles")
     event = relationship("Event")
+    # Loaded only by a feed that asked to search translations, and never
+    # cascaded: `ingest._delete_articles` already removes these rows explicitly,
+    # and a cascade here would mean two mechanisms deleting the same thing.
+    translations = relationship(
+        "Translation", primaryjoin="Article.id == foreign(Translation.article_id)",
+        viewonly=True, lazy="select")
 
 
 class ViewedEvent(Base):

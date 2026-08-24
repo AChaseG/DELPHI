@@ -2231,6 +2231,15 @@
             <input id="b-importance" type="range" min="0" max="100" step="5" value="0">
           </label>
           <div class="field">
+            <label class="check-row"><input type="checkbox" id="b-search-translations">
+              🌐 Also search translations
+              <em class="note-muted">(Delphi reads 23 languages but matches your
+              words against each article's own text, so an English query cannot
+              find a Korean story however relevant it is. This searches the
+              translations Delphi already holds as well — it will widen this
+              feed.)</em></label>
+          </div>
+          <div class="field">
             <details id="b-sources-details">
               <summary>Pull only from specific sources <span id="b-src-summary"
                        class="s-meta">(optional — all sources)</span></summary>

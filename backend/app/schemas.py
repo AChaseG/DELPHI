@@ -18,6 +18,18 @@ class Criteria(BaseModel):
     query: str = ""                                # legacy single boolean string
     queries: list[str] = Field(default_factory=list)  # boolean strings, OR'd together
     min_importance: int = 0
+    # Also search the article's stored translations, not just its own words.
+    #
+    # Delphi reads 23 languages and matches queries against original text, so
+    # an English query has never been able to find a Korean story however
+    # relevant. Every translation Delphi already holds is searched, in whatever
+    # languages it holds them — a feed is a standing question and does not know
+    # who will read it, so "the reader's language" is not available and would
+    # give the same feed different contents for different people.
+    #
+    # Off by default: switching it on widens an existing feed, and that is the
+    # reader's decision to make.
+    search_translations: bool = False
     hours: float | None = None
     date_from: str = ""   # ISO date (YYYY-MM-DD), inclusive
     date_to: str = ""     # ISO date (YYYY-MM-DD), inclusive

@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, defer, joinedload
+from sqlalchemy.orm import Session, defer, joinedload, selectinload
 
 from sqlalchemy import text
 
@@ -110,7 +110,26 @@ def article_text(article: Article) -> str:
     return f"{article.title}\n{article.summary}\n{article.content or ''}"
 
 
-def match_fields(article: Article, source: Source | None = None) -> Text:
+def translated_text(article: Article) -> str:
+    """Every stored translation of this article, as one blob.
+
+    All languages, not the reader's. A feed is a standing question, not a
+    session — it does not know who will read it, and "also search
+    translations" means the article's words in whatever languages Delphi holds
+    them, which is the only reading that gives the same feed the same contents
+    for everybody.
+    """
+    parts = []
+    for tr in (article.translations or []):
+        if tr.title:                      # an empty title is a failure record
+            parts.append(tr.title)
+            if tr.summary:
+                parts.append(tr.summary)
+    return "\n".join(parts)
+
+
+def match_fields(article: Article, source: Source | None = None,
+                 translations: bool = False) -> Text:
     """The article split into the parts a scoped term can name.
 
     `source:` and `site:` are the two places a query may deliberately look
@@ -121,10 +140,15 @@ def match_fields(article: Article, source: Source | None = None) -> Text:
     """
     source = source or article.source
     summary_and_body = f"{article.summary}\n{article.content or ''}"
+    # A translated headline is still a headline: a reader asking for
+    # `intitle:earthquake` wants the Japanese story whose headline says so,
+    # and putting the translation only in the body would answer a different
+    # question.
+    extra = "\n" + translated_text(article) if translations else ""
     return Text(
-        all=f"{article.title}\n{summary_and_body}",
-        headline=article.title or "",
-        text=summary_and_body,
+        all=f"{article.title}\n{summary_and_body}{extra}",
+        headline=(article.title or "") + extra,
+        text=summary_and_body + extra,
         source=(source.name if source else "") or "",
         site=host_of(article.url or ""),
     )
@@ -263,6 +287,10 @@ class CriteriaMatcher:
         self.languages = set(self.criteria.get("languages") or [])
         self.source_ids = set(self.criteria.get("source_ids") or [])
         self.min_importance = int(self.criteria.get("min_importance") or 0)
+        # Opt-in, and off by default on purpose: switching it on widens every
+        # existing feed, and that should be the reader's decision rather than
+        # a surprise the next time they open the board.
+        self.search_translations = bool(self.criteria.get("search_translations"))
         # Any number of areas, matched as OR. `geo` was the original single-area
         # key and is still written by older clients and stored on saved feeds,
         # so it is folded in rather than replaced.
@@ -345,7 +373,8 @@ class CriteriaMatcher:
         # headline and feed summary. Assembled only when a predicate needs it —
         # touching .content would otherwise force-load a deferred column.
         if text is None:
-            fields = match_fields(article, source) if self.needs_text else Text()
+            fields = (match_fields(article, source, self.search_translations)
+                      if self.needs_text else Text())
         elif isinstance(text, Text):
             fields = text
         else:
@@ -526,13 +555,24 @@ def query_articles(
     # only pay to load them when some predicate actually reads the text.
     if not matcher.needs_text:
         base = base.options(defer(Article.content))
+    if matcher.search_translations:
+        # One extra query per batch instead of one per article. Left lazy, a
+        # feed scanning a few thousand candidates would issue a few thousand
+        # round trips, which is the difference between a fast feed and a feed
+        # nobody waits for.
+        base = base.options(selectinload(Article.translations))
 
     # Which way round to work — ask the index, or read the newest articles and
     # let the matcher sift them — comes down to one number: how many articles
     # the index would offer. Counting them is bounded, so it costs about a
     # millisecond either way, and it is the difference between 2ms and 20ms for
     # an unusual phrase and between 180ms and 8ms for an everyday word.
-    fts_expr = _fts_expr(matcher) if matcher.needs_text else None
+    # The index holds the article's own words and not its translations, so a
+    # feed searching translations must not be narrowed by it: the index would
+    # return fewer rows than match, which is the superset guarantee broken —
+    # the same failure the Hangul gap caused, arriving by a different door.
+    fts_expr = (_fts_expr(matcher)
+                if matcher.needs_text and not matcher.search_translations else None)
     index_narrows = False
     if fts_expr:
         offered = db.execute(

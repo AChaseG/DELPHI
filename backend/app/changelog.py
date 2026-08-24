@@ -14,6 +14,27 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-08-23",
+        "title": "An English query can now find a Korean story",
+        "items": [
+            "🌏 <b>Feeds can search translations as well as the original "
+            "text.</b> Delphi reads 23 languages but has always matched your "
+            "words against each article\u2019s own words \u2014 so a Korean story "
+            "was invisible to an English feed however relevant it was, which "
+            "is a strange gap in a product built to read the world. Tick "
+            "<b>\ud83c\udf10 Also search translations</b> when building a feed "
+            "and the translations Delphi already holds are searched too.",
+            "🗂 <b>Every stored language, not just yours.</b> A feed is a "
+            "standing question and does not know who will open it, so it "
+            "searches whatever languages Delphi holds the article in \u2014 "
+            "which means the same feed contains the same stories for "
+            "everybody who shares it.",
+            "🔕 <b>Off unless you ask.</b> Switching it on widens a feed, "
+            "sometimes a lot, and that is a decision to make rather than "
+            "one to discover.",
+        ],
+    },
+    {
+        "date": "2026-08-23",
         "title": "A feed can now tell you why a story you did not ask for is in it",
         "items": [
             "🔎 <b>\u201cWhy is this here?\u201d now has an answer even when none of "

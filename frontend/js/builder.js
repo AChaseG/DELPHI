@@ -198,6 +198,7 @@ const Builder = {
     if (c.date_from || c.date_to)
       lines.push(["Date range", `${c.date_from || "…"} → ${c.date_to || "…"}`]);
     if (c.hide_stale) lines.push(["Staleness", "hide events with no recent updates (threshold in Settings)"]);
+    if (c.search_translations) lines.push(["Translations", "search translated text as well as the original"]);
     if (c.passing_mentions)
       lines.push(["Passing mentions", "kept — a term said once, deep in the article, still matches"]);
     if (c.source_ids.length) {
@@ -375,6 +376,7 @@ const Builder = {
     el("b-date-from").value = c.date_from || "";
     el("b-date-to").value = c.date_to || "";
     el("b-stale").checked = !!c.hide_stale;
+    el("b-search-translations").checked = !!c.search_translations;
     el("b-group").checked = !!(item && item.group_events);
     // Feeds have no `active`; default true so a feed→alert conversion fires.
     el("b-active").checked = item && item.active !== undefined ? !!item.active : true;
@@ -443,6 +445,7 @@ const Builder = {
       date_from: el("b-date-from").value || "",
       date_to: el("b-date-to").value || "",
       hide_stale: el("b-stale").checked,
+      search_translations: el("b-search-translations").checked,
       geos: this.geos,
       geo: null,   // superseded by geos; cleared so it can't double-count
       auto_coverage: el("b-coverage").checked,
