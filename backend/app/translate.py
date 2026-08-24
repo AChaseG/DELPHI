@@ -172,6 +172,12 @@ async def translate_articles(db: Session, articles: list[Article], target: str) 
     out = {t.article_id: {"title": t.title, "summary": t.summary}
            for t in cached if t.title}
     failed = {t.article_id: t for t in cached if not t.title}
+    # Articles Delphi has stopped asking about are reported to the caller as
+    # unavailable rather than omitted. Omitting them is what made a failure
+    # indistinguishable from an article that was already in the reader's
+    # language — the reader saw the original either way and was told nothing.
+    given_up = {a.id for a in todo
+                if a.id in failed and (failed[a.id].attempts or 0) >= MAX_ATTEMPTS}
 
     now = utcnow()
     missing = []
@@ -241,6 +247,10 @@ async def translate_articles(db: Session, articles: list[Article], target: str) 
                 for t in rows:
                     if t.title:
                         out[t.article_id] = {"title": t.title, "summary": t.summary}
+    for article_id in given_up:
+        # Empty strings, so every caller's `t["title"] or a.title` fallback
+        # keeps showing the original. `unavailable` is the new part.
+        out.setdefault(article_id, {"title": "", "summary": "", "unavailable": True})
     return out
 
 

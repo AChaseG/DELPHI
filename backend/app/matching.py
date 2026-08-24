@@ -27,7 +27,8 @@ from sqlalchemy.orm import Session, defer, joinedload
 from sqlalchemy import text
 
 from .boolean_query import (FTS_UNSAFE, QueryError, Text, _edge, compile_query,
-                            fts_expression, host_of, plain_terms, query_terms)
+                            fts_expression, host_of, matches_everything,
+                            plain_terms, query_terms, validate_query)
 from .geo import places_match_geo
 from .models import Article, Source, utcnow
 
@@ -195,6 +196,38 @@ def explain_text_match(criteria: dict, article: Article) -> list[dict]:
                 "count": _count_upto(pattern, article_text(article), 9),
             })
             break        # the first place it appears is the one worth showing
+
+    # A query that does not parse has nothing to say about anything, and
+    # guessing on its behalf would be worse than silence.
+    usable = [q for q in queries if validate_query(q) is None]
+    if not out and (usable or terms):
+        # Nothing of the query is in the article, and the article is here
+        # anyway. That is not a mystery to leave with the reader: it happens
+        # when a query has an alternative that is only an exclusion, so the
+        # branch that admitted this article was "not something else" and none
+        # of the reader's terms ever had to appear.
+        widest = next((q for q in usable if matches_everything(q)), "")
+        if widest:
+            out.append({
+                "term": widest,
+                "where": "query",
+                "snippet": ("This query has an alternative that is only an "
+                            "exclusion, so it matches every article that is "
+                            "not excluded. None of your terms are in this "
+                            "article, and none had to be."),
+                "count": 0,
+            })
+        else:
+            out.append({
+                "term": "",
+                "where": "elsewhere",
+                "snippet": ("None of the query's words are in this article's "
+                            "headline, summary or body. It is here on a "
+                            "proximity pair, an exclusion, or one of the "
+                            "feed's non-text filters — country, category, "
+                            "source or area."),
+                "count": 0,
+            })
     return out
 
 

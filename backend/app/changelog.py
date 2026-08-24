@@ -14,6 +14,29 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-08-23",
+        "title": "A feed can now tell you why a story you did not ask for is in it",
+        "items": [
+            "🔎 <b>\u201cWhy is this here?\u201d now has an answer even when none of "
+            "your words are in the article.</b> Opening a story from a feed has "
+            "always shown which of your terms matched and where. When none of "
+            "them did, it showed nothing at all \u2014 which is exactly the case "
+            "where a reader most needs an answer. It now says so plainly.",
+            "⚠️ <b>A query with an alternative that is only an exclusion matches "
+            "everything.</b> <i>\u201cdata center\u201d OR NOT sports</i> reads as "
+            "\u201cdata centres, or anything that is not sports\u201d \u2014 so every "
+            "article that is not about sports arrives, in every language, and "
+            "your other terms have no effect at all. Delphi now says so when "
+            "you write one, and says it again on any story that got in that "
+            "way.",
+            "🌐 <b>A translation that could not be made now says so.</b> An "
+            "untranslated headline and a headline that never needed "
+            "translating looked identical. Where Delphi tried and could not, "
+            "the story is now marked <i>translation unavailable</i> rather "
+            "than silently showing the original.",
+        ],
+    },
+    {
+        "date": "2026-08-23",
         "title": "Searching in Korean, Japanese, Chinese or Thai now works",
         "items": [
             "🈶 <b>A boolean feed written in Chinese, Japanese, Korean or Thai "

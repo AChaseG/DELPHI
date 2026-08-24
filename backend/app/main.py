@@ -756,9 +756,13 @@ def _article_json(a: Article, tr: dict | None = None,
         # Only sent for feeds that hide stale events; the client applies the
         # threshold, which is a setting it owns.
         **({"event_updated_at": event.updated_at.isoformat() + "Z"} if event else {}),
-        "title": t["title"] if t else a.title,
-        "summary": (t["summary"] if t else a.summary)[:400],
-        "translated_from": a.language if t else None,
+        "title": (t["title"] if t else "") or a.title,
+        "summary": ((t["summary"] if t else "") or a.summary)[:400],
+        "translated_from": a.language if (t and t.get("title")) else None,
+        # Tried, and it did not work. Distinct from an article that needed no
+        # translation, which is what it used to be indistinguishable from: the
+        # reader saw the original in both cases and was told nothing at all.
+        **({"translation_unavailable": True} if t and t.get("unavailable") else {}),
         "url": a.url,
         "image_url": a.image_url,
         "published_at": a.published_at.isoformat() + "Z" if a.published_at else None,

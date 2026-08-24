@@ -135,12 +135,55 @@ def test_a_later_success_replaces_the_failure_record(db, monkeypatch):
 
 
 def test_a_failure_record_is_never_served_as_a_translation(db, monkeypatch):
+    """Reported as unavailable, never as a translation.
+
+    The entry has to be *present* — that is what lets the page say "translation
+    unavailable" instead of showing the original with no explanation, which was
+    indistinguishable from an article that needed no translation. But its title
+    must stay empty, so every caller's `t["title"] or a.title` fallback still
+    shows the reader the original words."""
     art = _article(db)
     db.add(Translation(article_id=art.id, lang="en", title="", summary="",
                        attempts=translate.MAX_ATTEMPTS))
     db.commit()
     out = _sync(_run(db, [art]))
-    assert art.id not in out        # the reader gets the original, not ""
+    assert out[art.id]["unavailable"] is True
+    assert out[art.id]["title"] == ""
+
+
+def test_an_article_still_being_retried_is_not_called_unavailable(db, monkeypatch):
+    """Only once Delphi has stopped asking. Saying it while a retry is still
+    scheduled would be telling the reader something that may not be true in
+    five minutes."""
+    art = _article(db)
+    db.add(Translation(article_id=art.id, lang="en", title="", summary="",
+                       attempts=1, next_try_at=datetime.utcnow() + timedelta(hours=1)))
+    db.commit()
+    out = _sync(_run(db, [art]))
+    assert art.id not in out
+
+
+def test_the_page_can_tell_the_three_states_apart(client, register, db):
+    """Translated, untranslatable, and never needed translating are three
+    different things and used to look like two."""
+    from backend.app import main
+    art = _article(db)
+    db.add(Translation(article_id=art.id, lang="en", title="", summary="",
+                       attempts=translate.MAX_ATTEMPTS))
+    db.commit()
+    tr = {art.id: {"title": "", "summary": "", "unavailable": True}}
+    body = main._article_json(art, tr)
+    assert body["translation_unavailable"] is True
+    assert body["translated_from"] is None       # nothing was translated
+    assert body["title"] == art.title            # the original is still shown
+
+    ok = main._article_json(art, {art.id: {"title": "Cheonan", "summary": ""}})
+    assert "translation_unavailable" not in ok
+    assert ok["translated_from"] == "ko"
+
+    native = main._article_json(art, {})
+    assert "translation_unavailable" not in native
+    assert native["translated_from"] is None
 
 
 # --- the counter the operator console reads --------------------------------

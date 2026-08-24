@@ -68,9 +68,29 @@ def test_the_earliest_field_a_term_appears_in_is_the_one_reported(db, wire):
     assert explain_text_match({"queries": [QUERY]}, art)[0]["where"] == "headline"
 
 
-def test_an_article_with_none_of_the_words_explains_nothing(db, wire):
+def test_an_article_with_none_of_the_words_says_so(db, wire):
+    """The third case the original report did not cover.
+
+    "The search is broken" and "the words are somewhere I am not looking" were
+    the two this file was written for. There is a third — the words are nowhere
+    at all, and never had to be, because the query admitted the article on an
+    exclusion or the feed's non-text filters. Returning nothing left the reader
+    with the mystery this whole feature exists to end."""
     art = _article(db, wire, content="The league declined to comment.")
-    assert explain_text_match({"queries": [QUERY]}, art) == []
+    got = explain_text_match({"queries": [QUERY]}, art)
+    assert len(got) == 1
+    assert got[0]["where"] == "elsewhere"
+    assert "None of the query's words" in got[0]["snippet"]
+
+
+def test_a_query_that_matches_everything_says_that_instead(db, wire):
+    """A query with an alternative that is only an exclusion matches every
+    article that is not excluded, so the reader's own terms play no part. That
+    is a different answer and a fixable one, so it gets its own wording."""
+    art = _article(db, wire, content="The league declined to comment.")
+    got = explain_text_match({"queries": ['"data center" OR NOT basketball']}, art)
+    assert got[0]["where"] == "query"
+    assert "only an exclusion" in got[0]["snippet"]
 
 
 def test_plain_keywords_are_explained_too(db, wire):

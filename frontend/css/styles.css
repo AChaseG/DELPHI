@@ -1886,3 +1886,7 @@ a.src-rating:hover, a.src-rating:focus-visible { text-decoration: underline; }
 /* A second entry on the same day carries no date heading of its own, so it
    needs the gap the heading used to provide. */
 .update-entry.update-same-day { margin-top: -0.35rem; padding-top: 0.6rem; }
+
+/* "No term of yours is in this article" — the answer that explains a result
+   rather than justifying it, so it gets the warning tone the others do not. */
+.ar-why-wide { border-left: 3px solid var(--warn, #b3771a); padding-left: 0.7rem; }

@@ -19,6 +19,19 @@ def advised(query):
     return bool(query_advisories(query))
 
 
+def precedence_advised(query):
+    """Just the AND-binds-tighter-than-OR note.
+
+    There is more than one advisory now, so a test about this one has to name
+    it rather than asking whether anything at all was said."""
+    return any("binds tighter" in a for a in query_advisories(query))
+
+
+def breadth_advised(query):
+    """Just the "this query matches everything" note."""
+    return any("only an exclusion" in a for a in query_advisories(query))
+
+
 # ---------- what the trap actually does ----------
 
 def test_the_exclusion_really_does_miss_the_first_alternative():
@@ -59,7 +72,30 @@ def test_it_says_what_to_do_about_it():
     'a NOT b OR c',                               # the NOT comes before the OR
 ])
 def test_an_unambiguous_query_is_left_alone(query):
-    assert not advised(query), query
+    assert not precedence_advised(query), query
+
+
+# ---------- a query that admits everything ----------
+
+@pytest.mark.parametrize("query", [
+    'NOT c',                                  # nothing positive at all
+    '"data center" OR NOT sports',            # one alternative is only an exclusion
+    'datacenter OR -sports',                  # the Google spelling of the same
+])
+def test_a_query_with_nothing_to_match_is_flagged(query):
+    """Not a near miss. A feed built on one of these is every article Delphi
+    holds, in every language, with the reader's own terms playing no part."""
+    assert breadth_advised(query), query
+
+
+@pytest.mark.parametrize("query", [
+    '"data center" NOT sports',               # the positive half still has to hold
+    '(a OR b) NOT c',
+    'a AND NOT b',
+    'a OR b OR c',
+])
+def test_a_query_that_still_requires_something_is_not_flagged(query):
+    assert not breadth_advised(query), query
 
 
 def test_a_bracketed_or_elsewhere_does_not_trigger_it():

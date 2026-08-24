@@ -633,6 +633,45 @@ def ambiguous_terms(query: str) -> list[str]:
     return seen
 
 
+def _all_negative(node) -> bool:
+    """Would this branch admit an article that contains none of its terms?
+
+    A branch made only of negations does. `NOT sports` is true of every article
+    that is not about sports, which is nearly all of them — so an OR
+    alternative shaped like that makes the whole query mean "everything",
+    however carefully the other alternatives were written.
+
+    AND is the exception and the reason this is a tree walk rather than a token
+    scan: `datacenter NOT sports` is fine, because the positive half still has
+    to hold. Only a branch with no positive half at all is the problem.
+    """
+    kind = node[0]
+    if kind in ("term", "scoped"):
+        return False
+    if kind == "not":
+        return True
+    if kind == "and":
+        # One positive half is enough to anchor the whole conjunction.
+        return _all_negative(node[1]) and _all_negative(node[2])
+    if kind == "or":
+        return _all_negative(node[1]) or _all_negative(node[2])
+    return False
+
+
+def matches_everything(query: str) -> bool:
+    """Does this query admit articles that contain none of its terms?
+
+    Worth its own question rather than being one advisory among several,
+    because the failure is not a near miss — a feed built on such a query is
+    not slightly too wide, it is every article Delphi holds, in every language,
+    with the reader's terms playing no part at all.
+    """
+    try:
+        return _all_negative(_Parser(tokenize(query)).parse())
+    except QueryError:
+        return False
+
+
 def query_advisories(query: str) -> list[str]:
     """Things a valid query probably does not mean. Never an error.
 
@@ -655,6 +694,17 @@ def query_advisories(query: str) -> list[str]:
         return []
 
     notes: list[str] = []
+    if _all_negative(_Parser(tokens).parse()):
+        # First, and worded as the consequence rather than the grammar. The
+        # precedence note below explains how a query comes to be shaped like
+        # this; this one says what happens when it is, which is the part a
+        # reader can act on.
+        notes.append(
+            "This query has an alternative that is only an exclusion, so it "
+            "matches every article that is not excluded — the rest of your "
+            "terms have no effect. Give each OR alternative something to "
+            "match, or bracket the list and exclude from all of it: "
+            "(a OR b) NOT c.")
     depth = 0
     or_at_depth: set[int] = set()
     for tok in tokens:

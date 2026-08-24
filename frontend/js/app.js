@@ -2526,14 +2526,23 @@ async function showWhyItMatched(articleId) {
   const first = why.hits[0];
   const more = why.hits.length - 1;
   const times = first.count > 1 ? `, ${first.count} times` : ", once";
-  box.textContent =
-    `In “${feed.name}”: matched “${first.term}” in ${WHERE[first.where] || first.where}`
-    + (first.where === "body" ? times : "")
-    + (more > 0 ? ` (and ${more} other term${plural(more)})` : "")
-    + (why.body_only
-       ? " — nothing in the headline or summary put it here, so this may be the "
-         + "page's own menu or a promo rather than the story."
-       : ".");
+  // Two answers have no term to name, because no term matched: the query
+  // admitted the article without one. Saying "matched ''" would be worse than
+  // saying nothing, so those carry their explanation in the snippet alone.
+  if (first.where === "query" || first.where === "elsewhere") {
+    box.textContent = `In “${feed.name}”: no term of yours is in this article.`;
+    box.classList.add("ar-why-wide");
+  } else {
+    box.classList.remove("ar-why-wide");
+    box.textContent =
+      `In “${feed.name}”: matched “${first.term}” in ${WHERE[first.where] || first.where}`
+      + (first.where === "body" ? times : "")
+      + (more > 0 ? ` (and ${more} other term${plural(more)})` : "")
+      + (why.body_only
+         ? " — nothing in the headline or summary put it here, so this may be the "
+           + "page's own menu or a promo rather than the story."
+         : ".");
+  }
   // The quote used to be the tooltip, which is nothing at all on a phone — and
   // a phone is where this question gets asked. It is the whole answer: seeing
   // the sentence the word sits in settles in one glance whether the search is
@@ -2730,6 +2739,7 @@ function paintStory(d, { partial = false } = {}) {
   for (const n of nearLocations(a)) tag(`📍 ${n.name}`, `Inside your favourite location “${n.name}”`);
   if (a.paywall) tag("🔒 paywalled", "The outlet limits how much of this you can read");
   if (a.translated_from) tag(`🌐 translated from ${a.translated_from.toUpperCase()}`);
+  else if (a.translation_unavailable) tag("🌐 translation unavailable — showing the original");
   if (ev) {
     tag("first seen " + timeAgo(ev.first_seen));
     if (ev.updated_at !== ev.first_seen) tag("updated " + timeAgo(ev.updated_at));
@@ -3031,6 +3041,10 @@ function articleRow(a, mode = "focus") {
   const ratingChip = sourceRatingChip(a.rating, { compact: true });
   if (ratingChip) meta.appendChild(ratingChip);
   if (a.translated_from) bits.push("🌐 translated from " + a.translated_from.toUpperCase());
+  // Tried and could not. Said out loud, because an untranslated headline and a
+  // headline that needed no translation look identical on the page, and a
+  // reader who cannot read this one deserves to know which it is.
+  else if (a.translation_unavailable) bits.push("🌐 translation unavailable");
   if ((a.categories || []).length) bits.push(a.categories.slice(0, 3).join(" · "));
   if (mode === "focus") bits.push("⤢ open");
   if (mode === "current") bits.push("— you are reading this");
