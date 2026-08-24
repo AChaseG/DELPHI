@@ -98,8 +98,16 @@ class LiveEvents:
         self._reindex(at)
 
 
+# How many distinct outlets one event tracks by name. Past this the answer to
+# "how many outlets" is "lots", which is all any threshold needs to know.
+MAX_EVENT_SOURCES = 100
+
+
 def _merge(event: Event, article: Article) -> None:
     event.article_count += 1
+    known = event.source_ids or []
+    if article.source_id not in known and len(known) < MAX_EVENT_SOURCES:
+        event.source_ids = known + [article.source_id]
     event.importance = max(event.importance, article.importance)
     if article.published_at and article.published_at > event.updated_at:
         event.updated_at = article.published_at
@@ -118,6 +126,7 @@ def _found_event(db: Session, article: Article) -> Event:
         article_count=1,
         countries=[article.country] if article.country else [],
         categories=list(article.categories or []),
+        source_ids=[article.source_id] if article.source_id else [],
         first_seen=article.published_at or utcnow(),
         updated_at=article.published_at or utcnow(),
     )

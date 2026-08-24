@@ -320,6 +320,21 @@ class CriteriaMatcher:
         self.min_mentions = max(1, min(MAX_MENTIONS,
                                        int(self.criteria.get("min_mentions") or
                                            _PROMINENT_REPEATS)))
+        # How many outlets must be carrying the story.
+        #
+        # The lesson from how Dataminr is built, in the cheapest form Delphi
+        # can take it. Their pipeline detects events by corroboration across
+        # sources first and applies the reader's boolean afterwards, as a
+        # filter on things already judged real — which is why their queries do
+        # not need prominence heuristics. Delphi's boolean *is* the detector,
+        # so a single outlet's passing mention has always been enough.
+        #
+        # Delphi already clusters coverage and already counts how many outlets
+        # are in a cluster; that number simply played no part in matching. Now
+        # a feed can ask for it, and "only stories somebody else is also
+        # running" turns out to suppress a whole class of noise with no new
+        # heuristic at all.
+        self.min_sources = max(0, int(self.criteria.get("min_sources") or 0))
         # Any number of areas, matched as OR. `geo` was the original single-area
         # key and is still written by older clients and stored on saved feeds,
         # so it is folded in rather than replaced.
@@ -443,7 +458,37 @@ class CriteriaMatcher:
             return False
         if self.geos and not any(self._in_area(article, g) for g in self.geos):
             return False
+        if self.min_sources > 1 and not self._corroborated(article):
+            return False
         return True
+
+    def _corroborated(self, article: Article) -> bool:
+        """Are enough separate outlets carrying this story?
+
+        Counted over the article's cluster, because that is what "the story"
+        means here — one outlet filing three times is one outlet, and the
+        cluster already knows the difference. An article in no cluster has one
+        source by definition, which is the honest answer rather than a
+        generous one: nothing has corroborated it yet.
+
+        Deliberately not a live query. `Event.article_count` is maintained on
+        the way in and the source count is read from the same row, so this
+        costs nothing per candidate — a feed that scanned thousands of rows and
+        issued a query for each would be a different kind of feature.
+        """
+        event = article.event
+        if event is None:
+            return self.min_sources <= 1
+        # A cluster from before this column existed has no list. Its
+        # article_count is the only thing known about how widely it was
+        # carried, and reading it as an upper bound admits a few stories a
+        # stricter answer would drop — which is the right way round: a filter
+        # that silently emptied every feed on old data would be far worse than
+        # one that is briefly generous about it.
+        ids = event.source_ids
+        if ids is None:
+            return (event.article_count or 1) >= self.min_sources
+        return len(ids) >= self.min_sources
 
     def _is_about_it(self, article: Article, text: str) -> bool:
         """Is one of the words that matched what this article is about?

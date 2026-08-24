@@ -256,6 +256,15 @@ class Event(Base):
     article_count: Mapped[int] = mapped_column(Integer, default=1)
     countries: Mapped[list] = mapped_column(JSON, default=list)
     categories: Mapped[list] = mapped_column(JSON, default=list)
+    # Which outlets are carrying this story, so "how many" can be answered
+    # without a query per article. Not article_count: one outlet filing three
+    # updates is one outlet, and that is the whole point of asking.
+    #
+    # Capped, because a wire story can be carried by hundreds and the list is
+    # read on every match. The cap only bites well above any threshold a reader
+    # would set, so the count it yields is exact where it matters and saturates
+    # where it does not.
+    source_ids: Mapped[list] = mapped_column(JSON, default=list)
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 

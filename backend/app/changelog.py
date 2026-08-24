@@ -14,6 +14,23 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-08-23",
+        "title": "Ask a feed for only the stories more than one outlet is running",
+        "items": [
+            "🗞 <b>A feed can now require corroboration.</b> Set <b>carried by "
+            "at least N outlets</b> and only stories several newsrooms are "
+            "running arrive. Delphi has always clustered coverage of the same "
+            "story and always knew how many outlets were in a cluster \u2014 that "
+            "number simply played no part in deciding what went into a feed.",
+            "📊 <b>Counted per outlet, not per article.</b> One newsroom filing "
+            "updates all afternoon has not been corroborated by anybody, so it "
+            "still counts as one.",
+            "🔕 <b>Off by default.</b> A single-source story is often the "
+            "point \u2014 local news, a specialist trade outlet, the first report "
+            "of anything. This is for the feeds where it is not.",
+        ],
+    },
+    {
+        "date": "2026-08-23",
         "title": "Three operators the research databases have and Delphi did not",
         "items": [
             "↔️ <b>Order can matter in a proximity search now.</b> "

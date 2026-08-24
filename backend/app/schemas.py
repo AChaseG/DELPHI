@@ -35,6 +35,10 @@ class Criteria(BaseModel):
     # the body has to be said twice — and kept it hidden at 2. Factiva exposes
     # the same idea as `atleast10 term`. 0 or unset means the default.
     min_mentions: int = 0
+    # How many separate outlets must be carrying the story. 0 or 1 = any.
+    # Counted over the article's cluster, so one outlet filing three updates
+    # still counts as one.
+    min_sources: int = 0
     hours: float | None = None
     date_from: str = ""   # ISO date (YYYY-MM-DD), inclusive
     date_to: str = ""     # ISO date (YYYY-MM-DD), inclusive

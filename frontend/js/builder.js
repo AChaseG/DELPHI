@@ -200,6 +200,7 @@ const Builder = {
     if (c.hide_stale) lines.push(["Staleness", "hide events with no recent updates (threshold in Settings)"]);
     if (c.search_translations) lines.push(["Translations", "search translated text as well as the original"]);
     if (c.min_mentions) lines.push(["Mentions", `a word must appear at least ${c.min_mentions} times`]);
+    if (c.min_sources > 1) lines.push(["Corroboration", `carried by at least ${c.min_sources} outlets`]);
     if (c.passing_mentions)
       lines.push(["Passing mentions", "kept — a term said once, deep in the article, still matches"]);
     if (c.source_ids.length) {
@@ -379,6 +380,7 @@ const Builder = {
     el("b-stale").checked = !!c.hide_stale;
     el("b-search-translations").checked = !!c.search_translations;
     el("b-min-mentions").value = c.min_mentions || 0;
+    el("b-min-sources").value = c.min_sources || 0;
     el("b-group").checked = !!(item && item.group_events);
     // Feeds have no `active`; default true so a feed→alert conversion fires.
     el("b-active").checked = item && item.active !== undefined ? !!item.active : true;
@@ -449,6 +451,7 @@ const Builder = {
       hide_stale: el("b-stale").checked,
       search_translations: el("b-search-translations").checked,
       min_mentions: +el("b-min-mentions").value || 0,
+      min_sources: +el("b-min-sources").value || 0,
       geos: this.geos,
       geo: null,   // superseded by geos; cleared so it can't double-count
       auto_coverage: el("b-coverage").checked,

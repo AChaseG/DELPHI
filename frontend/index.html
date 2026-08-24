@@ -2243,6 +2243,15 @@
             <input id="b-importance" type="range" min="0" max="100" step="5" value="0">
           </label>
           <label class="field">
+            <span>Carried by at least
+              <input id="b-min-sources" type="number" min="0" max="20" step="1"
+                     value="0" class="tiny-number"> outlets
+              <em> — 0 means any. A story several newsrooms are running is one
+              somebody else thought was worth reporting, which suppresses a lot
+              of single-source noise without any new guesswork. Counted per
+              outlet, so one paper filing three updates still counts as one.</em></span>
+          </label>
+          <label class="field">
             <span>A word must appear at least
               <input id="b-min-mentions" type="number" min="0" max="10" step="1"
                      value="0" class="tiny-number"> times
