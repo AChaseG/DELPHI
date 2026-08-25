@@ -1894,3 +1894,16 @@ a.src-rating:hover, a.src-rating:focus-visible { text-decoration: underline; }
 /* A count inside a sentence, sized to the two digits it can hold rather than
    stretching to the width of the field it sits in. */
 .tiny-number { width: 4.2rem; }
+
+/* A distance you can drag or type. The box is sized to the digits it holds
+   rather than stretching across the form, and the unit sits outside it so the
+   number a reader types is unambiguous when the units setting is miles. */
+.dist-num {
+  width: 4.5rem;
+  padding: 1px 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.dist-unit { margin-left: 3px; }
+.loc-radius > span { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }

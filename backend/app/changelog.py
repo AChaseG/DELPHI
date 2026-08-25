@@ -14,6 +14,25 @@ from datetime import datetime
 CHANGELOG: list[dict] = [
     {
         "date": "2026-08-23",
+        "title": "Type a distance instead of hunting for it with the slider",
+        "items": [
+            "⌨️ <b>Every distance slider now has a number box beside it.</b> A "
+            "slider is the right control for <i>roughly this far</i> and the "
+            "wrong one for <i>exactly 75</i> \u2014 hitting one value in five "
+            "hundred with a mouse is a game, and on a phone it is not a "
+            "winnable one. Both the <b>radius</b> on a favourite location and "
+            "the <b>wildfire distance</b> can now be typed, dragged, or nudged "
+            "with the arrow keys, and the two stay in step.",
+            "📏 <b>The number means the unit you can see.</b> If your units are "
+            "set to miles, the box is in miles and says so beside itself \u2014 "
+            "type 50 and you get fifty miles, not fifty kilometres relabelled. "
+            "Switching units rewrites the number rather than only its label.",
+            "🎯 <b>The wildfire ring moves a kilometre at a time now</b> rather "
+            "than five, so a typed 77 means 77 instead of quietly becoming 75.",
+        ],
+    },
+    {
+        "date": "2026-08-23",
         "title": "Ask a feed for only the stories more than one outlet is running",
         "items": [
             "🗞 <b>A feed can now require corroboration.</b> Set <b>carried by "

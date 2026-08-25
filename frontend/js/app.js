@@ -1072,6 +1072,11 @@ function wireSettings() {
     await renderBoard();
     if (LOCATIONS.length || VIEW === "map") await LocationsPanel.refresh();
     if (alertsPaneShowing()) renderAlertsPanel();
+    // The distance boxes hold a number and not only its wording, so switching
+    // units has to rewrite them: a box still reading 25 beside "mi" would be a
+    // different distance from the one the reader set.
+    if (LocationsPanel.repaintRadius) LocationsPanel.repaintRadius();
+    if (LocationsPanel.repaintFire) LocationsPanel.repaintFire();
   };
 
   theme.onchange = () => { Settings.set("theme", theme.value); applySettings(); };
@@ -1736,6 +1741,77 @@ function fmtKm(km, decimals = 0) {
   return useMiles()
     ? `${(n / KM_PER_MILE).toFixed(decimals)} mi`
     : `${n.toFixed(decimals)} km`;
+}
+
+/* A drag bar you can also type into.
+
+   A bar is the right control for "roughly this far" and the wrong one for
+   "exactly 75": hitting one value in five hundred with a mouse is a game, and
+   on a phone it is not winnable at all. So every distance bar now carries a
+   number box over the same value, and the two stay in step.
+
+   Two things make this more than an <input type="number"> next to a slider.
+
+   The first is units. Everything in this file is kilometres and is translated
+   on the way out — so a reader whose setting is miles sees 16 where the model
+   holds 25.75, and a number they type has to mean *what they are looking at*.
+   The box therefore works entirely in the display unit, with the unit printed
+   beside it rather than implied, and converts on the way in. Getting this
+   wrong would not be an arithmetic bug; it would be the same number meaning
+   two things in two places, which is the failure the km discipline exists to
+   prevent.
+
+   The second is that a half-typed number is not a number. Clamping on every
+   keystroke makes "150" impossible to enter — the "1" is below the minimum,
+   gets clamped and rewritten, and the "5" lands in a field that now says "1".
+   So keystrokes only move the bar when what has been typed so far is already a
+   valid value, and anything else is settled on blur, where the reader has
+   finished. */
+function wireDistanceBox({ slider, box, unit, fallback, onChange }) {
+  const bar = el(slider), num = el(box), tag = el(unit);
+  if (!bar || !num) return () => {};
+  const show = km => (useMiles() ? km / KM_PER_MILE : km);
+  const store = v => (useMiles() ? v * KM_PER_MILE : v);
+  const bounds = () => ({
+    lo: Math.max(1, Math.round(show(Number(bar.min) || 1))),
+    hi: Math.round(show(Number(bar.max) || 100)),
+  });
+
+  function paint() {
+    const { lo, hi } = bounds();
+    num.min = String(lo);
+    num.max = String(hi);
+    num.value = String(Math.round(show(Number(bar.value) || fallback)));
+    if (tag) tag.textContent = useMiles() ? "mi" : "km";
+  }
+
+  bar.addEventListener("input", () => { paint(); onChange(); });
+
+  num.addEventListener("input", () => {
+    const typed = Number(num.value);
+    if (!num.value.trim() || !Number.isFinite(typed)) return;
+    const { lo, hi } = bounds();
+    if (typed < lo || typed > hi) return;      // still being typed
+    bar.value = String(Math.round(store(typed)));
+    onChange();
+  });
+
+  const settle = () => {
+    const { lo, hi } = bounds();
+    let typed = Number(num.value);
+    if (!Number.isFinite(typed) || !num.value.trim()) typed = show(fallback);
+    bar.value = String(Math.round(store(Math.min(hi, Math.max(lo, Math.round(typed))))));
+    paint();
+    onChange();
+  };
+  num.addEventListener("change", settle);
+  num.addEventListener("blur", settle);
+  num.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); num.blur(); }
+  });
+
+  paint();
+  return paint;      // callers repaint after setting the bar in code
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -4132,7 +4208,7 @@ const LocationsPanel = {
     el("loc-fire-row").hidden = !on;
     el("loc-fire-email-row").hidden = !on;
     if (!on) el("loc-fire-email").checked = false;
-    el("loc-fire-val").textContent = fmtKm(Number(el("loc-fire-km").value) || 75);
+    if (this.repaintFire) this.repaintFire();
   },
 
   _drawPending() {
@@ -4264,7 +4340,7 @@ const LocationsPanel = {
     this.editing = loc;
     el("loc-name").value = loc.name;
     el("loc-radius").value = loc.radius_km;
-    el("loc-radius-val").textContent = fmtKm(loc.radius_km);
+    if (this.repaintRadius) this.repaintRadius();
     // The ring has to come back as it was saved, or editing a name would
     // quietly switch somebody's wildfire notifications off.
     el("loc-fire-on").checked = !!loc.fire_km;
@@ -4363,16 +4439,17 @@ function wireLocations() {
   feedback(el("btn-loc-save"), "Saving…");
   el("btn-loc-cancel").onclick = () => LocationsPanel.cancelEdit();
 
-  el("loc-radius").addEventListener("input", () => {
-    el("loc-radius-val").textContent = fmtKm(LocationsPanel.radiusKm());
-    LocationsPanel._drawPending();
+  LocationsPanel.repaintRadius = wireDistanceBox({
+    slider: "loc-radius", box: "loc-radius-num", unit: "loc-radius-val",
+    fallback: 25, onChange: () => LocationsPanel._drawPending(),
   });
 
   // The fire ring's two extra controls only exist once it is switched on —
   // a distance slider for notifications nobody asked for is furniture.
   el("loc-fire-on").addEventListener("change", () => LocationsPanel.syncFireRow());
-  el("loc-fire-km").addEventListener("input", () => {
-    el("loc-fire-val").textContent = fmtKm(LocationsPanel.fireKm());
+  LocationsPanel.repaintFire = wireDistanceBox({
+    slider: "loc-fire-km", box: "loc-fire-num", unit: "loc-fire-val",
+    fallback: 75, onChange: () => {},
   });
 
   wirePlaceSearch();

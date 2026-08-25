@@ -1811,10 +1811,18 @@
 
           <div class="loc-form">
             <input id="loc-name" type="text" maxlength="120" placeholder="Name this location">
-            <label class="loc-radius">
-              <span>Radius <strong id="loc-radius-val">25 km</strong></span>
-              <input type="range" id="loc-radius" min="1" max="500" step="1" value="25">
-            </label>
+            <!-- A drag bar and a number box over one value. The bar is for
+                 "about this far"; the box is for the reader who already knows
+                 the number and should not have to hunt for it with a mouse. -->
+            <div class="loc-radius">
+              <span>Radius
+                <input type="number" id="loc-radius-num" class="dist-num"
+                       inputmode="numeric" min="1" max="500" step="1" value="25"
+                       aria-label="Radius">
+                <strong id="loc-radius-val" class="dist-unit">km</strong></span>
+              <input type="range" id="loc-radius" min="1" max="500" step="1"
+                     value="25" aria-label="Radius slider">
+            </div>
             <!-- Typhon's fire ring. Separate from the radius above on purpose:
                  that one decides what counts as local news, this one decides
                  how close a wildfire has to be before we interrupt you. Off
@@ -1824,11 +1832,19 @@
               <input type="checkbox" id="loc-fire-on">
               <span>🔥 Tell me about wildfires near here</span>
             </label>
-            <label class="loc-radius" id="loc-fire-row" hidden>
-              <span>Within <strong id="loc-fire-val">75 km</strong>
+            <div class="loc-radius" id="loc-fire-row" hidden>
+              <span>Within
+                <input type="number" id="loc-fire-num" class="dist-num"
+                       inputmode="numeric" min="5" max="300" step="1" value="75"
+                       aria-label="Wildfire distance">
+                <strong id="loc-fire-val" class="dist-unit">km</strong>
                 <em class="s-meta">of the reported incident point</em></span>
-              <input type="range" id="loc-fire-km" min="5" max="300" step="5" value="75">
-            </label>
+              <!-- step 1, not 5: with a box beside it a typed 77 has to mean
+                   77, and a bar that snapped to 75 would silently disagree
+                   with the number printed next to it. -->
+              <input type="range" id="loc-fire-km" min="5" max="300" step="1"
+                     value="75" aria-label="Wildfire distance slider">
+            </div>
             <label class="loc-fire" id="loc-fire-email-row" hidden>
               <input type="checkbox" id="loc-fire-email">
               <span>Email me as well</span>
